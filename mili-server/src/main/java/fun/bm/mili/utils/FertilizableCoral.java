@@ -15,12 +15,8 @@ import net.minecraft.world.level.block.BaseCoralPlantTypeBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.BonemealableBlock;
+import net.minecraft.world.level.block.BonemealSource;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.levelgen.feature.CoralClawFeature;
-import net.minecraft.world.level.levelgen.feature.CoralFeature;
-import net.minecraft.world.level.levelgen.feature.CoralMushroomFeature;
-import net.minecraft.world.level.levelgen.feature.CoralTreeFeature;
-import net.minecraft.world.level.levelgen.feature.configurations.NoneFeatureConfiguration;
 import net.minecraft.world.level.material.MapColor;
 import org.jetbrains.annotations.NotNull;
 
@@ -31,25 +27,19 @@ public interface FertilizableCoral extends BonemealableBlock {
     boolean isEnabled();
 
     @Override
-    default boolean isValidBonemealTarget(@NotNull LevelReader world, @NotNull BlockPos pos, @NotNull BlockState state) {
+    default boolean isValidBonemealTarget(@NotNull LevelReader world, @NotNull BlockPos pos, @NotNull BlockState state, @NotNull BonemealSource source) {
         return isEnabled() && state.getValue(BaseCoralPlantTypeBlock.WATERLOGGED) && world.getFluidState(pos.above()).is(FluidTags.WATER);
     }
 
     @Override
-    default boolean isBonemealSuccess(@NotNull Level world, RandomSource random, @NotNull BlockPos pos, @NotNull BlockState state) {
+    default boolean isBonemealSuccess(@NotNull Level world, RandomSource random, @NotNull BlockPos pos, @NotNull BlockState state, @NotNull BonemealSource source) {
         ((ServerLevel) world).sendParticles(ParticleTypes.HAPPY_VILLAGER, pos.getX() + 0.5, pos.getY() + 1.0, pos.getZ() + 0.5, 8, 0.3, 0.5, 0.3, 0.0);
         return random.nextFloat() < 0.15D;
     }
 
     @Override
-    default void performBonemeal(@NotNull ServerLevel worldIn, RandomSource random, @NotNull BlockPos pos, @NotNull BlockState blockUnder) {
+    default void performBonemeal(@NotNull ServerLevel worldIn, RandomSource random, @NotNull BlockPos pos, @NotNull BlockState blockUnder, @NotNull BonemealSource source) {
         int variant = random.nextInt(3);
-        CoralFeature coral = switch (variant) {
-            case 0 -> new CoralClawFeature(NoneFeatureConfiguration.CODEC);
-            case 1 -> new CoralTreeFeature(NoneFeatureConfiguration.CODEC);
-            default -> new CoralMushroomFeature(NoneFeatureConfiguration.CODEC);
-        };
-
         MapColor color = blockUnder.getMapColor(worldIn, pos);
         BlockState properBlock = blockUnder;
         HolderSet.Named<Block> coralBlocks = worldIn.registryAccess().lookupOrThrow(Registries.BLOCK).getOrThrow(BlockTags.CORAL_BLOCKS);
@@ -61,7 +51,7 @@ public interface FertilizableCoral extends BonemealableBlock {
         }
         worldIn.setBlock(pos, Blocks.WATER.defaultBlockState(), Block.UPDATE_NONE);
 
-        if (!coral.placeFeaturePublic(worldIn, random, pos, properBlock)) {
+        if (!CoralGrowth.place(variant, worldIn, random, pos, properBlock)) {
             worldIn.setBlock(pos, blockUnder, 3);
         } else {
             if (worldIn.getRandom().nextInt(10) == 0) {

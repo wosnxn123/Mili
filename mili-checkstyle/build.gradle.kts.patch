@@ -1,0 +1,22 @@
+--- a/folia-checkstyle/build.gradle.kts
++++ b/folia-checkstyle/build.gradle.kts
+@@ -4,6 +4,10 @@
+ }
+ 
+ val testData = sourceSets.create("testData")
++
++paperCheckstyle {
++    typeUseAnnotationsFile = rootProject.layout.projectDirectory.file(".checkstyle/type_use_annotations.txt")
++}
+ 
+ tasks.named<io.papermc.paperweight.checkstyle.tasks.MergeCheckstyleConfigs>("mergeCheckstyleConfigs") {
+     overrideConfigFile.set(layout.projectDirectory.file("../paper-checkstyle/.checkstyle/checkstyle.xml"))
+@@ -33,7 +37,7 @@
+     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+     testData.implementationConfigurationName("org.jspecify:jspecify:1.0.0")
+ 
+-    checkstyle(project(":folia-checkstyle"))
++    checkstyle(project(":mili-checkstyle"))
+ }
+ 
+ tasks {

@@ -5,7 +5,7 @@ Subject: [PATCH] Add-removed-check-before-all-checks-start-in-addEffe
 
 
 diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
-index d52f9cc7ec5f1d0dbc8c82a5e9b6504d5efa5b6f..b1a59ae4bbdf9571df0f5e66ace5263dcd4259a0 100644
+index c4b732c66cd9169098d3db7e1f47595038a881c0..ee2fa1e3758395778f6778dc5e7f9c9259269bb4 100644
 --- a/net/minecraft/world/entity/LivingEntity.java
 +++ b/net/minecraft/world/entity/LivingEntity.java
 @@ -1184,6 +1184,7 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin

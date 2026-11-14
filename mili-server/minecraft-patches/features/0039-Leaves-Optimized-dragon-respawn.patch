@@ -5,10 +5,10 @@ Subject: [PATCH] Leaves: Optimized dragon respawn
 
 
 diff --git a/net/minecraft/world/level/dimension/end/EnderDragonFight.java b/net/minecraft/world/level/dimension/end/EnderDragonFight.java
-index 824ef3f458505569fe5b8efb2055ecea7ba6cc56..7c68effb78bcb17ca64e043f87d6449f90b1b0a7 100644
+index 56648e26cdb0f5ba13db9bf5dc75d70bc911b1e7..c6a4cb03a95f9926411ad85be2d32f7dc7345364 100644
 --- a/net/minecraft/world/level/dimension/end/EnderDragonFight.java
 +++ b/net/minecraft/world/level/dimension/end/EnderDragonFight.java
-@@ -317,7 +317,67 @@ public class EnderDragonFight extends SavedData {
+@@ -324,7 +324,67 @@ public class EnderDragonFight extends SavedData {
          return false;
      }
  
@@ -76,7 +76,7 @@ index 824ef3f458505569fe5b8efb2055ecea7ba6cc56..7c68effb78bcb17ca64e043f87d6449f
          ChunkPos chunkOrigin = ChunkPos.containing(this.origin);
  
          for (int x = -8 + chunkOrigin.x(); x <= 8 + chunkOrigin.x(); x++) {
-@@ -623,8 +683,12 @@ public class EnderDragonFight extends SavedData {
+@@ -631,8 +691,12 @@ public class EnderDragonFight extends SavedData {
          }
          return false; // CraftBukkit - return value
      }

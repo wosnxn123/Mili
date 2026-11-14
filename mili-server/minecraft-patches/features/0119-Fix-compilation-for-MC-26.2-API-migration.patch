@@ -74,18 +74,18 @@ index 19caac6d353ed46962134a4e271e0e869e2844eb..97ac74f117547af8d5b6e583d2ba680a
  
      public void broadcastToAll(final DebugSubscription<?> subscription, final Packet<?> packet) {
 diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
-index 171c929677bfb0906a811ad9346c02a87204758f..aaed0f7a8f3b78e9e2c50014f2cfad536af3adb1 100644
+index 1b5fbfe75985d0f911bf15cbc7f9b69b1110b4b4..e19fc5e7c0f19b06a1a1f1407cec82a6e44b619d 100644
 --- a/net/minecraft/world/entity/Entity.java
 +++ b/net/minecraft/world/entity/Entity.java
-@@ -356,6 +356,7 @@ public abstract class Entity
-     private final LongSet visitedBlocks = new LongOpenHashSet();
-     private final InsideBlockEffectApplier.StepBasedCollector insideEffectCollector = new InsideBlockEffectApplier.StepBasedCollector();
+@@ -361,6 +361,7 @@ public abstract class Entity
+     protected final InsideBlockEffectApplier.StepBasedCollector insideEffectCollector = new InsideBlockEffectApplier.StepBasedCollector();
+     protected final InterpolationHandler interpolationHandler;
      private CustomData customData = CustomData.EMPTY;
 +    private net.minecraft.nbt.CompoundTag leavesData = new net.minecraft.nbt.CompoundTag(); // Leaves - Leaves ex data
      // CraftBukkit start
      public boolean persist = true;
      public boolean visibleByDefault = true;
-@@ -2788,6 +2789,8 @@ public abstract class Entity
+@@ -2853,6 +2854,8 @@ public abstract class Entity
                  output.store("data", CustomData.CODEC, this.customData);
              }
  
@@ -94,15 +94,15 @@ index 171c929677bfb0906a811ad9346c02a87204758f..aaed0f7a8f3b78e9e2c50014f2cfad53
              this.addAdditionalSaveData(output, includeAll); // CraftBukkit - pass on includeAll
              if (this.isVehicle()) {
                  ValueOutput.ValueOutputList passengersList = output.childrenList("Passengers");
-@@ -2892,6 +2895,7 @@ public abstract class Entity
+@@ -2958,6 +2961,7 @@ public abstract class Entity
                  );
                  // Paper end
                  this.customData = input.read("data", CustomData.CODEC).orElse(CustomData.EMPTY);
 +                leavesData = input.read("Leaves.Data", net.minecraft.nbt.CompoundTag.CODEC).orElse(new net.minecraft.nbt.CompoundTag()); // Leaves - leaves ex data
                  this.tags.clear();
                  input.read("Tags", TAG_LIST_CODEC).ifPresent(this.tags::addAll);
-                 this.readAdditionalSaveData(input);
-@@ -6600,4 +6604,10 @@ public abstract class Entity
+                 input.getString("Team").ifPresent(teamName -> {
+@@ -6766,4 +6770,10 @@ public abstract class Entity
      }
      // Mili end - entity culling
      public boolean shouldTickHot() { return this.tickCount > 20 * 10 && this.isAlive(); } // KioCG
@@ -114,10 +114,10 @@ index 171c929677bfb0906a811ad9346c02a87204758f..aaed0f7a8f3b78e9e2c50014f2cfad53
 +    // Leaves end - leaves ex data
  }
 diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
-index 7b15e5dcc27876e70ac54b2f45d577b670bee448..d431454e998fb8d53ec3b8d49d5cb2c121c2c0b0 100644
+index 2af2519ea6e5dd18b1370dbfb032ea752701e2f2..7bbddf667e02942af9ef150393b1d22d7e08aaca 100644
 --- a/net/minecraft/world/entity/player/Player.java
 +++ b/net/minecraft/world/entity/player/Player.java
-@@ -1047,15 +1047,15 @@ public abstract class Player extends Avatar implements ContainerUser {
+@@ -1046,15 +1046,15 @@ public abstract class Player extends Avatar implements ContainerUser {
              if (this.level() instanceof ServerLevel serverLevel
                  && fun.bm.mili.carpet.config.modules.GeneralCompatConfig.creativeOneHitKill
                  && this.isCreative()
@@ -151,10 +151,10 @@ index b7f8b52fcb2600e211293b196dfba168c2a31bb3..fc0a63099a86d5fc722037408eb314cc
              // Mili end - shears wrench
          }
 diff --git a/net/minecraft/world/item/crafting/RecipeManager.java b/net/minecraft/world/item/crafting/RecipeManager.java
-index e5362305761966f616ac7fabef583d615430de7a..3c040e6688414c5b4b0ad93f04795a341375ba04 100644
+index 57f292f9dddb60d281fd73391e6e080acb242f1f..88b2b4cbab23e56e941e40bd6f8e6ecf701fd510 100644
 --- a/net/minecraft/world/item/crafting/RecipeManager.java
 +++ b/net/minecraft/world/item/crafting/RecipeManager.java
-@@ -108,14 +108,26 @@ public class RecipeManager extends SimplePreparableReloadListener<RecipeMap> imp
+@@ -81,14 +81,26 @@ public class RecipeManager implements RecipeAccess {
          }
      }
  
@@ -184,7 +184,7 @@ index e5362305761966f616ac7fabef583d615430de7a..3c040e6688414c5b4b0ad93f04795a34
              )
          );
      }
-@@ -124,15 +136,15 @@ public class RecipeManager extends SimplePreparableReloadListener<RecipeMap> imp
+@@ -97,15 +109,15 @@ public class RecipeManager implements RecipeAccess {
          return new RecipeHolder<>(
              BETTER_CRAFTABLE_DISPENSER_SHAPED_RECIPE,
              new ShapedRecipe(
@@ -203,7 +203,7 @@ index e5362305761966f616ac7fabef583d615430de7a..3c040e6688414c5b4b0ad93f04795a34
              )
          );
      }
-@@ -141,9 +153,9 @@ public class RecipeManager extends SimplePreparableReloadListener<RecipeMap> imp
+@@ -114,9 +126,9 @@ public class RecipeManager implements RecipeAccess {
          return new RecipeHolder<>(
              BETTER_CRAFTABLE_DISPENSER_SHAPELESS_RECIPE,
              new ShapelessRecipe(
@@ -217,7 +217,7 @@ index e5362305761966f616ac7fabef583d615430de7a..3c040e6688414c5b4b0ad93f04795a34
              )
          );
 diff --git a/net/minecraft/world/item/crafting/SmithingTransformRecipe.java b/net/minecraft/world/item/crafting/SmithingTransformRecipe.java
-index 432bfa6991919a2803846838a1dfe3415ae668c2..89983e7da244434a5346b23b49c748349cd79e34 100644
+index 044caa5dd7f6c38b3f6fb3af0119729290474d4c..09fc1ea0010305c8589b7e5bd58273ce44bf87a6 100644
 --- a/net/minecraft/world/item/crafting/SmithingTransformRecipe.java
 +++ b/net/minecraft/world/item/crafting/SmithingTransformRecipe.java
 @@ -117,7 +117,7 @@ public class SmithingTransformRecipe extends SimpleSmithingRecipe {
@@ -230,10 +230,10 @@ index 432bfa6991919a2803846838a1dfe3415ae668c2..89983e7da244434a5346b23b49c74834
      // Leaves end - REI
  
 diff --git a/net/minecraft/world/level/block/Block.java b/net/minecraft/world/level/block/Block.java
-index 4134fa658f09a9dcbb674dfdd91d2ffdfda912ba..0f9dd7b3991f18f4d643428ab600b502936bfac7 100644
+index 644b9113566db535315e5162ceb242d2a286ce3d..cd573079e6dbe9fa99a25512e8e86f896ac861a9 100644
 --- a/net/minecraft/world/level/block/Block.java
 +++ b/net/minecraft/world/level/block/Block.java
-@@ -722,6 +722,13 @@ public class Block extends BlockBehaviour implements ItemLike {
+@@ -724,6 +724,13 @@ public class Block extends BlockBehaviour implements ItemLike {
      }
      // CraftBukkit end
  
@@ -248,10 +248,10 @@ index 4134fa658f09a9dcbb674dfdd91d2ffdfda912ba..0f9dd7b3991f18f4d643428ab600b502
          @Override
          public boolean equals(final Object o) {
 diff --git a/net/minecraft/world/level/block/CarvedPumpkinBlock.java b/net/minecraft/world/level/block/CarvedPumpkinBlock.java
-index 35e054d503969a7999ff7867bddb65f94596d800..8a13418ef33c1a29d1a04ca5c680dbcc9d9039da 100644
+index fd9c1b7cf5db8fb4a712cd2b71bc1b286f2ab85a..13b4cf4e32f24da0ae5b58049e351ba6cb566d11 100644
 --- a/net/minecraft/world/level/block/CarvedPumpkinBlock.java
 +++ b/net/minecraft/world/level/block/CarvedPumpkinBlock.java
-@@ -176,7 +176,7 @@ public class CarvedPumpkinBlock extends HorizontalDirectionalBlock {
+@@ -169,7 +169,7 @@ public class CarvedPumpkinBlock extends HorizontalDirectionalBlock {
              return;
          }
  
@@ -261,10 +261,10 @@ index 35e054d503969a7999ff7867bddb65f94596d800..8a13418ef33c1a29d1a04ca5c680dbcc
              return;
          }
 diff --git a/net/minecraft/world/level/block/SignBlock.java b/net/minecraft/world/level/block/SignBlock.java
-index 17927fe45d45793a5f9696adb2fbb059231fad39..694b7f6b0240fe79a078def3e445afa93a8a4ce9 100644
+index dba875289fa40b3e2e1a4664b35de0d363323949..06443778a776adbeb04577656f00452a1dd7fa15 100644
 --- a/net/minecraft/world/level/block/SignBlock.java
 +++ b/net/minecraft/world/level/block/SignBlock.java
-@@ -121,7 +121,7 @@ public abstract class SignBlock extends BaseEntityBlock implements SimpleWaterlo
+@@ -116,7 +116,7 @@ public abstract class SignBlock extends BaseEntityBlock implements SimpleWaterlo
                      }
                      if (level.getBlockEntity(pos1) instanceof net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity) {
                          BlockState state1 = level.getBlockState(pos1);
@@ -274,23 +274,23 @@ index 17927fe45d45793a5f9696adb2fbb059231fad39..694b7f6b0240fe79a078def3e445afa9
                      return InteractionResult.TRY_WITH_EMPTY_HAND;
                      // Mili end - signContainerPassthrough
 diff --git a/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java b/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
-index 9d14176da1cb9ba0439366363fc2384215420f20..534f258b7b2b2aae14d889c0494392e8e360c0df 100644
+index bbf5c9a0e473a90b89e11154601fc4fdcfd6a173..b1f3e1141aea75e76ddfd2bb2ed9a5106f11b650 100644
 --- a/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
 +++ b/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
-@@ -395,7 +395,7 @@ public abstract class AbstractFurnaceBlockEntity extends BaseContainerBlockEntit
+@@ -427,7 +427,7 @@ public abstract class AbstractFurnaceBlockEntity extends BaseContainerBlockEntit
          ItemStack oldStack = this.items.get(slot);
          boolean same = !itemStack.isEmpty() && ItemStack.isSameItemSameComponents(oldStack, itemStack);
          this.items.set(slot, itemStack);
 -        itemStack.limitSize(this.getMaxStackLeaves(itemStack)); // Mili - item over-stack util
 +        itemStack.limitSize(org.leavesmc.leaves.util.ItemOverstackUtils.getItemStackMaxCount(itemStack)); // Mili - item over-stack util
          if (slot == 0 && !same && this.level instanceof ServerLevel serverLevel) {
-             this.cookingTotalTime = getTotalCookTime(serverLevel, this, this.recipeType, this.cookSpeedMultiplier); // Paper - cook speed multiplier API
+             this.cookingTotalTime = getTotalCookTime(serverLevel, this);
              this.cookingTimer = 0;
 diff --git a/net/minecraft/world/level/chunk/storage/RegionFileStorage.java b/net/minecraft/world/level/chunk/storage/RegionFileStorage.java
-index 49fb94848d2336e7c6a2d2c0fa45e9901e8b3005..0e208eac6b7aed80a2c2484d8bc86e1e86c8ae63 100644
+index 1299bd14167f14c3698997a34cb6895290f974ab..dd1a53e2b8c849c4413ee60421dc1037213805e2 100644
 --- a/net/minecraft/world/level/chunk/storage/RegionFileStorage.java
 +++ b/net/minecraft/world/level/chunk/storage/RegionFileStorage.java
-@@ -65,7 +65,7 @@ public class RegionFileStorage implements AutoCloseable, ca.spottedleaf.moonrise
+@@ -42,7 +42,7 @@ public class RegionFileStorage implements AutoCloseable, ca.spottedleaf.moonrise
          final String extensionName = fullNameSplit[fullNameSplit.length - 1];
  
          if (!regionFormat.getArgument().equalsIgnoreCase(extensionName)) {
@@ -299,20 +299,3 @@ index 49fb94848d2336e7c6a2d2c0fa45e9901e8b3005..0e208eac6b7aed80a2c2484d8bc86e1e
              throw new IOException("Invalid region file format: " + extensionName + " expected " + regionFormat.getArgument());
          }
  
-diff --git a/net/minecraft/world/level/levelgen/feature/CoralFeature.java b/net/minecraft/world/level/levelgen/feature/CoralFeature.java
-index 0ab324d8435826878861547fe3309ace9c37abe8..6165bb35d2bb37178c0d0d3f284c501b9cbb7364 100644
---- a/net/minecraft/world/level/levelgen/feature/CoralFeature.java
-+++ b/net/minecraft/world/level/levelgen/feature/CoralFeature.java
-@@ -33,6 +33,12 @@ public abstract class CoralFeature extends Feature<NoneFeatureConfiguration> {
- 
-     protected abstract boolean placeFeature(final LevelAccessor level, final RandomSource random, final BlockPos origin, final BlockState state);
- 
-+    // Mili start - FertilizableCoral support (public bridge for protected placeFeature)
-+    public boolean placeFeaturePublic(final LevelAccessor level, final RandomSource random, final BlockPos origin, final BlockState state) {
-+        return this.placeFeature(level, random, origin, state);
-+    }
-+    // Mili end - FertilizableCoral support
-+
-     protected boolean placeCoralBlock(final LevelAccessor level, final RandomSource random, final BlockPos pos, final BlockState state) {
-         BlockPos above = pos.above();
-         BlockState targetBlockState = level.getBlockState(pos);

@@ -3,7 +3,7 @@ import org.gradle.api.tasks.testing.logging.TestLogEvent
 
 plugins {
     java
-    id("moe.luminolmc.hyacinthusweight.patcher")
+    id("io.papermc.paperweight.patcher")
 }
 
 paperweight {
@@ -13,13 +13,33 @@ paperweight {
 
         patchFile {
             path = "folia-server/build.gradle.kts"
-            outputFile = file("mili-server/build.gradle.kts.base")
+            outputFile = file("mili-server/build.gradle.kts")
             patchFile = file("mili-server/build.gradle.kts.patch")
         }
         patchFile {
             path = "folia-api/build.gradle.kts"
-            outputFile = file("mili-api/build.gradle.kts.base")
+            outputFile = file("mili-api/build.gradle.kts")
             patchFile = file("mili-api/build.gradle.kts.patch")
+        }
+
+        patchFile {
+            path = "folia-checkstyle/build.gradle.kts"
+            outputFile = file("mili-checkstyle/build.gradle.kts")
+            patchFile = file("mili-checkstyle/build.gradle.kts.patch")
+        }
+
+        // Folia generates these directories as standalone Git repositories.
+        // Import their own history instead of copying Folia's root .git over it.
+        patchRepo("paperCheckstyle") {
+            upstreamPath = "paper-checkstyle"
+            excludes = setOf("build.gradle.kts")
+            patchesDir = file("mili-checkstyle/paper-patches")
+            outputDir = file("paper-checkstyle")
+        }
+        patchRepo("paperCheckstyleConfig") {
+            upstreamPath = ".checkstyle"
+            patchesDir = file("mili-checkstyle/config-patches")
+            outputDir = file(".checkstyle")
         }
 
         patchRepo("paperApi") {

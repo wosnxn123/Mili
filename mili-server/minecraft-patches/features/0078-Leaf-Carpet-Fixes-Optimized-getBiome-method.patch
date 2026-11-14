@@ -5,24 +5,24 @@ Subject: [PATCH] Leaf: Carpet-Fixes: Optimized getBiome method
 
 
 diff --git a/net/minecraft/world/level/biome/BiomeManager.java b/net/minecraft/world/level/biome/BiomeManager.java
-index c139f70bf9ddd3f995c0524dad15487e632cd432..0d1a7230275ea8ea5e88aacbb6aaba726171e3e1 100644
+index 65ac39fd0e481b83cb9fad00b6482051dce20759..f86c4ede6060305cdfd600aa393d8a6ec1e01827 100644
 --- a/net/minecraft/world/level/biome/BiomeManager.java
 +++ b/net/minecraft/world/level/biome/BiomeManager.java
 @@ -14,6 +14,7 @@ public class BiomeManager {
      private static final int ZOOM_MASK = 3;
-     private final BiomeManager.NoiseBiomeSource noiseBiomeSource;
+     private final BiomeResolver noiseBiomeSource;
      private final long biomeZoomSeed;
 +    private static final double maxOffset = 0.4500000001D; // Leaf - Carpet-Fixes - Optimized getBiome method
  
-     public BiomeManager(final BiomeManager.NoiseBiomeSource noiseBiomeSource, final long seed) {
+     public BiomeManager(final BiomeResolver noiseBiomeSource, final long seed) {
          this.noiseBiomeSource = noiseBiomeSource;
-@@ -29,39 +30,67 @@ public class BiomeManager {
+@@ -33,39 +34,67 @@ public class BiomeManager {
      }
  
-     public Holder<Biome> getBiome(final BlockPos pos) {
--        int absX = pos.getX() - 2;
--        int absY = pos.getY() - 2;
--        int absZ = pos.getZ() - 2;
+     public Holder<Biome> getBiome(final int x, final int y, final int z) {
+-        int absX = x - 2;
+-        int absY = y - 2;
+-        int absZ = z - 2;
 -        int parentX = absX >> 2;
 -        int parentY = absY >> 2;
 -        int parentZ = absZ >> 2;
@@ -32,12 +32,12 @@ index c139f70bf9ddd3f995c0524dad15487e632cd432..0d1a7230275ea8ea5e88aacbb6aaba72
 -        int minI = 0;
 -        double minFiddledDistance = Double.POSITIVE_INFINITY;
 +        // Leaf start - Carpet-Fixes - Optimized getBiome method
-+        int xMinus2 = pos.getX() - 2;
-+        int yMinus2 = pos.getY() - 2;
-+        int zMinus2 = pos.getZ() - 2;
-+        int x = xMinus2 >> 2; // BlockPos to BiomePos
-+        int y = yMinus2 >> 2;
-+        int z = zMinus2 >> 2;
++        int xMinus2 = x - 2;
++        int yMinus2 = y - 2;
++        int zMinus2 = z - 2;
++        int quartPosX = xMinus2 >> 2; // BlockPos to BiomePos
++        int quartPosY = yMinus2 >> 2;
++        int quartPosZ = zMinus2 >> 2;
 +        double quartX = (double) (xMinus2 & 3) / 4.0; // quartLocal divided by 4
 +        double quartY = (double) (yMinus2 & 3) / 4.0; // 0/4, 1/4, 2/4, 3/4
 +        double quartZ = (double) (zMinus2 & 3) / 4.0; // [0, 0.25, 0.5, 0.75]
@@ -74,9 +74,9 @@ index c139f70bf9ddd3f995c0524dad15487e632cd432..0d1a7230275ea8ea5e88aacbb6aaba72
 +                if (smallestDist < maxQuartXX + maxQuartYY + maxQuartZZ) continue;
              }
 -        }
-+            int xx = everyOtherQuad ? x : x + 1;
-+            int yy = everyOtherPair ? y : y + 1;
-+            int zz = everyOther ? z : z + 1;
++            int xx = everyOtherQuad ? quartPosX : quartPosX + 1;
++            int yy = everyOtherPair ? quartPosY : quartPosY + 1;
++            int zz = everyOther ? quartPosZ : quartPosZ + 1;
 +
 +            //I transferred the code from method_38106 to here, so I could call continue halfway through
 +            long seed = LinearCongruentialGenerator.next(this.biomeZoomSeed, xx);
@@ -106,9 +106,9 @@ index c139f70bf9ddd3f995c0524dad15487e632cd432..0d1a7230275ea8ea5e88aacbb6aaba72
 +            }
 +        }
 +        return this.noiseBiomeSource.getNoiseBiome(
-+            (smallestX & 4) == 0 ? x : x + 1,
-+            (smallestX & 2) == 0 ? y : y + 1,
-+            (smallestX & 1) == 0 ? z : z + 1
++            (smallestX & 4) == 0 ? quartPosX : quartPosX + 1,
++            (smallestX & 2) == 0 ? quartPosY : quartPosY + 1,
++            (smallestX & 1) == 0 ? quartPosZ : quartPosZ + 1
 +        );
 +        // Leaf end - Carpet-Fixes - Optimized getBiome method
      }

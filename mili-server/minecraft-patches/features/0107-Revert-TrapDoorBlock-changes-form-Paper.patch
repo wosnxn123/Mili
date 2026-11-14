@@ -5,10 +5,10 @@ Subject: [PATCH] Revert-TrapDoorBlock-changes-form-Paper
 
 
 diff --git a/net/minecraft/world/level/block/TrapDoorBlock.java b/net/minecraft/world/level/block/TrapDoorBlock.java
-index 614f70a520d13f6fe422ac7e42808c813fb3506d..eb36bea7d3dd593539cdbc6938f1fe29df58dadf 100644
+index 98ecd65ea88eb80d043a9c7227b1445764973ced..694e8bdc7b132fd178381da04067fe2276f19bc7 100644
 --- a/net/minecraft/world/level/block/TrapDoorBlock.java
 +++ b/net/minecraft/world/level/block/TrapDoorBlock.java
-@@ -129,31 +129,7 @@ public class TrapDoorBlock extends HorizontalDirectionalBlock implements SimpleW
+@@ -119,31 +119,7 @@ public class TrapDoorBlock extends HorizontalDirectionalBlock implements SimpleW
          if (!level.isClientSide()) {
              boolean signal = level.hasNeighborSignal(pos);
              if (signal != state.getValue(POWERED)) {
@@ -25,7 +25,7 @@ index 614f70a520d13f6fe422ac7e42808c813fb3506d..eb36bea7d3dd593539cdbc6938f1fe29
 -                    // in this case, first check for the redstone on top first
 -                    BlockPos abovePos = pos.above();
 -                    BlockState above = level.getBlockState(abovePos);
--                    if (above.getBlock() instanceof RedStoneWireBlock) {
+-                    if (above.getBlock() instanceof RedstoneWireBlock) {
 -                        level.setBlock(abovePos, Blocks.AIR.defaultBlockState(), Block.UPDATE_CLIENTS | Block.UPDATE_NEIGHBORS);
 -                        Block.popResource(level, abovePos, new ItemStack(net.minecraft.world.item.Items.REDSTONE));
 -                        // now check that this didn't change our state

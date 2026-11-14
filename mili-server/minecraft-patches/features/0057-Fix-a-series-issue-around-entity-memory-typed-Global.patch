@@ -94,7 +94,7 @@ index ce6cf5ecfb190428e3ef9b7dd39c98e3d27a7b9d..a4b6c74b1e0897b44dce3247cca4e407
 +    boolean checkThread(net.minecraft.world.level.Level currOwnedByLevel); // Luminol - Fix a series issue around entity memory typed GlobalPos and WalkTarget
  }
 diff --git a/net/minecraft/world/entity/ai/behavior/SleepInBed.java b/net/minecraft/world/entity/ai/behavior/SleepInBed.java
-index 16017d819c28b077f732e2ef571eac179d24e323..977edfc17334fccbb3d176655e9c41b52935a258 100644
+index a12d01d1278a8d49df67d7b1f8714b179e76ca36..cc7f5c457fdeeb3bd3d3509ccc9166601d8f219d 100644
 --- a/net/minecraft/world/entity/ai/behavior/SleepInBed.java
 +++ b/net/minecraft/world/entity/ai/behavior/SleepInBed.java
 @@ -57,6 +57,11 @@ public class SleepInBed extends Behavior<LivingEntity> {
@@ -108,12 +108,12 @@ index 16017d819c28b077f732e2ef571eac179d24e323..977edfc17334fccbb3d176655e9c41b5
 +        // Luminol -end
          BlockState blockState = level.getBlockStateIfLoaded(target.pos()); // Paper - Prevent sync chunk loads when villagers try to find beds
          if (blockState == null) return false; // Paper - Prevent sync chunk loads when villagers try to find beds
-         return target.pos().closerToCenterThan(body.position(), 2.0) && blockState.is(BlockTags.BEDS) && !blockState.getValue(BedBlock.OCCUPIED);
+         return target.pos().closerToCenterThan(body.position(), 2.0)
 diff --git a/net/minecraft/world/entity/animal/allay/AllayAi.java b/net/minecraft/world/entity/animal/allay/AllayAi.java
-index c3667e7997551e0f5ce63bc6ee890082d1431400..59a8caeff672fdd7394a46f4d0adb0407634dd0b 100644
+index 76e33f716b858707484952187b72ecda7ba4e469..c8a1668cc7ffc0bead1c31d3cfb4d239a0d88aa7 100644
 --- a/net/minecraft/world/entity/animal/allay/AllayAi.java
 +++ b/net/minecraft/world/entity/animal/allay/AllayAi.java
-@@ -112,6 +112,17 @@ public class AllayAi {
+@@ -122,6 +122,17 @@ public class AllayAi {
          Optional<GlobalPos> likedNoteblockPos = brain.getMemory(MemoryModuleType.LIKED_NOTEBLOCK_POSITION);
          if (likedNoteblockPos.isPresent()) {
              GlobalPos position = likedNoteblockPos.get();
@@ -132,7 +132,7 @@ index c3667e7997551e0f5ce63bc6ee890082d1431400..59a8caeff672fdd7394a46f4d0adb040
                  return Optional.of(new BlockPosTracker(position.pos().above()));
              }
 diff --git a/net/minecraft/world/entity/animal/sniffer/Sniffer.java b/net/minecraft/world/entity/animal/sniffer/Sniffer.java
-index d5394ae7ce56555ad21aeafb2d78c291c62e2988..e6a3e96b704c5925853a28a167b269ca1875735b 100644
+index 0d84b8885bbd0fb65c3202c68fccea93e3f64e6f..c1337ea2f96d599bdc4968ff4afbfb9b2e80f20e 100644
 --- a/net/minecraft/world/entity/animal/sniffer/Sniffer.java
 +++ b/net/minecraft/world/entity/animal/sniffer/Sniffer.java
 @@ -279,7 +279,17 @@ public class Sniffer extends Animal {

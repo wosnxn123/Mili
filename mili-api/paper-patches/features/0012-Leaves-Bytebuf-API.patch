@@ -7,10 +7,10 @@ As a part of : Leaves (https://github.com/LeavesMC/Leaves)
 Licensed under: GPL-3.0 (https://www.gnu.org/licenses/gpl-3.0.html)
 
 diff --git a/src/main/java/org/bukkit/Bukkit.java b/src/main/java/org/bukkit/Bukkit.java
-index ed47316a99da52240ec06346aa0b4f477ea83379..dcfdf6eeca979b673f8d2747e75367e9b6badd35 100644
+index 9ece795d385426e75e3c7abfcecff6828ef62c69..0b6611c0a9ea77c382bda2e8c404f75fb38308df 100644
 --- a/src/main/java/org/bukkit/Bukkit.java
 +++ b/src/main/java/org/bukkit/Bukkit.java
-@@ -3056,4 +3056,10 @@ public final class Bukkit {
+@@ -3144,4 +3144,10 @@ public final class Bukkit {
          return server.getPhotographerManager();
      }
      // Leaves end - Photographer API
@@ -22,10 +22,10 @@ index ed47316a99da52240ec06346aa0b4f477ea83379..dcfdf6eeca979b673f8d2747e75367e9
 +    // Leaves end - Bytebuf API
  }
 diff --git a/src/main/java/org/bukkit/Server.java b/src/main/java/org/bukkit/Server.java
-index 9bda4caf21d588a1fc6cb67645df0c9284269f64..2f4d76faf27afae9d2709f786f4079ee67d58a73 100644
+index dff8188272b3fa6b0ee5f198c396b5a705a6d7f9..584cad36df3855d55b8f9c2eff80dc7a639bae1a 100644
 --- a/src/main/java/org/bukkit/Server.java
 +++ b/src/main/java/org/bukkit/Server.java
-@@ -2804,4 +2804,8 @@ public interface Server extends PluginMessageRecipient, net.kyori.adventure.audi
+@@ -2893,4 +2893,8 @@ public interface Server extends PluginMessageRecipient, net.kyori.adventure.audi
      // Leaves start - Photographer API
      @NotNull org.leavesmc.leaves.entity.photographer.PhotographerManager getPhotographerManager();
      // Leaves end - Photographer API
@@ -35,7 +35,7 @@ index 9bda4caf21d588a1fc6cb67645df0c9284269f64..2f4d76faf27afae9d2709f786f4079ee
 +    // Leaves end - Bytebuf API
  }
 diff --git a/src/main/java/org/bukkit/entity/Player.java b/src/main/java/org/bukkit/entity/Player.java
-index 274af6397b5f7c0b6787e2669de80e54858950a2..2e9d844d32e5385c0232cf1df056b5d5c82462a8 100644
+index 037bd1d642194590177d9f01bc6bd6da33db9128..36260ed3092ea083ccfeec8e3b2edd308f0008f4 100644
 --- a/src/main/java/org/bukkit/entity/Player.java
 +++ b/src/main/java/org/bukkit/entity/Player.java
 @@ -73,7 +73,7 @@ import org.jspecify.annotations.Nullable;

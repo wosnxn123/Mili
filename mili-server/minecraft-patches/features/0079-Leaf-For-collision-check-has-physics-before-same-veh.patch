@@ -5,10 +5,10 @@ Subject: [PATCH] Leaf: For collision check has physics before same vehicle
 
 
 diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
-index a0f295d7fdab6a811543a0cc03aee51ef9d36d33..78d3ba511a31307b9b38c84b0eb51846afa47f89 100644
+index 3f4ed1f3897695617f346cd5e34cdc38ef4bdb3f..810b0a160dda508b185af41a6364e95709a2fae6 100644
 --- a/net/minecraft/world/entity/Entity.java
 +++ b/net/minecraft/world/entity/Entity.java
-@@ -2438,8 +2438,8 @@ public abstract class Entity
+@@ -2486,8 +2486,8 @@ public abstract class Entity
      }
  
      public void push(final Entity entity) {
@@ -16,5 +16,5 @@ index a0f295d7fdab6a811543a0cc03aee51ef9d36d33..78d3ba511a31307b9b38c84b0eb51846
          if (!this.isPassengerOfSameVehicle(entity)) {
 -            if (!entity.noPhysics && !this.noPhysics) {
                  if (this.level.paperConfig().collisions.onlyPlayersCollide && !(entity instanceof ServerPlayer || this instanceof ServerPlayer)) return; // Paper - Collision option for requiring a player participant
-                 double xa = entity.getX() - this.getX();
-                 double za = entity.getZ() - this.getZ();
+                 // Paper start - Add EntityCollideWithEntity Event
+                 if (io.papermc.paper.event.entity.EntityCollideWithEntityEvent.getHandlerList().getRegisteredListeners().length != 0 &&

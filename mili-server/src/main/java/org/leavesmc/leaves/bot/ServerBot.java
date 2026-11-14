@@ -42,6 +42,7 @@ import net.minecraft.server.network.ServerPlayerConnection;
 import net.minecraft.stats.ServerStatsCounter;
 import net.minecraft.stats.Stat;
 import net.minecraft.util.Mth;
+import net.minecraft.util.Prediction;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.SimpleMenuProvider;
@@ -59,10 +60,13 @@ import net.minecraft.world.entity.vehicle.boat.AbstractBoat;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.item.FishingRodItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.MapItem;
+import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.level.gamerules.GameRules;
 import net.minecraft.world.level.portal.TeleportTransition;
+import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.*;
@@ -148,9 +152,7 @@ public class ServerBot extends ServerPlayer {
 
 //        this.resetOperationCountPerTick(); // Leaves - player operation limiter
         this.wardenSpawnTracker.tick();
-        if (this.invulnerableTime > 0) {
-            this.invulnerableTime--;
-        }
+        // Entity.commonTick already decrements invulnerability before either bot tick mode.
         if (this.spawnInvulnerableTime > 0) {
             --this.spawnInvulnerableTime; // Leaves - spawn invulnerable time
         }
@@ -255,11 +257,6 @@ public class ServerBot extends ServerPlayer {
     }
 
     @Override
-    public boolean canSimulateMovement() {
-        return true;
-    }
-
-    @Override
     public void removeVehicle() {
         super.removeVehicle();
         this.handsBusy = false;
@@ -331,7 +328,7 @@ public class ServerBot extends ServerPlayer {
 
     @Override
     public void knockback(double power, double xd, double zd, final DamageSource source, final float damage, final boolean comesFromEffect, @Nullable Entity attacker, EntityKnockbackEvent.Cause eventCause) {
-        if (!this.hurtMarked) {
+        if (!this.syncVelocity) {
             return;
         }
         super.knockback(power, xd, zd, source, damage, comesFromEffect, attacker, eventCause);
@@ -372,10 +369,18 @@ public class ServerBot extends ServerPlayer {
         return super.interact(player, hand, location);
     }
 
+    public void swingAttack(@NotNull InteractionHand hand) {
+        this.swing(hand, this.getItemInHand(hand).getAttackAnimation(), false);
+    }
+
+    public void swingInteraction(@NotNull InteractionHand hand, @NotNull SwingAnimation animation) {
+        this.swing(hand, animation, false);
+    }
+
     @Override
     public void attack(@NotNull Entity target) {
         super.attack(target);
-        this.swing(InteractionHand.MAIN_HAND);
+        this.swingAttack(InteractionHand.MAIN_HAND);
     }
 
     @Override
@@ -640,19 +645,31 @@ public class ServerBot extends ServerPlayer {
         return ProjectileUtil.getEntityHitResult(entity, vec3, viewEnd, aABB, EntitySelector.CAN_BE_PICKED, d1);
     }
 
+    private void dropInventoryStack(ItemStack itemStack, boolean randomly) {
+        // The old drop(stack, randomly, thrownFromHand) API reordered its arguments in 26.3.
+        ItemEntity dropped = this.drop(itemStack, false, Prediction.PREDICTED, randomly, true, null);
+        // Preserve ServerPlayer's map cleanup, which the six-argument LivingEntity overload bypasses.
+        if (dropped != null && dropped.getItem().getItem() instanceof MapItem) {
+            MapItemSavedData mapData = MapItem.getSavedData(dropped.getItem(), this.level());
+            if (mapData != null) {
+                mapData.tickCarriedBy(this, dropped.getItem(), null);
+            }
+        }
+    }
+
     public void dropAll(boolean death) {
         NonNullList<ItemStack> items = this.getInventory().getNonEquipmentItems();
         for (int i = 0; i < items.size(); i++) {
             ItemStack itemStack = items.get(i);
             if (!itemStack.isEmpty()) {
-                this.drop(itemStack, death, false);
+                this.dropInventoryStack(itemStack, death);
                 items.set(i, ItemStack.EMPTY);
             }
         }
         for (EquipmentSlot slot : EquipmentSlot.values()) {
             ItemStack itemStack;
             if (!(itemStack = this.equipment.get(slot)).isEmpty()) {
-                this.drop(itemStack, death, false);
+                this.dropInventoryStack(itemStack, death);
                 this.equipment.set(slot, ItemStack.EMPTY);
             }
         }

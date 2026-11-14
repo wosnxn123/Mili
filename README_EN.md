@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Minecraft-26.2-green" alt="Minecraft 26.2">
+  <img src="https://img.shields.io/badge/Minecraft-26.3-green" alt="Minecraft 26.3">
   <img src="https://img.shields.io/badge/JDK-25+-orange" alt="JDK 25+">
   <img src="https://img.shields.io/badge/Rust-edition%202024-red" alt="Rust edition 2024">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="GPL-3.0">
@@ -103,39 +103,41 @@ Supports creating ReplayMod photographer entities for recording, with `Photograp
 
 ## Quick Start
 
+> `ver/26.3` targets Minecraft 26.3 (Folia ALPHA). All 125 Minecraft, 24 Paper-server and 12 API patches replay successfully; server Java and test sources compile. GitHub Actions builds native libraries and prerelease JARs. Server startup, client protocols and world generation are not runtime-tested; do not treat these builds as production-ready. See the [migration record](docs/migration-26.3.md).
+
 ### Requirements
 
 | Dependency | Version | Notes |
 |------------|---------|-------|
-| JDK | 25+ | Build toolchain (Mili 26.2 branch requires Java 25, not JDK 21) |
-| Rust | stable (edition 2024) | Optional, for compiling native optimization library |
+| JDK | 25+ | Build toolchain (Mili 26.3 branch requires Java 25, not JDK 21) |
+| Rust | stable (edition 2024) | Required for full packaging; not for Java-only compilation |
 | Git | 2.x | Enable long path support on Windows |
 
 ### Build Steps
 
 ```bash
-# 1. Clone repository
-git clone https://github.com/xucy10/Mili.git
+# 1. Clone this branch
+git clone --branch ver/26.3 https://github.com/wosnxn123/Mili.git
 cd Mili
 
 # 2. Enable long paths on Windows
 git config --global core.longpaths true
 
-# 3. Apply patches (required for first build)
-./gradlew applyAllPatches --no-configuration-cache --no-build-cache
+# 3. Download and verify the custom launcher
+python scripts/download_launcher.py
 
-# 4. Inject Kotlin support
-python scripts/inject_kotlin.py
+# 4. Apply patches (Kotlin is already configured)
+./gradlew applyAllPatches --no-configuration-cache
 
-# 5. Compile Rust native library (optional, falls back to pure Java if missing)
-./gradlew :mili-rust:stageRustBinary
+# 5. Compile Rust native libraries
+./gradlew :mili-rust:stageRustBinary --no-configuration-cache
 
 # 6. Build Paperclip JAR
-./gradlew :mili-server:createMojmapPaperclipJar
+./gradlew :mili-server:createPaperclipJar --no-configuration-cache
 ```
 
 Build artifacts in `mili-server/build/libs/`:
-- `mili-paperclip-26.2-R0.1-SNAPSHOT.jar` — runnable Paperclip JAR
+- `mili-paperclip-26.3-R0.1-SNAPSHOT.jar` — runnable Paperclip JAR
 - `mili_optimizer.dll` / `.so` / `.dylib` — Rust native optimization library (packaged in JAR)
 
 ### Rust Standalone Build & Test
@@ -161,7 +163,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly("fun.bm.mili:mili-api:26.2-R0.1-SNAPSHOT")
+    compileOnly("fun.bm.mili:mili-api:26.3-R0.1-SNAPSHOT")
 }
 ```
 
@@ -179,7 +181,7 @@ dependencies {
   <dependency>
     <groupId>fun.bm.mili</groupId>
     <artifactId>mili-api</artifactId>
-    <version>26.2-R0.1-SNAPSHOT</version>
+    <version>26.3-R0.1-SNAPSHOT</version>
     <scope>provided</scope>
   </dependency>
 </dependencies>
@@ -194,7 +196,7 @@ Mili/
 ├── mili-api/                  # Mili API module
 │   └── src/main/java/         #   Bot, Photographer, event API
 ├── mili-server/               # Mili server core
-│   ├── minecraft-patches/     #   Patch files (121 features/ + resources/ + sources/)
+│   ├── minecraft-patches/     #   Patch files (125 features/ + resources/ + sources/)
 │   └── src/main/
 │       └── java/fun/bm/mili/  #   Java source
 │           ├── bridge/        #     Chunk-region bridge
@@ -251,11 +253,11 @@ Config categories:
 
 ## Patch Workflow
 
-Mili uses the **Hyacinthusweight** (paperweight-based) patch system with 121 feature patches:
+Mili uses official **Paperweight 2.0.0-beta.24** with 125 Minecraft, 24 Paper-server and 12 API feature patches:
 
 1. Modify code in `mili-server/src/minecraft/` or `mili-api/`
 2. Commit changes: `git commit -m "description"`
-3. Rebuild patches: `./gradlew :mili-server:rebuildAllServerPatches`
+3. Rebuild patches: `./gradlew rebuildAllServerFeaturePatches --no-configuration-cache`
 4. Commit patch files and push
 
 Files under `mili-server/src/minecraft/java/` are generated and will be overwritten by `applyAllPatches`. Changes must be made through patch files in `minecraft-patches/features/`.

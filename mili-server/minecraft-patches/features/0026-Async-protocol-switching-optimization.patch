@@ -5,10 +5,10 @@ Subject: [PATCH] Async protocol switching optimization
 
 
 diff --git a/net/minecraft/network/Connection.java b/net/minecraft/network/Connection.java
-index b0614d45fd8e4115c8eddac68a1867c52fba9fe2..d2e9d46bbd9ee4ce45419b11499d7a7bc50f0219 100644
+index 8e2ae6b371c36cdd350fccb34771b5f321b552fa..38dc1c6cf8011ae26b54cdb6a0c1a59cc7eb909a 100644
 --- a/net/minecraft/network/Connection.java
 +++ b/net/minecraft/network/Connection.java
-@@ -1067,4 +1067,127 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -1111,4 +1111,127 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
          }
      }
      // Paper end - Optimize network
@@ -171,10 +171,10 @@ index 77c4670868a95dc7b13461dfa67af34b0a3c329a..36955ce5cbe418856f7cbcf28193994c
  
      @Override
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index cc6e7a12f5fbe7bebca2997554cf403f05fab304..2b01327988df7fa57f657ec61f10810822b01a00 100644
+index e1749faead4d5c91cbefed031a6e6586517a4c39..1a9f249edfb27daf423c2e9c4f272eb8d9e56ad7 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-@@ -2900,7 +2900,13 @@ public class ServerGamePacketListenerImpl
+@@ -2959,7 +2959,13 @@ public class ServerGamePacketListenerImpl
          } // Folia end - rewrite login process - move connection ownership to global region
          this.waitingForSwitchToConfig = true; // Folia - rewrite login process - fix bad ordering of this field write - moved down
          this.send(ClientboundStartConfigurationPacket.INSTANCE);
@@ -188,7 +188,7 @@ index cc6e7a12f5fbe7bebca2997554cf403f05fab304..2b01327988df7fa57f657ec61f108108
      }
  
      @Override
-@@ -3785,12 +3791,26 @@ public class ServerGamePacketListenerImpl
+@@ -3841,12 +3847,26 @@ public class ServerGamePacketListenerImpl
          }
  
          final ServerConfigurationPacketListenerImpl listener = new ServerConfigurationPacketListenerImpl(this.server, this.connection, this.createCookie(this.player.clientInformation())); // Paper
@@ -216,10 +216,10 @@ index cc6e7a12f5fbe7bebca2997554cf403f05fab304..2b01327988df7fa57f657ec61f108108
  
      @Override
 diff --git a/net/minecraft/server/network/ServerLoginPacketListenerImpl.java b/net/minecraft/server/network/ServerLoginPacketListenerImpl.java
-index 780f52973976bc97bddccfeefd54e187371eecc9..9d324298a1e96c6797ea99aefd6b921ce2a3a460 100644
+index ffafef7eadd02b9415afb1bc54a19e1d7ce0340e..b1ab794377999988c709a4e6e7ceb1fa9b7c3034 100644
 --- a/net/minecraft/server/network/ServerLoginPacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerLoginPacketListenerImpl.java
-@@ -436,12 +436,30 @@ public class ServerLoginPacketListenerImpl implements ServerLoginPacketListener,
+@@ -437,12 +437,30 @@ public class ServerLoginPacketListenerImpl implements ServerLoginPacketListener,
      public void handleLoginAcknowledgement(final ServerboundLoginAcknowledgedPacket packet) {
          net.minecraft.network.protocol.PacketUtils.ensureRunningOnSameThread(packet, this, this.server.packetProcessor()); // CraftBukkit
          Validate.validState(this.state == ServerLoginPacketListenerImpl.State.PROTOCOL_SWITCHING, "Unexpected login acknowledgement packet");
@@ -253,10 +253,10 @@ index 780f52973976bc97bddccfeefd54e187371eecc9..9d324298a1e96c6797ea99aefd6b921c
  
      @Override
 diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
-index 259eb7574841b1b885093b534440f8a40db4e8e2..2975a879320faed5f6591489f86d3f909072cbaa 100644
+index 82fb4aecffaf4ae97a9c2ab60eca2d67107de0a8..57cc03f81c3bbdf8cfe477f63de326fc6f17d0a8 100644
 --- a/net/minecraft/server/players/PlayerList.java
 +++ b/net/minecraft/server/players/PlayerList.java
-@@ -237,9 +237,11 @@ public abstract class PlayerList {
+@@ -239,9 +239,11 @@ public abstract class PlayerList {
          // only after setting the connection listener to game type, add the connection to this regions list
          level.getCurrentWorldData().addConnection(player);
          // Folia end - rewrite login process
@@ -268,7 +268,7 @@ index 259eb7574841b1b885093b534440f8a40db4e8e2..2975a879320faed5f6591489f86d3f90
          playerConnection.suspendFlushing();
          GameRules gameRules = level.getGameRules();
          boolean immediateRespawn = gameRules.get(GameRules.IMMEDIATE_RESPAWN);
-@@ -403,6 +405,17 @@ public abstract class PlayerList {
+@@ -406,6 +408,17 @@ public abstract class PlayerList {
              );
          }
          // Paper end - Send empty chunk

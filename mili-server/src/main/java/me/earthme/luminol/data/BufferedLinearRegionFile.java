@@ -674,27 +674,11 @@ public class BufferedLinearRegionFile implements IRegionFile {
         this.makeBucketDirty(chunkIndex);
     }
 
-    // MCC 的玩意,这东西也用不上给Linear了()
-    @Override
-    public CompoundTag getOversizedData(int x, int z) {
-        return null;
-    }
-
-    @Override
-    public boolean isOversized(int x, int z) {
-        return false;
-    }
-
+    // Linear's bucket format has no Anvil sector header to reconstruct.
     @Override
     public boolean recalculateHeader() {
         return false;
     }
-
-    @Override
-    public void setOversized(int x, int z, boolean oversized) {
-
-    }
-    // MCC end
 
     @Override
     public MoonriseRegionFileIO.RegionDataController.WriteData moonrise$startWrite(CompoundTag data, ChunkPos pos) {

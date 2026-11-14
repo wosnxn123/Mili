@@ -5,10 +5,10 @@ Subject: [PATCH] Purpur: Lobotomize stuck villagers
 
 
 diff --git a/net/minecraft/world/entity/npc/villager/Villager.java b/net/minecraft/world/entity/npc/villager/Villager.java
-index 0869ecb4b7fe07efa33d521bef2f525955bd3c30..3fa0ca479922a7c55625c5e7bcd25065210ea44e 100644
+index 086334694874fccaf7aad9d6d1dde78cfd961c3c..5bcfdbd712e5bd4f7e5b7096ba747955aee2a695 100644
 --- a/net/minecraft/world/entity/npc/villager/Villager.java
 +++ b/net/minecraft/world/entity/npc/villager/Villager.java
-@@ -190,6 +190,53 @@ public class Villager extends AbstractVillager implements VillagerDataHolder, Re
+@@ -187,6 +187,53 @@ public class Villager extends AbstractVillager implements VillagerDataHolder, Re
          this.setCanPickUpLoot(true);
      }
  
@@ -62,7 +62,7 @@ index 0869ecb4b7fe07efa33d521bef2f525955bd3c30..3fa0ca479922a7c55625c5e7bcd25065
      @Override
      public Brain<Villager> getBrain() {
          return (Brain<Villager>)super.getBrain();
-@@ -259,11 +306,20 @@ public class Villager extends AbstractVillager implements VillagerDataHolder, Re
+@@ -252,11 +299,20 @@ public class Villager extends AbstractVillager implements VillagerDataHolder, Re
          // Paper start - EAR 2
          this.customServerAiStep(level, false);
      }
@@ -82,5 +82,5 @@ index 0869ecb4b7fe07efa33d521bef2f525955bd3c30..3fa0ca479922a7c55625c5e7bcd25065
          if (!inactive) this.getBrain().tick(level, this); // Paper - EAR 2
 +        else if (this.isLobotomized && shouldRestock(level)) restock(); // Purpur - Lobotomize stuck villagers
          profiler.pop();
-         if (this.assignProfessionWhenSpawned) {
-             this.assignProfessionWhenSpawned = false;
+         if (this.lastTradedPlayer != null) {
+             level.onReputationEvent(ReputationEventType.TRADE, this.lastTradedPlayer, this);

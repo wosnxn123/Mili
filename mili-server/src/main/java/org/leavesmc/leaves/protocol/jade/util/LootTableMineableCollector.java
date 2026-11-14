@@ -37,7 +37,6 @@ import org.leavesmc.leaves.protocol.jade.tool.ShearsToolHandler;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Function;
 
 public class LootTableMineableCollector {
 
@@ -72,17 +71,26 @@ public class LootTableMineableCollector {
             return false;
         }
 
-        LootItemCondition condition = conditions.getFirst();
+        return isCorrectCondition(conditions.getFirst(), toolItem);
+    }
+
+    private static boolean isCorrectCondition(LootItemCondition condition, ItemStack toolItem) {
         if (condition instanceof MatchTool(Optional<ItemPredicate> predicate)) {
             ItemPredicate itemPredicate = predicate.orElse(null);
             return itemPredicate != null && itemPredicate.test(toolItem);
         } else if (condition instanceof AnyOfCondition anyOfCondition) {
-            for (LootItemCondition child : anyOfCondition.terms) {
-                if (isCorrectConditions(List.of(child), toolItem)) {
+            if (!anyOfCondition.terms.isBound()) {
+                return false;
+            }
+            for (Holder<LootItemCondition> child : anyOfCondition.terms) {
+                if (isCorrectCondition(child.value(), toolItem)) {
                     return true;
                 }
             }
         }
+        // In 26.3, multiple entry conditions are folded into AllOfCondition.
+        // Keep the previous rejection of conjunctions rather than treating the
+        // single Optional<Holder<?>> wrapper as a single original condition.
         return false;
     }
 
@@ -116,10 +124,16 @@ public class LootTableMineableCollector {
                 }
             }
         } else if (entry instanceof NestedLootTable nestedLootTable) {
-            LootTable lootTable = nestedLootTable.contents.map($ -> lootRegistry.get($).map(Holder::value).orElse(null), Function.identity());
-            return doLootTable(lootTable);
+            if (!nestedLootTable.value.isBound()) {
+                return false;
+            }
+            for (Holder<LootTable> lootTable : nestedLootTable.value) {
+                if (doLootTable(lootTable.value())) {
+                    return true;
+                }
+            }
         } else {
-            return isCorrectConditions(entry.conditions, toolItem);
+            return entry.condition.map(holder -> isCorrectCondition(holder.value(), toolItem)).orElse(false);
         }
         return false;
     }

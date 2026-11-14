@@ -580,17 +580,6 @@ public class LinearRegionFile implements IRegionFile {
         return false;
     }
 
-    public void setOversized(int x, int z, boolean something) {
-    }
-
-    public CompoundTag getOversizedData(int x, int z) throws IOException {
-        throw new IOException("getOversizedData is a stub " + this.regionFile);
-    }
-
-    public boolean isOversized(int x, int z) {
-        return false;
-    }
-
     public Path getPath() {
         return this.regionFile;
     }

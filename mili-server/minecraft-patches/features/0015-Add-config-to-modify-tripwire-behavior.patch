@@ -5,24 +5,24 @@ Subject: [PATCH] Add config to modify tripwire behavior
 
 
 diff --git a/net/minecraft/world/level/block/TripWireHookBlock.java b/net/minecraft/world/level/block/TripWireHookBlock.java
-index 8bcc8b6f83ab4d5a472741185511b5d84f4974be..e9fee839656dc1978c8612d378993f0b7817ee4c 100644
+index 4448724198e08a528f1e5a5c45136dc331c36384..9553e250ff4b1a4d30745256e6d5d2d87db2158f 100644
 --- a/net/minecraft/world/level/block/TripWireHookBlock.java
 +++ b/net/minecraft/world/level/block/TripWireHookBlock.java
-@@ -201,10 +201,17 @@ public class TripWireHookBlock extends Block {
+@@ -194,10 +194,17 @@ public class TripWireHookBlock extends Block {
                      BlockPos testPos = pos.relative(direction, i);
                      BlockState wireData = wireStates[i];
                      if (wireData != null) {
 -                        BlockState testPosState = level.getBlockState(testPos);
 -                        if (testPosState.is(Blocks.TRIPWIRE) || testPosState.is(Blocks.TRIPWIRE_HOOK)) {
--                            if (!io.papermc.paper.configuration.GlobalConfiguration.get().blockUpdates.disableTripwireUpdates || !testPosState.is(Blocks.TRIPWIRE)) level.setBlock(testPos, wireData.trySetValue(ATTACHED, attached), Block.UPDATE_ALL); // Paper - prevent tripwire from updating
+-                            if (!io.papermc.paper.configuration.GlobalConfiguration.get().blockUpdates.disableTripwireUpdates || !testPosState.is(Blocks.TRIPWIRE)) level.setBlockAndUpdate(testPos, wireData.trySetValue(ATTACHED, attached)); // Paper - prevent tripwire from updating
 +                        // Luminol start - tripwire and tripwireHook dupe
 +                        if (me.earthme.luminol.config.modules.function.TripwireBehaviorConfig.enabled) {
-+                            level.setBlock(testPos, wireData.trySetValue(ATTACHED, attached), 3);
++                            level.setBlockAndUpdate(testPos, wireData.trySetValue(ATTACHED, attached));
 +                            level.getBlockState(testPos);
 +                        } else {
 +                            BlockState testPosState = level.getBlockState(testPos);
 +                            if (testPosState.is(Blocks.TRIPWIRE) || testPosState.is(Blocks.TRIPWIRE_HOOK)) {
-+                                if (!io.papermc.paper.configuration.GlobalConfiguration.get().blockUpdates.disableTripwireUpdates || !testPosState.is(Blocks.TRIPWIRE)) level.setBlock(testPos, wireData.trySetValue(ATTACHED, attached), 3); // Paper - prevent tripwire from updating
++                                if (!io.papermc.paper.configuration.GlobalConfiguration.get().blockUpdates.disableTripwireUpdates || !testPosState.is(Blocks.TRIPWIRE)) level.setBlockAndUpdate(testPos, wireData.trySetValue(ATTACHED, attached)); // Paper - prevent tripwire from updating
 +                            }
                          }
 +                        // Luminol end - tripwire and tripwireHook dupe
@@ -30,10 +30,10 @@ index 8bcc8b6f83ab4d5a472741185511b5d84f4974be..e9fee839656dc1978c8612d378993f0b
                  }
              }
 diff --git a/net/minecraft/world/level/levelgen/feature/EndPlatformFeature.java b/net/minecraft/world/level/levelgen/feature/EndPlatformFeature.java
-index b67f5f7b76037ab77548c37a83e4d0918915223a..2293d61439b0ad9e9b2617c3c13f5766ccf51f30 100644
+index 7b1fb75a3a8e038fcc005f7c72b3e7af0c99cda1..92755749397cf6e4eb214acccd5ac9937cd392ff 100644
 --- a/net/minecraft/world/level/levelgen/feature/EndPlatformFeature.java
 +++ b/net/minecraft/world/level/levelgen/feature/EndPlatformFeature.java
-@@ -28,6 +28,10 @@ public class EndPlatformFeature extends Feature<NoneFeatureConfiguration> {
+@@ -33,6 +33,10 @@ public record EndPlatformFeature() implements Feature {
          // CraftBukkit end
          BlockPos.MutableBlockPos pos = origin.mutable();
  
@@ -44,7 +44,7 @@ index b67f5f7b76037ab77548c37a83e4d0918915223a..2293d61439b0ad9e9b2617c3c13f5766
          for (int dz = -2; dz <= 2; dz++) {
              for (int dx = -2; dx <= 2; dx++) {
                  for (int dy = -1; dy < 3; dy++) {
-@@ -35,7 +39,29 @@ public class EndPlatformFeature extends Feature<NoneFeatureConfiguration> {
+@@ -40,7 +44,29 @@ public record EndPlatformFeature() implements Feature {
                      Block block = dy == -1 ? Blocks.OBSIDIAN : Blocks.AIR;
                      if (!blockList.getBlockState(blockPos).is(block)) { // CraftBukkit
                          if (dropResources) {
@@ -75,7 +75,7 @@ index b67f5f7b76037ab77548c37a83e4d0918915223a..2293d61439b0ad9e9b2617c3c13f5766
                          }
  
                          blockList.setBlock(blockPos, block.defaultBlockState(), Block.UPDATE_ALL); // CraftBukkit
-@@ -53,11 +79,30 @@ public class EndPlatformFeature extends Feature<NoneFeatureConfiguration> {
+@@ -58,11 +84,30 @@ public record EndPlatformFeature() implements Feature {
              if (portalEvent.isCancelled()) return;
          }
  

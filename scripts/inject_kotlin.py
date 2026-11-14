@@ -16,7 +16,7 @@ def apply(filepath):
 
     # Add kotlin {} config after first standalone '}' (plugins block) if not present
     if 'jvmToolchain' not in text:
-        text = re.sub(r'^}\s*$', '}\n\nkotlin {\n    jvmToolchain(21)\n}', text, count=1, flags=re.MULTILINE)
+        text = re.sub(r'^}\s*$', '}\n\nkotlin {\n    jvmToolchain(25)\n}', text, count=1, flags=re.MULTILINE)
 
     if text != orig:
         with open(filepath, 'w') as f:

@@ -16,13 +16,13 @@ index d873b78f6935a23ff8f6092b80968267b182cc0f..b4323370859dd4d9e86614484cdb9d2e
 +    long getChunkHotAvg(); // KioCG
  }
 diff --git a/src/main/java/org/bukkit/entity/Player.java b/src/main/java/org/bukkit/entity/Player.java
-index 65e83e171ab4c514662b9344e08f7065fa9efaa1..274af6397 100644
+index e763c44f999df2814be8fbc2dfb9eceead2e77db..037bd1d642194590177d9f01bc6bd6da33db9128 100644
 --- a/src/main/java/org/bukkit/entity/Player.java
 +++ b/src/main/java/org/bukkit/entity/Player.java
-@@ -4050,4 +4050,6 @@ public interface Player extends HumanEntity, Conversable, OfflinePlayer, PluginM
-      * clearing any fixed pose in the process.
+@@ -4095,4 +4095,6 @@ public interface Player extends HumanEntity, Conversable, OfflinePlayer, PluginM
+      * @return the post-effects
       */
-     void unsetFixedPose();
+     PlayerPostEffects postEffects();
 +
 +    long getNearbyChunkHot(); // KioCG
  }

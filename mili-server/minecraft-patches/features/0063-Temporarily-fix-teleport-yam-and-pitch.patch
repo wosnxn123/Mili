@@ -5,10 +5,10 @@ Subject: [PATCH] Temporarily fix teleport yam and pitch
 
 
 diff --git a/net/minecraft/server/commands/TeleportCommand.java b/net/minecraft/server/commands/TeleportCommand.java
-index 13d7965fd4f99f0848b080349df41f8b1c31a19b..df120b5a36e2bc35f7f5654e33a263178f37b6fe 100644
+index a3257b552c7e76269a00cc7416f630e41cf2b3c5..3e72403f29c3d2cc8f263ddb1204d6644b844952 100644
 --- a/net/minecraft/server/commands/TeleportCommand.java
 +++ b/net/minecraft/server/commands/TeleportCommand.java
-@@ -248,8 +248,8 @@ public class TeleportCommand {
+@@ -235,8 +235,8 @@ public class TeleportCommand {
          // Folia start - region threading
          if (true) {
              Vec3 posFinal = new Vec3(x, y, z);

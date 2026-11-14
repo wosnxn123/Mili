@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Minecraft-26.2-green" alt="Minecraft 26.2">
+  <img src="https://img.shields.io/badge/Minecraft-26.3-green" alt="Minecraft 26.3">
   <img src="https://img.shields.io/badge/JDK-25+-orange" alt="JDK 25+">
   <img src="https://img.shields.io/badge/Rust-edition%202024-red" alt="Rust edition 2024">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="GPL-3.0">
@@ -106,39 +106,41 @@ Ubuntu也可能需要22或24，win也可能需server2022或22H2
 
 ## 快速开始
 
+> `ver/26.3` 基于 Minecraft 26.3（Folia ALPHA）。125 个 Minecraft、24 个 Paper-server 和 12 个 API 补丁已重放，服务端 Java 与测试源码编译通过；GitHub Actions 负责原生库与 JAR 构建，产物以预发布提供。尚未完成服务端启动、客户端协议与实际世界生成验证，不建议用于生产服。详见 [26.3 迁移记录](docs/migration-26.3.md)。
+
 ### 环境要求
 
 | 依赖 | 版本 | 说明 |
 |------|------|------|
-| JDK | 25+ | 构建工具链（Mili 26.2 分支需要 Java 25，不是 JDK 21） |
-| Rust | stable (edition 2024) | 可选，用于编译原生优化库 |
+| JDK | 25+ | 构建工具链（Mili 26.3 分支需要 Java 25，不是 JDK 21） |
+| Rust | stable (edition 2024) | 完整打包需要；仅 Java 编译不需要 |
 | Git | 2.x | 需启用长路径支持（Windows） |
 
 ### 构建步骤
 
 ```bash
-# 1. 克隆仓库
-git clone https://github.com/xucy10/Mili.git
+# 1. 克隆本分支
+git clone --branch ver/26.3 https://github.com/wosnxn123/Mili.git
 cd Mili
 
 # 2. Windows 需启用长路径
 git config --global core.longpaths true
 
-# 3. 应用补丁（首次构建必须执行）
-./gradlew applyAllPatches --no-configuration-cache --no-build-cache
+# 3. 下载并校验自定义启动器
+python scripts/download_launcher.py
 
-# 4. 注入 Kotlin 支持
-python scripts/inject_kotlin.py
+# 4. 应用补丁（Kotlin 已包含在构建脚本中）
+./gradlew applyAllPatches --no-configuration-cache
 
-# 5. 编译 Rust 原生库（可选，缺失时自动回退纯 Java）
-./gradlew :mili-rust:stageRustBinary
+# 5. 编译 Rust 原生库
+./gradlew :mili-rust:stageRustBinary --no-configuration-cache
 
 # 6. 构建 Paperclip JAR
-./gradlew :mili-server:createMojmapPaperclipJar
+./gradlew :mili-server:createPaperclipJar --no-configuration-cache
 ```
 
 构建产物位于 `mili-server/build/libs/`：
-- `mili-paperclip-26.2-R0.1-SNAPSHOT.jar` — 可直接运行的 Paperclip JAR
+- `mili-paperclip-26.3-R0.1-SNAPSHOT.jar` — 可直接运行的 Paperclip JAR
 - `mili_optimizer.dll` / `.so` / `.dylib` — Rust 原生优化库（打包进 JAR）
 
 ### Rust 单独编译与测试
@@ -165,7 +167,7 @@ Mili/
 ├── mili-api/                  # Mili API 模块
 │   └── src/main/java/         #   Bot、Photographer、事件 API
 ├── mili-server/               # Mili 服务端核心
-│   ├── minecraft-patches/     #   补丁文件（121 个 features/ + resources/ + sources/）
+│   ├── minecraft-patches/     #   补丁文件（125 个 features/ + resources/ + sources/）
 │   └── src/main/
 │       └── java/fun/bm/mili/  #   Java 源码
 │           ├── bridge/        #     区块-区域桥接
@@ -224,11 +226,11 @@ Mili 提供两套 TOML 配置文件：
 
 ## 补丁工作流
 
-Mili 使用 **Hyacinthusweight**（基于 paperweight）补丁系统管理 121 个 feature 补丁：
+Mili 使用官方 **Paperweight 2.0.0-beta.24** 补丁系统，管理 125 个 Minecraft、24 个 Paper-server 与 12 个 API feature 补丁：
 
 1. 在 `mili-server/src/minecraft/` 或 `mili-api/` 中修改代码
 2. 提交变更：`git commit -m "描述"`
-3. 重建补丁：`./gradlew :mili-server:rebuildAllServerPatches`
+3. 重建补丁：`./gradlew rebuildAllServerFeaturePatches --no-configuration-cache`
 4. 提交补丁文件并推送
 
 修改 `mili-server/src/minecraft/java/` 下的生成文件会被 `applyAllPatches` 覆盖，必须通过 `minecraft-patches/features/` 下的补丁文件修改。

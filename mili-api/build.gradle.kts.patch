@@ -1,14 +1,79 @@
 --- a/folia-api/build.gradle.kts
 +++ b/folia-api/build.gradle.kts
-@@ -53,6 +_,7 @@
+@@ -5,12 +5,20 @@
+     `java-library`
+     `maven-publish`
+     idea
++    kotlin("jvm") version "2.3.21"
+     id("io.papermc.paperweight.paper-checkstyle")
++}
++
++kotlin {
++    jvmToolchain(25)
+ }
+ 
+ java {
+     withSourcesJar()
+     withJavadocJar()
++    toolchain {
++        languageVersion = JavaLanguageVersion.of(25)
++    }
+ }
+ 
+ val projectCustomJavadocTags = setOf(
+@@ -20,6 +28,7 @@
+ paperCheckstyle {
+     customJavadocTags = projectCustomJavadocTags
+     directoriesToSkipFile = layout.projectDirectory.file("../paper-api/.checkstyle/ignored_directories.txt")
++    typeUseAnnotationsFile = rootProject.layout.projectDirectory.file(".checkstyle/type_use_annotations.txt")
+ }
+ 
+ tasks.named<io.papermc.paperweight.checkstyle.tasks.MergeCheckstyleConfigs>("mergeCheckstyleConfigs") {
+@@ -30,13 +39,13 @@
+ val adventureVersion = "5.2.0"
+ val bungeeCordChatVersion = "1.21-R0.2-deprecated+build.21"
+ val slf4jVersion = "2.0.17"
+-val log4jVersion = "2.26.0"
+-
+-val apiAndDocs: Configuration = configurations.create("apiAndDocs")
++val log4jVersion = "2.26.1"
++
++val apiAndDocs: Configuration by configurations.creating
+ configurations.api {
+     extendsFrom(apiAndDocs)
+ }
+-val javadocSourcepath: Configuration = configurations.create("javadocSourcepath") {
++val javadocSourcepath: Configuration by configurations.creating {
+     attributes {
+         attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category.DOCUMENTATION))
+         attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling.EXTERNAL))
+@@ -61,11 +70,14 @@
+     api("com.google.guava:guava:33.6.0-jre")
+     api("com.google.code.gson:gson:2.14.0")
+     api("org.yaml:snakeyaml:2.2")
+-    api("org.joml:joml:1.10.9")
++    api("org.joml:joml:1.10.9") {
++        isTransitive = false // https://github.com/JOML-CI/JOML/issues/352
++    }
+     api("it.unimi.dsi:fastutil:8.5.18")
      api("org.apache.logging.log4j:log4j-api:$log4jVersion")
      api("org.slf4j:slf4j-api:$slf4jVersion")
-     api("com.mojang:brigadier:1.3.10")
+     api("com.mojang:brigadier:1.3.11")
 +    api("io.sentry:sentry:8.0.0-rc.2") // Pufferfish
  
      // Deprecate bungeecord-chat in favor of adventure
      api("net.md-5:bungeecord-chat:$bungeeCordChatVersion") {
-@@ -105,17 +_,27 @@
+@@ -106,8 +118,7 @@
+     mockitoAgent("org.mockito:mockito-core:5.22.0") { isTransitive = false } // configure mockito agent that is needed in newer java versions
+     testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.0.3")
+ 
+-    // checkstyle
+-    checkstyle(project(":folia-checkstyle"))
++    checkstyle(project(":mili-checkstyle"))
+ }
+ 
+ val generatedDir: java.nio.file.Path = rootProject.layout.projectDirectory.dir("paper-api/src/generated/java").asFile.toPath()
+@@ -121,17 +132,27 @@
          java {
              srcDir(generatedDir)
              srcDir(file("../paper-api/src/main/java"))
@@ -36,7 +101,16 @@
          }
      }
  }
-@@ -259,3 +_,19 @@
+@@ -267,7 +288,7 @@
+     options.compilerArgs.add("-parameters")
+ }
+ 
+-val scanJarForBadCalls = tasks.register<io.papermc.paperweight.tasks.ScanJarForBadCalls>("scanJarForBadCalls") {
++val scanJarForBadCalls by tasks.registering(io.papermc.paperweight.tasks.ScanJarForBadCalls::class) {
+     badAnnotations.add("Lio/papermc/paper/annotation/DoNotUse;")
+     jarToScan.set(tasks.jar.flatMap { it.archiveFile })
+     classpath.from(configurations.compileClasspath)
+@@ -275,3 +296,19 @@
  tasks.check {
      dependsOn(scanJarForBadCalls)
  }

@@ -12,6 +12,11 @@ build
 /mili-server/src/minecraft
 /paper-server
 /paper-api
+/paper-checkstyle
+/mili-checkstyle/build.gradle.kts
+/.checkstyle
+/folia-server
+/folia-api
 /paper-api-generator
 /lophine-src
 
@@ -19,6 +24,7 @@ build
 .vscode/
 libs/
 mili-rust/src/rust/target
+__pycache__/
 
 # Paperweight auto-clones Minecraft resources/data into these dirs during build
 # They contain their own .git repos which get mistaken for submodules

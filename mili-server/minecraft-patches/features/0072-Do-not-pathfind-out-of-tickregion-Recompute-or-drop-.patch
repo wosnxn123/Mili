@@ -28,7 +28,7 @@ index e44814cfb6afb594456b8215bd13a92e93de2c85..c18e2071c699d9c5f4d46b7a58191df4
              }
          }
 diff --git a/net/minecraft/world/entity/ai/navigation/PathNavigation.java b/net/minecraft/world/entity/ai/navigation/PathNavigation.java
-index 2ea1ec39a37899ae1510d0036aa670e758077537..9d5d3eed29affd20c07e05420e35486255ac5b92 100644
+index 34b71f5276a00dbbc375728246ae544953a54146..8302496e2460ce70b779b3ae225fe3fc98301bd6 100644
 --- a/net/minecraft/world/entity/ai/navigation/PathNavigation.java
 +++ b/net/minecraft/world/entity/ai/navigation/PathNavigation.java
 @@ -1,6 +1,7 @@
@@ -78,7 +78,7 @@ index 2ea1ec39a37899ae1510d0036aa670e758077537..9d5d3eed29affd20c07e05420e354862
          ProfilerFiller profiler = Profiler.get();
          profiler.push("pathfind");
          BlockPos fromPos = above ? this.mob.blockPosition().above() : this.mob.blockPosition();
-@@ -286,6 +312,17 @@ public abstract class PathNavigation {
+@@ -290,6 +316,17 @@ public abstract class PathNavigation {
  
              if (!this.isDone()) {
                  Vec3 target = this.path.getNextEntityPos(this.mob);

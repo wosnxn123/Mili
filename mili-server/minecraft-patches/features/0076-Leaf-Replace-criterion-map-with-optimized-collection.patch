@@ -5,10 +5,10 @@ Subject: [PATCH] Leaf: Replace criterion map with optimized collection
 
 
 diff --git a/net/minecraft/server/PlayerAdvancements.java b/net/minecraft/server/PlayerAdvancements.java
-index d447b444abd9b62ab241419301a96d19ae77a7eb..66eb4142784322dbfe81bf78ff0ae57eb4a6bc50 100644
+index e70701663abd6f19a506690167d80f0dceab8000..960bb98fb8b408c261f5f8e49c094b680212c78e 100644
 --- a/net/minecraft/server/PlayerAdvancements.java
 +++ b/net/minecraft/server/PlayerAdvancements.java
-@@ -59,7 +59,7 @@ public class PlayerAdvancements {
+@@ -60,7 +60,7 @@ public class PlayerAdvancements {
      private @Nullable AdvancementHolder lastSelectedTab;
      private boolean isFirstPacket = true;
      private final Codec<PlayerAdvancements.Data> codec;

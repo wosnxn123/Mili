@@ -9,8 +9,8 @@ pluginManagement {
     }
 
     plugins {
-        id("moe.luminolmc.hyacinthusweight.patcher") version weightVersion
-        id("moe.luminolmc.hyacinthusweight.core") version weightVersion
+        id("io.papermc.paperweight.patcher") version weightVersion
+        id("io.papermc.paperweight.core") version weightVersion
     }
 }
 
@@ -23,3 +23,4 @@ rootProject.name = "mili"
 include("mili-api")
 include("mili-server")
 include("mili-rust")
+include("mili-checkstyle")

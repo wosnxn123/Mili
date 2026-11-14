@@ -11,4 +11,6 @@
 *.jar           binary
 
 # Patch files must use LF to match source code line endings on Linux CI
-*.patch         text eol=lf
+*.patch         text eol=lf whitespace=-blank-at-eol
+*.kts           text eol=lf
+*.kts.base      text eol=lf

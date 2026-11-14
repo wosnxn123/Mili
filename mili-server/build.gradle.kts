@@ -2,14 +2,19 @@ import io.papermc.fill.model.BuildChannel
 import io.papermc.paperweight.attribute.DevBundleOutput
 import io.papermc.paperweight.util.*
 import java.time.Instant
+import java.nio.file.FileSystems
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
+import java.util.HexFormat
 
 plugins {
     `java-library`
     `maven-publish`
     idea
     kotlin("jvm") version "2.3.21"
-    id("moe.luminolmc.hyacinthusweight.core")
-    id("io.papermc.fill.gradle") version "1.0.12"
+    id("io.papermc.paperweight.core")
+    id("io.papermc.fill.gradle") version "1.0.14"
 }
 
 kotlin {
@@ -19,8 +24,10 @@ kotlin {
 val paperMavenPublicUrl = "https://repo.papermc.io/repository/maven-public/"
 
 dependencies {
-    mache("io.papermc:mache:26.2+build.1")
-    hyacinthusclip(files(rootProject.layout.projectDirectory.file("libs/hyacinthusclip.jar")))
+    mache("io.papermc:mache:26.3+build.1")
+    // Keep the custom launcher's staged-update and optional Mixin bootstrap.
+    // Fetch and verify it with scripts/download_launcher.py before packaging.
+    paperclip(files(rootProject.layout.projectDirectory.file("libs/hyacinthusclip.jar")))
 }
 
 paperweight {
@@ -166,7 +173,7 @@ dependencies {
     runtimeOnly(project(":mili-rust")) // Mili - package Rust native libraries (rust/*.dll|so|dylib) into the final jar
     // Luminol start - Dependenices insert
     implementation("net.objecthunter:exp4j:0.4.8")
-    implementation("io.netty:netty-all:4.2.15.Final") // used for io_uring
+    implementation("io.netty:netty-all:4.2.16.Final") // used for io_uring
     implementation("com.electronwill.night-config:toml:3.8.3") // Night config
     implementation("com.github.luben:zstd-jni:1.5.4-1")
     implementation("net.openhft:zero-allocation-hashing:0.16")
@@ -179,9 +186,13 @@ dependencies {
     }
     // Leaves end - leaves plugin
     // Luminol end
-    implementation("ca.spottedleaf:leafpile:1.0.0")
-    implementation("org.jline:jline-terminal-ffm:3.27.1") // use ffm on java 22+
-    implementation("org.jline:jline-terminal-jni:3.27.1") // fall back to jni on java 21
+    implementation(platform("ca.spottedleaf.leafpile:bom:1.3.2"))
+    implementation("ca.spottedleaf.leafpile:common")
+    implementation("ca.spottedleaf.leafpile:concurrentutil")
+    implementation("ca.spottedleaf.leafpile:converter")
+    implementation("ca.spottedleaf.leafpile:ioutil")
+    implementation("ca.spottedleaf.leafpile:profiler")
+    implementation("org.jline:jline-terminal-ffm:4.4.6")
     implementation("net.minecrell:terminalconsoleappender:1.3.0")
     implementation("net.kyori:adventure-text-serializer-ansi")
 
@@ -196,7 +207,7 @@ dependencies {
     runtimeOnly(log4jPlugins.output)
     alsoShade(log4jPlugins.output)
 
-    implementation("com.velocitypowered:velocity-native:3.4.0-SNAPSHOT") { // VelocityNT ReastLib
+    implementation("com.velocitypowered:velocity-native:4.1.0") { // VelocityNT ReastLib
         isTransitive = false
     }
     implementation("io.netty:netty-codec-haproxy:4.2.16.Final") // Add support for proxy protocol
@@ -225,7 +236,7 @@ dependencies {
 
     // Spark
     implementation("me.lucko:spark-api:0.1-20240720.200737-2")
-    implementation("me.lucko:spark-paper:1.10.152")
+    implementation("me.lucko:spark-paper:1.10.191")
 }
 
 // Pufferfish Start
@@ -343,9 +354,62 @@ tasks.test {
     val provider = objects.newInstance<MockitoAgentProvider>()
     provider.fileCollection.from(mockitoAgent)
     jvmArgumentProviders.add(provider)
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+    systemProperty("joml.nounsafe", true)
 }
 
-val generatedDir: java.nio.file.Path = layout.projectDirectory.dir("src/generated/java").asFile.toPath()
+// The published 3.0.18 launcher uses Riceear's namespace and omits the version
+// marker required by its staged-update gate. Keep identical bytes in every jar.
+val launcherVersion = providers.gradleProperty("clipVersion")
+val launcherFile = rootProject.layout.projectDirectory.file("libs/hyacinthusclip.jar")
+val launcherSha256 = providers.gradleProperty("clipSha256")
+val verifyLauncher by tasks.registering {
+    inputs.file(launcherFile)
+    inputs.property("sha256", launcherSha256)
+    doLast {
+        val digest = MessageDigest.getInstance("SHA-256")
+        launcherFile.asFile.inputStream().use { input ->
+            val buffer = ByteArray(65536)
+            while (true) {
+                val length = input.read(buffer)
+                if (length < 0) break
+                digest.update(buffer, 0, length)
+            }
+        }
+        val actual = HexFormat.of().formatHex(digest.digest())
+        check(actual == launcherSha256.get()) { "Launcher checksum mismatch; run scripts/download_launcher.py with the pinned asset." }
+    }
+}
+tasks.withType<io.papermc.paperweight.tasks.CreateBundlerJar>().configureEach {
+    dependsOn(verifyLauncher)
+    extraManifestMainAttributes = mapOf(
+        "Enable-Native-Access" to "ALL-UNNAMED",
+    )
+    inputs.property("miliRiceearVersion", launcherVersion)
+    doLast {
+        FileSystems.newFileSystem(outputZip.get().asFile.toPath(), mapOf("create" to "false")).use { zip ->
+            Files.write(zip.getPath("/META-INF/riceear-version"), launcherVersion.get().toByteArray(Charsets.UTF_8))
+        }
+    }
+}
+tasks.withType<io.papermc.paperweight.tasks.CreatePaperclipJar>().configureEach {
+    inputs.property("miliRiceearVersion", launcherVersion)
+    inputs.property("miliDownloadContextCnMode", "copy-standard-v1")
+    doLast {
+        FileSystems.newFileSystem(outputZip.get().asFile.toPath(), mapOf("create" to "false")).use { zip ->
+            Files.write(zip.getPath("/META-INF/riceear-version"), launcherVersion.get().toByteArray(Charsets.UTF_8))
+            // The launcher selects this name in China. Use the verified vanilla
+            // download context, rather than leaving a missing regional resource.
+            Files.copy(
+                zip.getPath("/META-INF/download-context"),
+                zip.getPath("/META-INF/download-context-cn"),
+                StandardCopyOption.REPLACE_EXISTING,
+            )
+        }
+    }
+}
+
+val generatedDir: java.nio.file.Path = layout.projectDirectory.dir("../paper-server/src/generated/java").asFile.toPath()
 idea {
     module {
         generatedSourceDirs.add(generatedDir.toFile())
@@ -374,7 +438,7 @@ fun TaskContainer.registerRunTask(
         // TODO - JB runtime 25 has issues with spark rn
         // vendor.set(JvmVendorSpec.JETBRAINS)
     })
-    jvmArgs("-XX:+AllowEnhancedClassRedefinition")
+    jvmArgs("-XX:+AllowEnhancedClassRedefinition", "--enable-native-access=ALL-UNNAMED")
 
     if (rootProject.childProjects["test-plugin"] != null) {
         val testPluginJar = rootProject.project(":test-plugin").tasks.jar.flatMap { it.archiveFile }
@@ -390,6 +454,8 @@ fun TaskContainer.registerRunTask(
     systemProperty("io.papermc.paper.suppress.sout.nags", true)
     systemProperty("paper.maxChatCommandInputSize", 32767)
     systemProperty("paper.disableMigrationDelay", true)
+    systemProperty("paper.alwaysPrintWarningState", true)
+    systemProperty("joml.nounsafe", true)
     systemProperty("paper.updatingMinecraft", providers.gradleProperty("updatingMinecraft").getOrElse("false").toBoolean())
 
     val memoryGb = providers.gradleProperty("paper.runMemoryGb").getOrElse("2")

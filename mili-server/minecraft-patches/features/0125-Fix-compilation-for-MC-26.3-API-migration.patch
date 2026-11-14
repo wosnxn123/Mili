@@ -1,0 +1,59 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mili Patch Build <noreply@example.invalid>
+Date: Sat, 14 Nov 2026 06:25:13 +0800
+Subject: [PATCH] Fix compilation for MC 26.3 API migration
+
+Map the moved podium helper, retain the CraftItemStack mirror handle, and
+use the current push/pull reaction for movable budding amethyst.
+
+Co-Authored-By: Claude Code <noreply@anthropic.com>
+
+diff --git a/net/minecraft/world/entity/ExperienceOrb.java b/net/minecraft/world/entity/ExperienceOrb.java
+index 41518a4dc44458968a1aa3963e6f02376b43fb18..e79dbe5dba2346e59ff5ef5574ebc6a102caced8 100644
+--- a/net/minecraft/world/entity/ExperienceOrb.java
++++ b/net/minecraft/world/entity/ExperienceOrb.java
+@@ -477,7 +477,7 @@ public class ExperienceOrb extends Entity {
+     private org.bukkit.event.player.PlayerItemMendEvent callInventoryItemMendEvent(ServerPlayer player, ItemStack stack, int repairAmount) {
+         org.bukkit.event.player.PlayerItemMendEvent event = new org.bukkit.event.player.PlayerItemMendEvent(
+             player.getBukkitEntity(),
+-            org.bukkit.craftbukkit.inventory.CraftItemStack.asCraftMirror(stack),
++            org.bukkit.craftbukkit.inventory.CraftItemStack.asBukkitMirror(stack),
+             (org.bukkit.entity.ExperienceOrb)this.getBukkitEntity(),
+             repairAmount
+         );
+diff --git a/net/minecraft/world/level/block/BuddingAmethystBlock.java b/net/minecraft/world/level/block/BuddingAmethystBlock.java
+index dc1dc3a3ff9cd7091b4b56eae1a2dc2058ed4119..76fe4cbbf84834be4d43cb82d7f3937797c37eed 100644
+--- a/net/minecraft/world/level/block/BuddingAmethystBlock.java
++++ b/net/minecraft/world/level/block/BuddingAmethystBlock.java
+@@ -56,7 +56,7 @@ public class BuddingAmethystBlock extends AmethystBlock {
+     @Override
+     @org.jetbrains.annotations.Nullable
+     public net.minecraft.world.level.material.PushReaction getResetPushReaction() {
+-        return fun.bm.mili.config.modules.function.OldFeatureConfig.movableBuddingAmethyst ? net.minecraft.world.level.material.PushReaction.NORMAL : null;
++        return fun.bm.mili.config.modules.function.OldFeatureConfig.movableBuddingAmethyst ? net.minecraft.world.level.material.PushReaction.PUSH_PULL : null;
+     }
+     // Mili end - budding amethyst can push by piston
+ }
+diff --git a/net/minecraft/world/level/dimension/end/EnderDragonFight.java b/net/minecraft/world/level/dimension/end/EnderDragonFight.java
+index 8d71d498d693dbd585b0dd995fd6dff2a1e0d2c0..c8ac8939a15a706db8854eb201701ce2655beb87 100644
+--- a/net/minecraft/world/level/dimension/end/EnderDragonFight.java
++++ b/net/minecraft/world/level/dimension/end/EnderDragonFight.java
+@@ -360,15 +360,15 @@ public class EnderDragonFight extends SavedData {
+                 if (cachePortalOriginIteratorY != -1) {
+                     i = cachePortalOriginIteratorY;
+                 } else {
+-                    i = this.level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING, EndPodiumFeature.getLocation(BlockPos.ZERO)).getY();
++                    i = this.level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING, getPodiumLocation(BlockPos.ZERO)).getY();
+                 }
+                 boolean notFirstSearch = false;
+                 for (j = i; j >= 0; --j) {
+                     BlockPattern.BlockPatternMatch result2 = null;
+                     if (notFirstSearch) {
+-                        result2 = org.leavesmc.leaves.util.BlockPatternHelper.partialSearchAround(this.exitPortalPattern, this.level, new BlockPos(EndPodiumFeature.getLocation(BlockPos.ZERO).getY(), j, EndPodiumFeature.getLocation(BlockPos.ZERO).getZ()));
++                        result2 = org.leavesmc.leaves.util.BlockPatternHelper.partialSearchAround(this.exitPortalPattern, this.level, new BlockPos(getPodiumLocation(BlockPos.ZERO).getY(), j, getPodiumLocation(BlockPos.ZERO).getZ()));
+                     } else {
+-                        result2 = this.exitPortalPattern.find(this.level, new BlockPos(EndPodiumFeature.getLocation(BlockPos.ZERO).getX(), j, EndPodiumFeature.getLocation(BlockPos.ZERO).getZ()));
++                        result2 = this.exitPortalPattern.find(this.level, new BlockPos(getPodiumLocation(BlockPos.ZERO).getX(), j, getPodiumLocation(BlockPos.ZERO).getZ()));
+                     }
+                     if (result2 != null) {
+                         if (this.exitPortalLocation == null) {

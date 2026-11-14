@@ -4,28 +4,37 @@ Date: Tue, 11 Aug 2026 19:51:49 +0800
 Subject: [PATCH] Pufferfish: Reduce chunk loading & lookups
 
 
-diff --git a/net/minecraft/world/entity/monster/EnderMan.java b/net/minecraft/world/entity/monster/EnderMan.java
-index 9b4ae8afda1f2202761cb49bc4f1181ce4eb55d5..82e1472fb39122dadef700b63cc784be71fd7a69 100644
---- a/net/minecraft/world/entity/monster/EnderMan.java
-+++ b/net/minecraft/world/entity/monster/EnderMan.java
-@@ -298,11 +298,18 @@ public class EnderMan extends Monster implements NeutralMob {
-     private boolean teleport(final double x, final double y, final double z) {
-         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos(x, y, z);
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 51ead9754d81c8d371f4c303b5c8b7edfd8a5c28..82930d3a3d9a8748cd3876e6de158a68096bdf70 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -4560,16 +4560,21 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+         WorldBorder worldBorder = level.getWorldBorder();
+         Vec3 clamped = worldBorder.clampVec3ToBound(xx, y, zz);
+         BlockPos.MutableBlockPos pos = BlockPos.containing(clamped).mutable();
+-        if (ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor((ServerLevel)level, pos) && level.hasChunkAt(pos)) { // Folia - region threading
+-            while (pos.getY() > level.getMinY()) {
+-                pos.move(Direction.DOWN);
+-                BlockState state = level.getBlockState(pos);
+-                if (state.is(BlockTags.ENTITIES_CAN_TELEPORT_TO)) {
+-                    return this.checkPositionAndTeleport(clamped.x, y, clamped.z, showParticles, isInvalidPosition, state, level, cause); // Paper - teleport cause API
+-                }
++        if (ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor((ServerLevel)level, pos)) { // Folia - region threading
++            // Pufferfish start - single chunk lookup; 26.3 moved the scan from Enderman
++            net.minecraft.world.level.chunk.LevelChunk chunk = level.getChunkIfLoaded(pos);
++            if (chunk != null) {
++                while (pos.getY() > level.getMinY()) {
++                    pos.move(Direction.DOWN);
++                    BlockState state = chunk.getBlockState(pos);
++                    if (state.is(BlockTags.ENTITIES_CAN_TELEPORT_TO)) {
++                        return this.checkPositionAndTeleport(clamped.x, y, clamped.z, showParticles, isInvalidPosition, state, level, cause); // Paper - teleport cause API
++                    }
  
--        while (pos.getY() > this.level().getMinY() && !this.level().getBlockState(pos).blocksMotion()) {
-+        // Pufferfish start - single chunk lookup
-+        net.minecraft.world.level.chunk.LevelChunk chunk = this.level().getChunkIfLoaded(pos);
-+        if (chunk == null) {
-+            return false;
-+        }
-+        // Pufferfish end
-+        while (pos.getY() > this.level().getMinY() && !chunk.getBlockState(pos).blocksMotion()) { // Pufferfish
-+
-             pos.move(Direction.DOWN);
+-                y--;
++                    y--;
++                }
+             }
++            // Pufferfish end
          }
  
--        BlockState blockState = this.level().getBlockState(pos);
-+        BlockState blockState = chunk.getBlockState(pos); // Pufferfish
-         boolean couldStandOn = blockState.blocksMotion();
-         boolean isWet = blockState.getFluidState().is(FluidTags.WATER);
-         if (couldStandOn && !isWet) {
+         return RandomTeleportResult.FAILURE; // Paper - teleport event

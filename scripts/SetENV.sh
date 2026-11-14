@@ -19,13 +19,13 @@ pre=false
 if [ "$release" = "1" ]; then
   pre=true
   flag_release=true
-  make_latest=true
+  make_latest=false
 elif [ "$release" = "2" ]; then
   flag_release=true
   make_latest=true
 fi
 
-# hyacinthusweight 2.0.15 (MC 26.2) no longer appends the -mojmap suffix
+# Paperweight 2.x (MC 26.3) uses the paperclip name without a -mojmap suffix
 jarSrc=$(ls mili-server/build/libs/*-paperclip-$grdversion.jar 2>/dev/null | head -1)
 if [ -z "$jarSrc" ]; then
   # fall back to legacy naming (older paperweight versions)

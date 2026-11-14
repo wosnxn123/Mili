@@ -5,12 +5,12 @@ Subject: [PATCH] Add config to disable heightmap warning
 
 
 diff --git a/net/minecraft/world/level/levelgen/Heightmap.java b/net/minecraft/world/level/levelgen/Heightmap.java
-index dffa0d4859ecd7e21a9345f946083c56205145a3..7eed6c12ed4fa9c47ae5b34bdd05e9a360c9b06b 100644
+index 22990ffcb40304279530462a72c489e8e1207e08..61c213fbdcb6f410281fa7e4efb72d37e9c8d8e7 100644
 --- a/net/minecraft/world/level/levelgen/Heightmap.java
 +++ b/net/minecraft/world/level/levelgen/Heightmap.java
-@@ -128,7 +128,8 @@ public class Heightmap {
-         if (rawData.length == data.length) {
-             System.arraycopy(data, 0, rawData, 0, data.length);
+@@ -152,7 +152,8 @@ public class Heightmap {
+             }
+             // Paper end - optimise heightmap access
          } else {
 -            LOGGER.warn("Ignoring heightmap data for chunk {}, size does not match; expected: {}, got: {}", chunk.getPos(), rawData.length, data.length);
 +            if (!me.earthme.luminol.config.modules.misc.DisableWarningConfig.disableHeightmapWarning)

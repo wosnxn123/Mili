@@ -9,12 +9,12 @@ As a part of : Leaves (https://github.com/LeavesMC/Leaves)
 Licensed under: GPL-3.0 (https://www.gnu.org/licenses/gpl-3.0.html)
 
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index 108cd2eddbcada496708c99755052b018c576558..822ab2a2ce0084f512d9738ccc644b4028b31aeb 100644
+index ec496c96c73d44e155cd7e70739d1e2f7ae2a881..d93e8ea611e19b7fe53b661a1e97a22d867ef1b6 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-@@ -348,9 +348,12 @@ public class ServerGamePacketListenerImpl
-         this.signedMessageDecoder = SignedMessageChain.Decoder.unsigned(player.getUUID(), server::enforceSecureProfile);
+@@ -356,9 +356,12 @@ public class ServerGamePacketListenerImpl
          this.chatMessageChain = new FutureChain(server.chatExecutor); // CraftBukkit - async chat
+         this.commandSuggestionsProvider = new ServerCommandSuggestionsProvider(player);
          this.tickEndEvent = new io.papermc.paper.event.packet.ClientTickEndEvent(player.getBukkitEntity()); // Paper - add client tick end event
 +        this.exchangeTarget = new org.leavesmc.leaves.protocol.syncmatica.exchange.ExchangeTarget(this); // Leaves - Syncmatica Protocol
          this.playerGameConnection = new io.papermc.paper.connection.PaperPlayerGameConnection(this); // Paper

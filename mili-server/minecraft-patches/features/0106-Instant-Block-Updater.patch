@@ -5,7 +5,7 @@ Subject: [PATCH] Instant-Block-Updater
 
 
 diff --git a/io/papermc/paper/threadedregions/RegionizedWorldData.java b/io/papermc/paper/threadedregions/RegionizedWorldData.java
-index 012e1a154407bd2e80324f110e4573be2102b114..d3394076bb780947af59c07c2cbe512b32038ac9 100644
+index 6481eabe934b05ca52e2e96f87da3f53df41a6f5..fbf7e9389d9f6f56098ab07178a5559158050721 100644
 --- a/io/papermc/paper/threadedregions/RegionizedWorldData.java
 +++ b/io/papermc/paper/threadedregions/RegionizedWorldData.java
 @@ -475,7 +475,7 @@ public final class RegionizedWorldData {
@@ -25,12 +25,12 @@ index 012e1a154407bd2e80324f110e4573be2102b114..d3394076bb780947af59c07c2cbe512b
 +        this.neighborUpdater = fun.bm.mili.config.modules.experiment.RedStoneConfig.instantBlockUpdater ? new net.minecraft.world.level.redstone.InstantNeighborUpdater(world) : new CollectingNeighborUpdater(world, world.neighbourUpdateMax); // Mili - Instant Block Updater
          this.nearbyPlayers = new NearbyPlayers(world);
          this.wireHandler = new alternate.current.wire.WireHandler(world);
-         this.turbo = new io.papermc.paper.redstone.RedstoneWireTurbo((RedStoneWireBlock)Blocks.REDSTONE_WIRE);
+         this.turbo = new io.papermc.paper.redstone.RedstoneWireTurbo((RedstoneWireBlock)Blocks.REDSTONE_WIRE);
 diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
-index b2bea0d22ad49099583e1a1231f4edabfcdc2fc8..8f742e14781e34b30d5d44b602e730031b24e594 100644
+index 429d8d2a5538579488e9afdbb1a56321eb8d6602..c20ea8ea8bf61fd7d7f90da96e7bb4b41124cc62 100644
 --- a/net/minecraft/server/level/ServerLevel.java
 +++ b/net/minecraft/server/level/ServerLevel.java
-@@ -980,12 +980,16 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -986,12 +986,16 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
          // Paper - rewrite chunk system
          profiler.pop();
          profiler.push("debugSynchronizers");

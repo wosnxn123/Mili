@@ -5,10 +5,10 @@ Subject: [PATCH] Add config to force disable the packet limiter of Paper
 
 
 diff --git a/net/minecraft/network/Connection.java b/net/minecraft/network/Connection.java
-index 40f54536422fa38bd84017fc634808016b4de58b..b0614d45fd8e4115c8eddac68a1867c52fba9fe2 100644
+index 2cd70b595e828db9b03ec038dba76007c938b98e..8e2ae6b371c36cdd350fccb34771b5f321b552fa 100644
 --- a/net/minecraft/network/Connection.java
 +++ b/net/minecraft/network/Connection.java
-@@ -258,8 +258,8 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -269,8 +269,8 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
              if (this.stopReadingPackets) {
                  return;
              }
@@ -20,19 +20,19 @@ index 40f54536422fa38bd84017fc634808016b4de58b..b0614d45fd8e4115c8eddac68a1867c5
                  synchronized (PACKET_LIMIT_LOCK) {
                      if (this.allPacketCounts != null) {
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index c86b1fd5e200c478d178be32791b6e8c960d47e2..cc6e7a12f5fbe7bebca2997554cf403f05fab304 100644
+index c6810e37a78ff358d473651fb55a8f0900ce8b3f..e1749faead4d5c91cbefed031a6e6586517a4c39 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-@@ -890,7 +890,7 @@ public class ServerGamePacketListenerImpl
+@@ -909,7 +909,7 @@ public class ServerGamePacketListenerImpl
+     @Override
      public void handleCustomCommandSuggestions(final ServerboundCommandSuggestionPacket packet) {
-         // PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level()); // Paper - AsyncTabCompleteEvent; run this async
-         // CraftBukkit start
--        if (!this.tabSpamThrottler.isIncrementAndUnderThreshold() && !this.server.getPlayerList().isOp(this.player.nameAndId()) && !this.server.isSingleplayerOwner(this.player.nameAndId())) { // Paper - configurable tab spam limits
-+        if (!me.earthme.luminol.config.modules.misc.PaperPacketLimiterConfig.forceDisable && !this.tabSpamThrottler.isIncrementAndUnderThreshold() && !this.server.getPlayerList().isOp(this.player.nameAndId()) && !this.server.isSingleplayerOwner(this.player.nameAndId())) { // Paper - configurable tab spam limits // Leaves - can disable
-             this.disconnectAsync(Component.translatable("disconnect.spam"), org.bukkit.event.player.PlayerKickEvent.Cause.SPAM); // Paper - Kick event cause // Paper - add proper async disconnect
+         // Paper start - throttle tab completions
+-        if (!this.tabSpamThrottler.isIncrementAndUnderThreshold() && !this.server.getPlayerList().isOp(this.player.nameAndId()) && !this.server.isSingleplayerOwner(this.player.nameAndId())) {
++        if (!me.earthme.luminol.config.modules.misc.PaperPacketLimiterConfig.forceDisable && !this.tabSpamThrottler.isIncrementAndUnderThreshold() && !this.server.getPlayerList().isOp(this.player.nameAndId()) && !this.server.isSingleplayerOwner(this.player.nameAndId())) { // Leaves - can disable
+             this.disconnectAsync(Component.translatable("disconnect.spam"), org.bukkit.event.player.PlayerKickEvent.Cause.SPAM);
              return;
          }
-@@ -2125,6 +2125,7 @@ public class ServerGamePacketListenerImpl
+@@ -2184,6 +2184,7 @@ public class ServerGamePacketListenerImpl
      private long lastLimitedPacket = -1;
  
      private boolean checkLimit(long timestamp) {
@@ -40,7 +40,7 @@ index c86b1fd5e200c478d178be32791b6e8c960d47e2..cc6e7a12f5fbe7bebca2997554cf403f
          if (!io.papermc.paper.configuration.GlobalConfiguration.get().spamLimiter.incomingPacketThreshold.enabled()) {
              return true;
          }
-@@ -2685,6 +2686,7 @@ public class ServerGamePacketListenerImpl
+@@ -2744,6 +2745,7 @@ public class ServerGamePacketListenerImpl
  
      // Spigot start - spam exclusions
      private void detectRateSpam(final TickThrottler throttler, final String message) {
@@ -48,7 +48,7 @@ index c86b1fd5e200c478d178be32791b6e8c960d47e2..cc6e7a12f5fbe7bebca2997554cf403f
          if (org.spigotmc.SpigotConfig.enableSpamExclusions) {
              for (String exclude : org.spigotmc.SpigotConfig.spamExclusions) {
                  if (exclude != null && message.startsWith(exclude)) {
-@@ -3477,7 +3479,7 @@ public class ServerGamePacketListenerImpl
+@@ -3537,7 +3539,7 @@ public class ServerGamePacketListenerImpl
      @Override
      public void handlePlaceRecipe(final ServerboundPlaceRecipePacket packet) {
          // Paper start - auto recipe limit

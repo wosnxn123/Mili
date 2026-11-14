@@ -5,7 +5,7 @@ Subject: [PATCH] Leaves: Wool Hopper Counter
 
 
 diff --git a/net/minecraft/world/level/block/entity/HopperBlockEntity.java b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
-index 019a320abd6d671e7df99ed9628ad021142be0f7..21c64e51550c0e1b4fae84ff88052c90ea9f1478 100644
+index b8d12de063866e104f11df02c5905f0382085229..afffdd5b6eb8a706326eba255041e504b5d0ad64 100644
 --- a/net/minecraft/world/level/block/entity/HopperBlockEntity.java
 +++ b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
 @@ -240,8 +240,30 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
@@ -39,7 +39,7 @@ index 019a320abd6d671e7df99ed9628ad021142be0f7..21c64e51550c0e1b4fae84ff88052c90
                  setChanged(level, pos, state);
                  // Leaves start - Lithium Sleeping Block Entity
                  if (me.earthme.luminol.config.modules.optimizations.LeavesSleepingBlockEntityConfig.enabled
-@@ -503,6 +525,13 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+@@ -496,6 +518,13 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
      // Paper end - Perf: Optimize Hoppers
  
      private static boolean ejectItems(final Level level, final BlockPos blockPos, final HopperBlockEntity self) {
@@ -53,9 +53,9 @@ index 019a320abd6d671e7df99ed9628ad021142be0f7..21c64e51550c0e1b4fae84ff88052c90
          Container container = me.earthme.luminol.config.modules.optimizations.LeavesSleepingBlockEntityConfig.enabled ? self.getInsertInventory(level) : getAttachedContainer(level, blockPos, self); // Leaves - Lithium Sleeping Block Entity
          if (container == null) {
              return false;
-@@ -524,6 +553,26 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
-         return hopperPush(level, container, direction, self); // Paper - Perf: Optimize Hoppers
+@@ -549,6 +578,26 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
      }
+     // Paper end - Add PrepareHopperTransferEvent
  
 +    // Leaves start - hopper counter
 +    private static boolean woolHopperCounter(Level level, BlockPos blockPos, BlockState state, @Nullable Container container) {
@@ -80,7 +80,7 @@ index 019a320abd6d671e7df99ed9628ad021142be0f7..21c64e51550c0e1b4fae84ff88052c90
      private static int[] getSlots(final Container container, final Direction direction) {
          if (container instanceof WorldlyContainer worldlyContainer) {
              return worldlyContainer.getSlotsForFace(direction);
-@@ -618,6 +667,7 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+@@ -645,6 +694,7 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
      }
  
      public static boolean addItem(final Container container, final ItemEntity entity) {

@@ -6,10 +6,10 @@ Subject: [PATCH] Fix compat recipes: use lazy ItemStackTemplate (components
 
 
 diff --git a/net/minecraft/world/item/crafting/RecipeManager.java b/net/minecraft/world/item/crafting/RecipeManager.java
-index 3c040e6688414c5b4b0ad93f04795a341375ba04..6802a75fe51d04ef3c5949c14d3b09161dc9881b 100644
+index 88b2b4cbab23e56e941e40bd6f8e6ecf701fd510..bb0810502a91f44934819f5f9e232c2739f38fcd 100644
 --- a/net/minecraft/world/item/crafting/RecipeManager.java
 +++ b/net/minecraft/world/item/crafting/RecipeManager.java
-@@ -127,7 +127,7 @@ public class RecipeManager extends SimplePreparableReloadListener<RecipeMap> imp
+@@ -100,7 +100,7 @@ public class RecipeManager implements RecipeAccess {
                  new Recipe.CommonInfo(true),
                  new CraftingRecipe.CraftingBookInfo(CraftingBookCategory.BUILDING, "carpet_ams_better_bone_block"),
                  ShapedRecipePattern.of(Map.of('#', Ingredient.of(net.minecraft.world.item.Items.BONE)), "###", "###", "###"),
@@ -18,7 +18,7 @@ index 3c040e6688414c5b4b0ad93f04795a341375ba04..6802a75fe51d04ef3c5949c14d3b0916
              )
          );
      }
-@@ -144,7 +144,7 @@ public class RecipeManager extends SimplePreparableReloadListener<RecipeMap> imp
+@@ -117,7 +117,7 @@ public class RecipeManager implements RecipeAccess {
                      "SDX",
                      " SX"
                  ),
@@ -27,7 +27,7 @@ index 3c040e6688414c5b4b0ad93f04795a341375ba04..6802a75fe51d04ef3c5949c14d3b0916
              )
          );
      }
-@@ -155,7 +155,7 @@ public class RecipeManager extends SimplePreparableReloadListener<RecipeMap> imp
+@@ -128,7 +128,7 @@ public class RecipeManager implements RecipeAccess {
              new ShapelessRecipe(
                  new Recipe.CommonInfo(true),
                  new CraftingRecipe.CraftingBookInfo(CraftingBookCategory.REDSTONE, "carpet_ams_better_dispenser"),

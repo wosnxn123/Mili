@@ -5,10 +5,10 @@ Subject: [PATCH] Add config for vanilla random
 
 
 diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
-index 18b9e630442fd31a14e131bb9043be46e10881e3..e3ad1fde96900590c8057e177c0a3543cd674398 100644
+index bfd72a31c1a8c370c7b3bf928abdc484d56a98b1..f7727c47a7d484f4614a6a57e1a616feee9bca9f 100644
 --- a/net/minecraft/world/entity/Entity.java
 +++ b/net/minecraft/world/entity/Entity.java
-@@ -298,7 +298,7 @@ public abstract class Entity
+@@ -301,7 +301,7 @@ public abstract class Entity
      public double yOld;
      public double zOld;
      public boolean noPhysics;
@@ -16,4 +16,4 @@ index 18b9e630442fd31a14e131bb9043be46e10881e3..e3ad1fde96900590c8057e177c0a3543
 +    protected final RandomSource random = me.earthme.luminol.config.modules.fixes.VanillaRandomSourceConfig.useLegacyRandomSourceForPlayers ? RandomSource.create() : SHARED_RANDOM; // Paper - Share random for entities to make them more random // Luminol - Add config for vanilla random SHARED_RANDOM
      public int tickCount;
      private int remainingFireTicks;
-     private final EntityFluidInteraction fluidInteraction = new EntityFluidInteraction(Set.of(FluidTags.WATER, FluidTags.LAVA));
+     private final EntityFluidInteraction fluidInteraction = new EntityFluidInteraction(FLUIDS_WITH_CURRENT);

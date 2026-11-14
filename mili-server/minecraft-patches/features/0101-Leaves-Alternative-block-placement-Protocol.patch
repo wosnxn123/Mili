@@ -5,10 +5,10 @@ Subject: [PATCH] Leaves: Alternative block placement Protocol
 
 
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index d1c625d0231a749a5c42cd668d9822149144fe1f..f605f578db60d6cb6944b28683a01bfc530bc8b1 100644
+index 63e1acd016612968f20e6a970420fab87aec43eb..72b9c4fd8c3ce151eff8c840673b0dc5ab0f8a00 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-@@ -2176,7 +2176,7 @@ public class ServerGamePacketListenerImpl
+@@ -2235,7 +2235,7 @@ public class ServerGamePacketListenerImpl
                  if (ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(this.player.level(), pos.getX() >> 4, pos.getZ() >> 4, 8) &&  this.player.isWithinBlockInteractionRange(pos, 1.0)) { // Folia - do not allow players to interact with blocks outside the current region
                      Vec3 distance = location.subtract(Vec3.atCenterOf(pos));
                      double limit = 1.0000001;
@@ -18,10 +18,10 @@ index d1c625d0231a749a5c42cd668d9822149144fe1f..f605f578db60d6cb6944b28683a01bfc
                          this.player.resetLastActionTime();
                          int maxY = level.getMaxY();
 diff --git a/net/minecraft/world/item/BlockItem.java b/net/minecraft/world/item/BlockItem.java
-index b94c4f0a6908a37d8a07dba6ff3ece7193aca1b5..0f4ac8eeb8f5f866b22a81f255f7169754437bfc 100644
+index 68f1e9483b93ef071877a4c99f4bd14e0d363145..d52f7565d027799a9c67d3735d6572b08f3d9a1a 100644
 --- a/net/minecraft/world/item/BlockItem.java
 +++ b/net/minecraft/world/item/BlockItem.java
-@@ -140,7 +140,7 @@ public class BlockItem extends Item {
+@@ -142,7 +142,7 @@ public class BlockItem extends Item {
      }
  
      protected @Nullable BlockState getPlacementState(final BlockPlaceContext context) {
@@ -52,10 +52,10 @@ index bb352c44fa951367907ebe403c59f03f3c21786f..1f17f966882320b3a2ced50b3f73925c
                      stateForPlacement = possibleState;
                      break;
 diff --git a/net/minecraft/world/level/block/Block.java b/net/minecraft/world/level/block/Block.java
-index 423c45d7be8ac0c27fd3caa0aa8f15f25ad4a3a6..4866a59594a2db7eabb372f76720e25108c52531 100644
+index c0aab7a11ef6d95aa053ad0002c17f4cc502a651..a586bc14fa4d485480b513f74430de91e757d4b4 100644
 --- a/net/minecraft/world/level/block/Block.java
 +++ b/net/minecraft/world/level/block/Block.java
-@@ -517,6 +517,32 @@ public class Block extends BlockBehaviour implements ItemLike {
+@@ -513,6 +513,32 @@ public class Block extends BlockBehaviour implements ItemLike {
      public void stepOn(final Level level, final BlockPos pos, final BlockState onState, final Entity entity) {
      }
  

@@ -6,7 +6,7 @@ Subject: [PATCH] Prevent tamable animals check can teleport in an
 
 
 diff --git a/net/minecraft/world/entity/TamableAnimal.java b/net/minecraft/world/entity/TamableAnimal.java
-index 95ba821a895c7ea8fffcbf1df2e7b3c174463d9e..b0a01673224522552672b7c8c9aa219108e8010f 100644
+index b4fb28dea2f2fc2bbb33e94495eb9b96c5eda4f5..48aabb2645daf575158621e31def79037a66ba46 100644
 --- a/net/minecraft/world/entity/TamableAnimal.java
 +++ b/net/minecraft/world/entity/TamableAnimal.java
 @@ -318,7 +318,8 @@ public abstract class TamableAnimal extends Animal implements OwnableEntity {

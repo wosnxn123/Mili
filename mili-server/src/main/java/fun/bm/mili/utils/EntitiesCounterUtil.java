@@ -11,6 +11,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobCategory;
+import net.minecraft.world.attribute.EnvironmentAttributes;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.LocalMobCapCalculator;
 import net.minecraft.world.level.NaturalSpawner;
@@ -24,8 +25,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
-
-import static net.minecraft.world.level.NaturalSpawner.getRoughBiome;
 
 public class EntitiesCounterUtil {
     private static final ConcurrentHashMap<ServerLevel, ConcurrentHashMap<Integer, Object2IntOpenHashMap<MobCategory>>> regionMobCounts = new ConcurrentHashMap<>();
@@ -126,7 +125,8 @@ public class EntitiesCounterUtil {
             // Paper end - Only count natural spawns
             BlockPos blockPos = entity.blockPosition();
             chunkGetter.query(ChunkPos.pack(blockPos), chunk -> {
-                MobSpawnSettings.MobSpawnCost mobSpawnCost = getRoughBiome(blockPos, chunk).getMobSettings().getMobSpawnCost(entity.getType());
+                MobSpawnSettings naturalMobSpawns = level.environmentAttributes().getValue(EnvironmentAttributes.NATURAL_MOB_SPAWNS, blockPos);
+                MobSpawnSettings.MobSpawnCost mobSpawnCost = naturalMobSpawns.getMobSpawnCost(entity.getType());
                 if (mobSpawnCost != null) {
                     potentialCalculator.addCharge(entity.blockPosition(), mobSpawnCost.charge());
                 }

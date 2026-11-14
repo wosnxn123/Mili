@@ -36,9 +36,10 @@ public class ServerUseItemAction extends AbstractUseBotAction<ServerUseItemActio
 
     public static @NotNull InteractionResult useItem(@NotNull ServerBot bot, InteractionHand hand) {
         bot.updateItemInHand(hand);
+        var swingAnimation = bot.getItemInHand(hand).getInteractAnimation();
         InteractionResult result = bot.gameMode.useItem(bot, bot.level(), bot.getItemInHand(hand), hand);
         if (shouldSwing(result)) {
-            bot.swing(hand);
+            bot.swingInteraction(hand, swingAnimation);
         }
         return result;
     }

@@ -31,10 +31,10 @@ index b8d14279b1b27001150b21cf0522997e75068500..47e4e374a08266d07b784f9bfdb8b017
              if (!this.tryMarkTicking()) {
                  if (!this.cancelled.get()) {
 diff --git a/net/minecraft/server/level/ChunkMap.java b/net/minecraft/server/level/ChunkMap.java
-index 11acddb0b76b8ce2ccee638d9d501bd33c4e0982..05e5d0bce88aa038e0821c013e077a2b544b8360 100644
+index c5e4eb733cdd6b3d05c2953cea7b0a125e85106a..bc279c427a963f1c5f6ef7f4a4042f5b5db52f4d 100644
 --- a/net/minecraft/server/level/ChunkMap.java
 +++ b/net/minecraft/server/level/ChunkMap.java
-@@ -1124,6 +1124,10 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+@@ -1157,6 +1157,10 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
                  );
                  if (results != null) {
                      fun.bm.mili.rust.EntityCullHelper.applyCullingResults(entityList, results);

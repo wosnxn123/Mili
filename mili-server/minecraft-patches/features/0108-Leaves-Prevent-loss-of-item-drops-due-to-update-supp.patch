@@ -5,10 +5,10 @@ Subject: [PATCH] Leaves-Prevent-loss-of-item-drops-due-to-update-supp
 
 
 diff --git a/net/minecraft/server/level/ServerPlayerGameMode.java b/net/minecraft/server/level/ServerPlayerGameMode.java
-index 13e981bfd070d9351d8880478b5a86e39bcd73ad..d0ac2d15388e842ed56ec39ecdbc99994e0617bc 100644
+index f2b4023b14a7032c6de5827157f2d3c75957cd1c..5ae6f76181fb6a69068533ae129510364e1546f4 100644
 --- a/net/minecraft/server/level/ServerPlayerGameMode.java
 +++ b/net/minecraft/server/level/ServerPlayerGameMode.java
-@@ -394,7 +394,18 @@ public class ServerPlayerGameMode {
+@@ -425,7 +425,18 @@ public class ServerPlayerGameMode {
          this.level.getCurrentWorldData().captureDrops = new java.util.ArrayList<>(); // Folia - region threading
          // CraftBukkit end
          BlockState adjustedState = block.playerWillDestroy(this.level, pos, state, this.player);
@@ -28,7 +28,7 @@ index 13e981bfd070d9351d8880478b5a86e39bcd73ad..d0ac2d15388e842ed56ec39ecdbc9999
          if (SharedConstants.DEBUG_BLOCK_BREAK) {
              LOGGER.info("server broke {} {} -> {}", pos, adjustedState, this.level.getBlockState(pos));
          }
-@@ -422,6 +433,11 @@ public class ServerPlayerGameMode {
+@@ -453,6 +464,11 @@ public class ServerPlayerGameMode {
          if (event.isDropItems()) {
              org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockDropItemEvent(bblock, bState, this.player, itemsToDrop); // Paper - capture all item additions to the world
          }

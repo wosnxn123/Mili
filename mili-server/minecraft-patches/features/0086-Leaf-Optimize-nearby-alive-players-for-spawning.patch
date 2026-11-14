@@ -18,10 +18,10 @@ index a3c13e421768f5e1a703b5b1167fa1c912b6f126..7a49d8bc63a343ce4daa1220d799b5fa
      // Paper end - Affects Spawning API
  
 diff --git a/net/minecraft/world/entity/monster/zombie/Zombie.java b/net/minecraft/world/entity/monster/zombie/Zombie.java
-index 143e7f5cd55ff37bec1150e2f1beb98287770503..534cd524406052af7d78dc1e1d8772cf0c0318ea 100644
+index 1e11b7366aeb076cf3f6412b38c6a429eec2c1f0..7814cfd5d78e374ae162473fee2ea8c9e2629184 100644
 --- a/net/minecraft/world/entity/monster/zombie/Zombie.java
 +++ b/net/minecraft/world/entity/monster/zombie/Zombie.java
-@@ -354,7 +354,7 @@ public class Zombie extends Monster {
+@@ -323,7 +323,7 @@ public class Zombie extends Monster {
                  if (SpawnPlacements.isSpawnPositionOk(type, level, spawnPos)
                      && SpawnPlacements.checkSpawnRules(type, level, EntitySpawnReason.REINFORCEMENT, spawnPos, level.getRandom())) {
                      reinforcement.setPos(xt, yt, zt);
@@ -31,10 +31,10 @@ index 143e7f5cd55ff37bec1150e2f1beb98287770503..534cd524406052af7d78dc1e1d8772cf
                          && level.noCollision(reinforcement)
                          && (reinforcement.canSpawnInLiquids() || !level.containsAnyLiquid(reinforcement.getBoundingBox()))) {
 diff --git a/net/minecraft/world/level/BaseSpawner.java b/net/minecraft/world/level/BaseSpawner.java
-index 2f89a9145902e514089924462003709f256ac3f4..ac86befb121bb035077001ef5c72eb418600ccb9 100644
+index 56f9c7906761b49c1090bd2489fe111f0d2a4a32..3660d9ffd1ca3cf554b60bfa428bc29d74bbb504 100644
 --- a/net/minecraft/world/level/BaseSpawner.java
 +++ b/net/minecraft/world/level/BaseSpawner.java
-@@ -66,7 +66,7 @@ public abstract class BaseSpawner {
+@@ -72,7 +72,7 @@ public abstract class BaseSpawner {
      }
  
      public boolean isNearPlayer(final Level level, final BlockPos pos) {

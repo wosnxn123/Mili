@@ -5,10 +5,10 @@ Subject: [PATCH] Fix possible delayed POI updates while block updating
 
 
 diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
-index f9a23885d3681f9e0c79666da6b72f178545e829..bdd978f54743a543cf8be94a05d928f82716ff6f 100644
+index 522535a9344682cfe369d8c540096b2903cdf6e0..3d6163d5b42534fb272748fd73220f22a6a59623 100644
 --- a/net/minecraft/server/level/ServerLevel.java
 +++ b/net/minecraft/server/level/ServerLevel.java
-@@ -2579,11 +2579,12 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -2845,11 +2845,12 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
          Optional<Holder<PoiType>> newType = PoiTypes.forState(newState);
          if (!Objects.equals(oldType, newType)) {
              BlockPos immutable = pos.immutable();
@@ -24,10 +24,10 @@ index f9a23885d3681f9e0c79666da6b72f178545e829..bdd978f54743a543cf8be94a05d928f8
                  if (oldType.isEmpty() && this.getPoiManager().exists(immutable, _ -> true)) {
                      this.getPoiManager().remove(immutable);
 diff --git a/net/minecraft/world/entity/npc/villager/Villager.java b/net/minecraft/world/entity/npc/villager/Villager.java
-index 3fa0ca479922a7c55625c5e7bcd25065210ea44e..b2776ba0c481e4e0090335066b095e0dde0b50da 100644
+index 5bcfdbd712e5bd4f7e5b7096ba747955aee2a695..ad900c7e204dad7c5020f6fa0932cd09e3768813 100644
 --- a/net/minecraft/world/entity/npc/villager/Villager.java
 +++ b/net/minecraft/world/entity/npc/villager/Villager.java
-@@ -730,7 +730,8 @@ public class Villager extends AbstractVillager implements VillagerDataHolder, Re
+@@ -713,7 +713,8 @@ public class Villager extends AbstractVillager implements VillagerDataHolder, Re
              this.brain.getMemory(memoryType).ifPresent(memory -> {
                  ServerLevel poiLevel = server.getLevel(memory.dimension());
                  if (poiLevel != null) {
@@ -37,7 +37,7 @@ index 3fa0ca479922a7c55625c5e7bcd25065210ea44e..b2776ba0c481e4e0090335066b095e0d
                      PoiManager poiManager = poiLevel.getPoiManager();
                      Optional<Holder<PoiType>> type = poiManager.getType(memory.pos());
                      BiPredicate<Villager, Holder<PoiType>> poiTypePredicate = POI_MEMORIES.get(memoryType);
-@@ -738,7 +739,8 @@ public class Villager extends AbstractVillager implements VillagerDataHolder, Re
+@@ -721,7 +722,8 @@ public class Villager extends AbstractVillager implements VillagerDataHolder, Re
                          poiManager.release(memory.pos());
                          poiLevel.debugSynchronizers().updatePoi(memory.pos());
                      }

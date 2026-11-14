@@ -5,10 +5,10 @@ Subject: [PATCH] Modify merge ItemEntity logic
 
 
 diff --git a/net/minecraft/world/entity/item/ItemEntity.java b/net/minecraft/world/entity/item/ItemEntity.java
-index 6f5d3ebb7adc567e5106a3c76fccdbee93f51c27..b1d5d59718e5748b164f0885d4152e795c5d572d 100644
+index 8c5f16116fd217cc9a99af820d71c809b165c30f..895480096073f84b1042c422db1373f5fbe719ab 100644
 --- a/net/minecraft/world/entity/item/ItemEntity.java
 +++ b/net/minecraft/world/entity/item/ItemEntity.java
-@@ -289,7 +289,7 @@ public class ItemEntity extends Entity implements TraceableEntity, ChangePublish
+@@ -282,7 +282,7 @@ public class ItemEntity extends Entity implements TraceableEntity, ChangePublish
          ItemStack thisItemStack = this.getItem();
          ItemStack otherItemStack = other.getItem();
          if (Objects.equals(this.target, other.target) && areMergable(thisItemStack, otherItemStack)) {

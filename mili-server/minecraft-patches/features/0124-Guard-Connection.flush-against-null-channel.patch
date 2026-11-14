@@ -11,11 +11,10 @@ flush() so every entry point (flushChannel, tickChildren resumeFlushing,
 future callers) is safe for channelless connections.
 
 diff --git a/net/minecraft/network/Connection.java b/net/minecraft/network/Connection.java
-index 0000000000000000000000000000000000000000..0000000000000000000000000000000000000000 100644
+index 75d3623705dfc5f68984966fba87fe452b2f6afa..be6859294cbd7c005ab5afb5badeae40fc834ac2 100644
 --- a/net/minecraft/network/Connection.java
 +++ b/net/minecraft/network/Connection.java
-@@ -652,9 +652,10 @@
-         }
+@@ -581,6 +581,7 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
      }
  
      private void flush() {
@@ -23,8 +22,3 @@ index 0000000000000000000000000000000000000000..00000000000000000000000000000000
          if (this.channel.eventLoop().inEventLoop()) {
              this.channel.flush();
          } else {
-             this.channel.eventLoop().execute(() -> this.channel.flush());
-         }
--- 
-2.39.5
-
