@@ -281,6 +281,7 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ env.tag }}
+          commit: ${{ github.sha }}
           name: ${{ env.project_id_b }} ${{ env.mcversion }} - ${{ env.commit_id }}${{ env.release_count }}
           body: |
             📦Version: `${{ env.mcversion }}` | Commit ${{ env.commit_id }} [![download](https://img.shields.io/github/downloads/${{ github.repository }}/${{ env.tag }}/total?color=red&style=flat)
@@ -300,6 +301,7 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ env.tag }}
+          commit: ${{ github.sha }}
           name: ${{ env.project_id_b }} ${{ env.mcversion }} - ${{ env.commit_id }}${{ env.release_count }}
           body: |
             📦Version: `${{ env.mcversion }}` | Commit ${{ env.commit_id }} [![download](https://img.shields.io/github/downloads/${{ github.repository }}/${{ env.tag }}/total?color=red&style=flat)

@@ -1,6 +1,6 @@
 # Minecraft 26.3 迁移记录
 
-状态：**补丁迁移与服务端 Java 编译通过，测试和运行验证尚未完成，不可视为可发布版本**。
+状态：**GitHub Actions 已完成补丁应用、三平台原生库校验与 JAR 打包，ALPHA 预发布标签已修正到实际构建提交；测试执行和服务端启动验证尚未完成，不可视为生产可用版本**。
 
 ## 分支与上游基线
 
@@ -80,12 +80,18 @@ Bundler 与 Paperclip 打包任务写入一致的 UTF-8 `META-INF/riceear-versio
 
 - 用户授权将升级提交推送到 `wosnxn123/Mili` 的 `ver/26.3`，保留 Qodana 和 Release 触发，`master` 不变。
 - Actions 使用 Windows x86_64 GNU、Linux x86_64 GNU、Linux ARM64 GNU 原生目标；ARM64 文件名为 `libmili_optimizer_aarch64.so`，与实际加载器一致。移除会覆盖架构文件的 fallback，要求三个编译目标与 staged 文件逐一校验，任一缺失会阻止发布。原先 musl 两种架构共用文件名的配置不再使用。
-- `folia-server` 是生成输出而非构建输入。其 Git gitlink 随 `foliaRef` 更新为可从 PaperMC/Folia 获取的上游提交；绝不提交本地生成的 `a3acaa6` 指针。Actions checkout 不初始化该旧式 submodule，生成前清理该输出，由 Paperweight 按 `foliaRef` 获取上游。新 runner 上的完整流程结果仍待确认。
+- `folia-server` 是生成输出而非构建输入。其 Git gitlink 随 `foliaRef` 更新为可从 PaperMC/Folia 获取的上游提交；绝不提交本地生成的 `a3acaa6` 指针。Actions checkout 不初始化该旧式 submodule，生成前清理该输出，由 Paperweight 按 `foliaRef` 获取上游。新 runner 上的完整补丁应用与 JAR 打包已通过。
 - `.gitattributes` 对构建脚本与补丁采用 LF，保留工具生成补丁空白格式；两份 `.base` 是更新后的历史镜像，实际构建补丁输出为 `.kts`。这些额外调整可回退。
 - 目标仓库当前没有 Qodana token；工作流不屏蔽此扫描，但能否成功连接 Qodana Cloud 取决于仓库配置，不能凭空提供密钥。
 
-仍需完成：
-- 测试执行与 GitHub Actions 完整打包，核对真实构建结果及原生库。
-- 启动 26.3 服务端，验证假玩家、协议、红石、世界生成、Mixin 与暂存更新；未代用户接受 Minecraft EULA。
+### 首次远端结果（构建提交 `9f255c1`）
 
-本记录在提交前保存；Actions 运行与 Release 链接以实际 GitHub 结果为准，不将准备好工作流说成已发布。
+- [Mili CI](https://github.com/wosnxn123/Mili/actions/runs/43543530064) 成功（11 分 49 秒）：三个 Rust 目标构建与 staged 文件校验、完整补丁应用、Java 编译与 Paperclip 打包、CI 源码检查全部完成。此 CI 未执行完整单元测试或启动服务端；不把源码/产物 smoke check 说成运行验证。
+- [Qodana](https://github.com/wosnxn123/Mili/actions/runs/43543530044) 工作流成功，但分析报告有 303 项问题（High 270 / Moderate 33）及 40 项 Sanity 提示。未使用基线，不能认定全是本次升级新增；没有上传报告 artifact，日志保存了汇总。
+- 已发布 [ALPHA 预发布 `26.3-9f255c1`](https://github.com/wosnxn123/Mili/releases/tag/26.3-9f255c1)，资产 `mili-26.3-paperclip.jar`（87,360,493 bytes），SHA-256 `1afb18dd7f9ad933469e24d73248f4c6c4d8ba30b3b97e7db9b859879d5be577`。资产来自提交 `9f255c1aa9f62406835d62799445f5050f52af97` 的构建，GitHub 显示 `prerelease=true`。
+- 最终核对发现该 Release 的 tag 原先指向旧 `master`（`853b00bb9a84cafd1023d48129d358fb7edf61a8`），因为两条 release-action 路径均未显式传 `commit`。经用户确认，公开标签与 Release metadata 均已修正为实际构建提交 `9f255c1aa9f62406835d62799445f5050f52af97`，并在发布说明中记录标签移动；资产 ID、大小和 SHA-256 不变，`master` 未修改。
+- 两条发布路径均补入 `commit: ${{ github.sha }}`，防止未来标签回退默认分支。YAML、shell 语法和两个发布路径的提交参数检查已通过；后续 Actions 仍需验证这项修复。
+
+仍需完成：
+- 核对工作流修复提交的后续 Actions 与预发布标签。
+- 测试执行及启动 26.3 服务端，验证假玩家、协议、红石、世界生成、Mixin 与暂存更新；未代用户接受 Minecraft EULA。
