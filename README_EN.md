@@ -103,7 +103,7 @@ Supports creating ReplayMod photographer entities for recording, with `Photograp
 
 ## Quick Start
 
-> `ver/26.3` targets Minecraft 26.3 (Folia ALPHA). All 125 Minecraft, 24 Paper-server and 12 API patches replay successfully; server Java and test sources compile. GitHub Actions builds native libraries and prerelease JARs. Server startup, client protocols and world generation are not runtime-tested; do not treat these builds as production-ready. See the [migration record](docs/migration-26.3.md).
+> `ver/26.3` targets Minecraft 26.3 (Folia ALPHA). All 125 Minecraft, 24 Paper-server and 12 API patches replay successfully; server Java and test sources compile. Do not use the old `26.3-9f255c1` / `26.3-c60a88e` prereleases: their Riceear patch reader fails at startup. This branch includes the compatibility fix and a fresh-cache patch-only verification before release. Full server startup, client protocols and world generation remain untested; these builds are not production-ready. See the [migration record](docs/migration-26.3.md).
 
 ### Requirements
 

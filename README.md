@@ -106,7 +106,7 @@ Ubuntu也可能需要22或24，win也可能需server2022或22H2
 
 ## 快速开始
 
-> `ver/26.3` 基于 Minecraft 26.3（Folia ALPHA）。125 个 Minecraft、24 个 Paper-server 和 12 个 API 补丁已重放，服务端 Java 与测试源码编译通过；GitHub Actions 负责原生库与 JAR 构建，产物以预发布提供。尚未完成服务端启动、客户端协议与实际世界生成验证，不建议用于生产服。详见 [26.3 迁移记录](docs/migration-26.3.md)。
+> `ver/26.3` 基于 Minecraft 26.3（Folia ALPHA）。125 个 Minecraft、24 个 Paper-server 和 12 个 API 补丁已重放，服务端 Java 与测试源码编译通过。旧预发布 `26.3-9f255c1` / `26.3-c60a88e` 存在 Riceear 补丁读取错误，请勿使用；本分支已加入兼容修复及发布前空缓存 patch-only 验证。尚未完成完整服务端启动、客户端协议与实际世界生成验证，不建议用于生产服。详见 [26.3 迁移记录](docs/migration-26.3.md)。
 
 ### 环境要求
 

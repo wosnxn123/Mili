@@ -191,6 +191,13 @@ jobs:
       - name: Build Paperclip Jar
         run: ./gradlew :mili-server:createPaperclipJar --no-configuration-cache -PbstatsPluginId=${{ secrets.BSTATS_PLUGIN_ID }}
 
+      # Exercise the real launcher without starting Minecraft or accepting the EULA.
+      # A fresh cache plus output hashes catches missing/misread patch payloads.
+      - name: Verify launcher patch application
+        run: |
+          python3 -I scripts/smoke_test_launcher.py \
+            mili-server/build/libs/*-paperclip-*.jar
+
       - name: Post-Build CIS Smoke Test
         run: |
           JAR_PATH="mili-server/build/libs"

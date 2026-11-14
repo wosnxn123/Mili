@@ -1,6 +1,6 @@
 # Minecraft 26.3 迁移记录
 
-状态：**GitHub Actions 已完成补丁应用、三平台原生库校验与 JAR 打包，ALPHA 预发布标签已修正到实际构建提交；测试执行和服务端启动验证尚未完成，不可视为生产可用版本**。
+状态：**26.3 已完成编译、补丁重放与 Actions 打包，但旧预发布的 Riceear 补丁读取存在启动阻断。兼容修复已通过本地真实 JAR 的空缓存 patch-only 验证，尚待新一轮 Actions 打包发布；未启动 Minecraft 或接受 EULA，不可视为生产可用版本**。
 
 ## 分支与上游基线
 
@@ -44,7 +44,17 @@ Bundler 与 Paperclip 打包任务写入一致的 UTF-8 `META-INF/riceear-versio
 
 从没有版本标记的旧启动器迁移时，应直接替换实际启动的完整 JAR。仅更新 `core.path` 目标，不能通过旧启动器的版本检查。后续更新目标也必须包含兼容的版本标记。原有更新器仍指向 Luminol 发布源，这不是本次新增的 Mili 发布更新器。
 
-26.3 实际启动、暂存更新端到端流程与 Mixin 运行效果尚未验证。
+### Riceear 补丁读取修复（2026-11-14）
+
+用户在 Debian 容器运行旧预发布时出现 `NoSuchFileException: /META-INF/versions/26.3/server-26.3.jar.patch`。检查发布 JAR 后确认该资源存在且 SHA-256 正确：不是缺少打包文件。锁定的 Riceear 3.0.18 实际字节码把原版 Mojang bundler 的 zip 根目录同时当作补丁来源；原版 JAR 不包含 fork 补丁，因此启动失败。
+
+- 在 `launcher-patches` 维护兼容的 `PatchEntry`，保留原 record ABI、三项哈希检查、缓存与 classpath 替换，只将补丁来源改成 `AutoUpdate.getResourceAsStreamFromTargetJar`（与原 `patches.list` 一致）。原版输入仍从 Mojang JAR 读取；不修改下载资产或降低校验。
+- Bundler 和 Paperclip 输出嵌入该编译后的类、`META-INF/mili-launcher-patch` 标记与 MIT 许可；打包依赖独立的 `verifyLauncherPatch`，不把测试类装入发行 JAR。
+- 本地真实旧 JAR 在空缓存复现相同异常；替换类后的真实 JAR 成功应用服务端与 Log4j 两个补丁，重建输出哈希分别为 `33296f7f38e1c2602a4bce9740bb508afc0655c53aed5bbf123739db889a6547` 和 `f1810a4704ccce019d02bba029dc02a4f2ac0c997f647b465e7d409c1927f822`。
+- 17 项离线回归断言通过，覆盖 active-update JAR 读取、manifest 解析、有效缓存重用、损坏缓存重建、原始输入/补丁/输出哈希失败及缺失补丁。正式 Gradle `verifyLauncherPatch` 亦通过。
+- Actions 新增 `scripts/smoke_test_launcher.py`，在上传 artifact 和发布 Release 之前用全新缓存执行真实 launcher 的 patch-only 路径并核对每个输出哈希；失败会阻止上传和发布。
+
+上述测试不启动 Minecraft，不创建世界，也不代用户接受 EULA。26.3 完整启动、暂存更新端到端流程与 Mixin 运行效果仍未验证。旧 `26.3-9f255c1` 与 `26.3-c60a88e` 预发布未包含这个修复，不应继续作为可启动的版本使用。
 
 ## 验证结果
 
@@ -90,8 +100,8 @@ Bundler 与 Paperclip 打包任务写入一致的 UTF-8 `META-INF/riceear-versio
 - [Qodana](https://github.com/wosnxn123/Mili/actions/runs/43543530044) 工作流成功，但分析报告有 303 项问题（High 270 / Moderate 33）及 40 项 Sanity 提示。未使用基线，不能认定全是本次升级新增；没有上传报告 artifact，日志保存了汇总。
 - 已发布 [ALPHA 预发布 `26.3-9f255c1`](https://github.com/wosnxn123/Mili/releases/tag/26.3-9f255c1)，资产 `mili-26.3-paperclip.jar`（87,360,493 bytes），SHA-256 `1afb18dd7f9ad933469e24d73248f4c6c4d8ba30b3b97e7db9b859879d5be577`。资产来自提交 `9f255c1aa9f62406835d62799445f5050f52af97` 的构建，GitHub 显示 `prerelease=true`。
 - 最终核对发现该 Release 的 tag 原先指向旧 `master`（`853b00bb9a84cafd1023d48129d358fb7edf61a8`），因为两条 release-action 路径均未显式传 `commit`。经用户确认，公开标签与 Release metadata 均已修正为实际构建提交 `9f255c1aa9f62406835d62799445f5050f52af97`，并在发布说明中记录标签移动；资产 ID、大小和 SHA-256 不变，`master` 未修改。
-- 两条发布路径均补入 `commit: ${{ github.sha }}`，防止未来标签回退默认分支。YAML、shell 语法和两个发布路径的提交参数检查已通过；后续 Actions 仍需验证这项修复。
+- 两条发布路径均补入 `commit: ${{ github.sha }}`，防止未来标签回退默认分支。后续 [Mili CI](https://github.com/wosnxn123/Mili/actions/runs/43545878652) 已成功，`26.3-c60a88e` tag 与 Release metadata 均指向实际提交 `c60a88eb8a086187a175d4236df9d845ff29e614`。Qodana 仍为 303 项分析问题与 40 项 Sanity 提示。该预发布验证了标签修复，但尚未包含后来发现的 Riceear 补丁读取修复。
 
 仍需完成：
-- 核对工作流修复提交的后续 Actions 与预发布标签。
+- 将 Riceear 读取修复纳入正式 Actions 构建，确认真实产物的空缓存 patch-only 检查通过后再发布新预发布。
 - 测试执行及启动 26.3 服务端，验证假玩家、协议、红石、世界生成、Mixin 与暂存更新；未代用户接受 Minecraft EULA。

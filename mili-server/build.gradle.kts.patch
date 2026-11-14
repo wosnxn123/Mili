@@ -214,7 +214,7 @@
      badAnnotations.add("Lio/papermc/paper/annotation/DoNotUse;")
      jarToScan.set(tasks.jar.flatMap { it.archiveFile })
      classpath.from(configurations.compileClasspath)
-@@ -273,16 +354,59 @@
+@@ -273,16 +354,109 @@
      val provider = objects.newInstance<MockitoAgentProvider>()
      provider.fileCollection.from(mockitoAgent)
      jvmArgumentProviders.add(provider)
@@ -246,23 +246,73 @@
 +        check(actual == launcherSha256.get()) { "Launcher checksum mismatch; run scripts/download_launcher.py with the pinned asset." }
 +    }
 +}
- tasks.withType<io.papermc.paperweight.tasks.CreateBundlerJar>().configureEach {
++// Patch only the launcher ABI we verified against the pinned 3.0.18 asset.
++// Keep the download immutable; embed the compiled replacement in both outputs.
++val compileLauncherPatch by tasks.registering(JavaCompile::class) {
 +    dependsOn(verifyLauncher)
++    source(rootProject.fileTree("launcher-patches/src/main/java") { include("**/*.java") })
++    classpath = files(launcherFile)
++    destinationDirectory.set(layout.buildDirectory.dir("launcher-patch/classes"))
++    javaCompiler.set(javaToolchains.compilerFor { languageVersion.set(JavaLanguageVersion.of(25)) })
++    options.release.set(25)
++    options.compilerArgs.add("-proc:none")
++}
++val launcherPatchClass = compileLauncherPatch.flatMap {
++    it.destinationDirectory.file("moe/luminolmc/riceear/PatchEntry.class")
++}
++val compileLauncherPatchTest by tasks.registering(JavaCompile::class) {
++    dependsOn(compileLauncherPatch)
++    source(rootProject.fileTree("launcher-patches/src/test/java") { include("**/*.java") })
++    classpath = files(compileLauncherPatch.flatMap { it.destinationDirectory }, launcherFile)
++    destinationDirectory.set(layout.buildDirectory.dir("launcher-patch/test-classes"))
++    javaCompiler.set(javaToolchains.compilerFor { languageVersion.set(JavaLanguageVersion.of(25)) })
++    options.release.set(25)
++    options.compilerArgs.add("-proc:none")
++}
++val verifyLauncherPatch by tasks.registering(JavaExec::class) {
++    group = "verification"
++    description = "Verify active-target patch loading, cache and hash gates without starting Minecraft."
++    dependsOn(compileLauncherPatchTest)
++    classpath = files(
++        compileLauncherPatchTest.flatMap { it.destinationDirectory },
++        compileLauncherPatch.flatMap { it.destinationDirectory },
++        launcherFile,
++    )
++    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
++    mainClass.set("moe.luminolmc.riceear.PatchEntryRegressionTest")
++    workingDir = temporaryDir
++    args(temporaryDir.absolutePath)
++}
+ tasks.withType<io.papermc.paperweight.tasks.CreateBundlerJar>().configureEach {
++    dependsOn(verifyLauncherPatch)
++    inputs.file(launcherPatchClass)
++    inputs.file(rootProject.layout.projectDirectory.file("launcher-patches/LICENSE.txt"))
++    inputs.property("miliRiceearPatchReader", "active-target-jar-v1")
      extraManifestMainAttributes = mapOf(
          "Enable-Native-Access" to "ALL-UNNAMED",
      )
 +    inputs.property("miliRiceearVersion", launcherVersion)
 +    doLast {
 +        FileSystems.newFileSystem(outputZip.get().asFile.toPath(), mapOf("create" to "false")).use { zip ->
++            Files.copy(launcherPatchClass.get().asFile.toPath(), zip.getPath("/moe/luminolmc/riceear/PatchEntry.class"), StandardCopyOption.REPLACE_EXISTING)
++            Files.write(zip.getPath("/META-INF/mili-launcher-patch"), "active-target-jar-v1".toByteArray(Charsets.UTF_8))
++            Files.copy(rootProject.layout.projectDirectory.file("launcher-patches/LICENSE.txt").asFile.toPath(), zip.getPath("/META-INF/LICENSE-mili-launcher.txt"), StandardCopyOption.REPLACE_EXISTING)
 +            Files.write(zip.getPath("/META-INF/riceear-version"), launcherVersion.get().toByteArray(Charsets.UTF_8))
 +        }
 +    }
 +}
 +tasks.withType<io.papermc.paperweight.tasks.CreatePaperclipJar>().configureEach {
++    dependsOn(verifyLauncherPatch)
++    inputs.file(launcherPatchClass)
++    inputs.file(rootProject.layout.projectDirectory.file("launcher-patches/LICENSE.txt"))
++    inputs.property("miliRiceearPatchReader", "active-target-jar-v1")
 +    inputs.property("miliRiceearVersion", launcherVersion)
 +    inputs.property("miliDownloadContextCnMode", "copy-standard-v1")
 +    doLast {
 +        FileSystems.newFileSystem(outputZip.get().asFile.toPath(), mapOf("create" to "false")).use { zip ->
++            Files.copy(launcherPatchClass.get().asFile.toPath(), zip.getPath("/moe/luminolmc/riceear/PatchEntry.class"), StandardCopyOption.REPLACE_EXISTING)
++            Files.write(zip.getPath("/META-INF/mili-launcher-patch"), "active-target-jar-v1".toByteArray(Charsets.UTF_8))
++            Files.copy(rootProject.layout.projectDirectory.file("launcher-patches/LICENSE.txt").asFile.toPath(), zip.getPath("/META-INF/LICENSE-mili-launcher.txt"), StandardCopyOption.REPLACE_EXISTING)
 +            Files.write(zip.getPath("/META-INF/riceear-version"), launcherVersion.get().toByteArray(Charsets.UTF_8))
 +            // The launcher selects this name in China. Use the verified vanilla
 +            // download context, rather than leaving a missing regional resource.
@@ -276,7 +326,7 @@
  }
  
  val generatedDir: java.nio.file.Path = layout.projectDirectory.dir("../paper-server/src/generated/java").asFile.toPath()
-@@ -311,8 +435,8 @@
+@@ -311,8 +485,8 @@
          .asFile
      javaLauncher.set(project.javaToolchains.launcherFor {
          languageVersion.set(JavaLanguageVersion.of(25))
@@ -287,7 +337,7 @@
      })
      jvmArgs("-XX:+AllowEnhancedClassRedefinition", "--enable-native-access=ALL-UNNAMED")
  
-@@ -328,9 +452,9 @@
+@@ -328,9 +502,9 @@
          systemProperty("disable.watchdog", true)
      }
      systemProperty("io.papermc.paper.suppress.sout.nags", true)
@@ -298,7 +348,7 @@
      systemProperty("joml.nounsafe", true)
      systemProperty("paper.updatingMinecraft", providers.gradleProperty("updatingMinecraft").getOrElse("false").toBoolean())
  
-@@ -368,7 +492,7 @@
+@@ -368,7 +542,7 @@
  }
  
  fill {
