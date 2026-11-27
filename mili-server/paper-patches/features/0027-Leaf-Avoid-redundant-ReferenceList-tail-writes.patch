@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Taiyou06 <kaandindar21@gmail.com>
+Date: Sun, 1 Jun 2025 18:13:24 +0200
+Subject: [PATCH] Leaf: Avoid redundant ReferenceList tail writes
+
+Skip moving the tail entry when removing it. Preserve identity lookup, swap-with-tail ordering, and clearing the released slot.
+
+Original patch: https://github.com/Winds-Studio/Leaf/blob/06c9c91a17e61aeed16bcfc846ebe91aa70d6c84/leaf-server/paper-patches/features/0050-optimise-ReferenceList.patch
+Ported from: https://github.com/LophineLabs/Lophine/blob/7a51f49a512f1b5465f15a905d3704754e4bed02/lophine-server/paper-patches/features/0027-Leaf-Avoid-redundant-ReferenceList-tail-writes.patch
+
+diff --git a/src/main/java/ca/spottedleaf/moonrise/common/list/ReferenceList.java b/src/main/java/ca/spottedleaf/moonrise/common/list/ReferenceList.java
+index 2e876b918672e8ef3b5197b7e6b1597247fdeaa1..bbc2121dcc52e72fc4a49a14e508c6001ba984f4 100644
+--- a/src/main/java/ca/spottedleaf/moonrise/common/list/ReferenceList.java
++++ b/src/main/java/ca/spottedleaf/moonrise/common/list/ReferenceList.java
+@@ -49,12 +49,17 @@ public final class ReferenceList<E> implements Iterable<E> {
+ 
+         // move the object at the end to this index
+         final int endIndex = --this.count;
+-        final E end = (E)this.references[endIndex];
+         if (index != endIndex) {
++            // The removed element was not the last one.
++            // Move the element that was at 'endIndex' (the old tail) to 'index'.
++            final E end = (E)this.references[endIndex];
+             // not empty after this call
+             this.referenceToIndex.put(end, index); // update index
++            this.references[index] = end;
+         }
+-        this.references[index] = end;
++        // Null out the slot at 'endIndex'.
++        // If 'index == endIndex', this was the slot of the removed element.
++        // If 'index != endIndex', this was the original slot of the moved element 'end'.
+         this.references[endIndex] = null;
+ 
+         return true;
