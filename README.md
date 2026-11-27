@@ -106,7 +106,9 @@ Ubuntu也可能需要22或24，win也可能需server2022或22H2
 
 ## 快速开始
 
-> `ver/26.3` 基于 Minecraft 26.3（Folia ALPHA）。125 个 Minecraft、24 个 Paper-server 和 12 个 API 补丁已重放，服务端 Java 与测试源码编译通过。旧预发布 `26.3-9f255c1` / `26.3-c60a88e` 存在 Riceear 补丁读取错误，请勿使用；本分支已加入兼容修复及发布前空缓存 patch-only 验证。尚未完成完整服务端启动、客户端协议与实际世界生成验证，不建议用于生产服。详见 [26.3 迁移记录](docs/migration-26.3.md)。
+`ver/26.3` 使用 Java 25，目标上游为 Folia 26.3 Build 28。请从[本仓库 Releases](https://github.com/wosnxn123/Mili/releases) 下载，不要把补丁来源项目的 JAR 当作 Mili。正式发行文件名为 `mili-26.3-paperclip.jar`，普通 CI 构建不是正式版。
+
+升级前先停服，备份启动 JAR、配置和整个世界；先在副本验证存档可读并能保存重启。替换启动命令实际指向的整包，若用过自动更新，还应检查旧 `auto_update/core.path`。回滚时同时恢复升级前的世界和配置，勿让旧版打开已升级的唯一存档。旧预发布 `26.3-9f255c1`、`26.3-c60a88e` 存在启动器故障，不要使用。见[迁移与验收记录](docs/migration-26.3.md)。
 
 ### 环境要求
 
@@ -141,7 +143,7 @@ python scripts/download_launcher.py
 
 构建产物位于 `mili-server/build/libs/`：
 - `mili-paperclip-26.3-R0.1-SNAPSHOT.jar` — 可直接运行的 Paperclip JAR
-- `mili_optimizer.dll` / `.so` / `.dylib` — Rust 原生优化库（打包进 JAR）
+- 发行包内含 `mili_optimizer.dll`、`libmili_optimizer.so`、`libmili_optimizer_aarch64.so`，不要求服主安装 Rust。
 
 ### Rust 单独编译与测试
 
@@ -202,12 +204,13 @@ Mili/
 
 ## 配置系统
 
-Mili 提供两套 TOML 配置文件：
+配置相对于服务端工作目录，由 Rust JNI 读写。发行包的原生库目标为 Linux x86_64、Linux ARM64 和 Windows x86_64。
 
 | 文件 | 包路径 | 说明 |
 |------|--------|------|
-| `mili_config.toml` | `fun.bm.mili.config.modules` | 主配置，涵盖游戏机制、实验功能、修复开关 |
-| `mili_carpet_config.toml` | `fun.bm.mili.carpet.config.modules` | Carpet 兼容规则映射 |
+| `mili_config/mili_global_config.toml` | `fun.bm.mili.config.modules` | Mili 游戏机制、实验功能、修复开关 |
+| `luminol_config/luminol_global_config.toml` | `me.earthme.luminol.config.modules` | 继承的 Luminol 配置 |
+| `carpet_config/carpet_global_config.toml` | `fun.bm.mili.carpet.config.modules` | Carpet 兼容规则 |
 
 配置分类：
 

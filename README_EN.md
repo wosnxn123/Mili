@@ -103,7 +103,9 @@ Supports creating ReplayMod photographer entities for recording, with `Photograp
 
 ## Quick Start
 
-> `ver/26.3` targets Minecraft 26.3 (Folia ALPHA). All 125 Minecraft, 24 Paper-server and 12 API patches replay successfully; server Java and test sources compile. Do not use the old `26.3-9f255c1` / `26.3-c60a88e` prereleases: their Riceear patch reader fails at startup. This branch includes the compatibility fix and a fresh-cache patch-only verification before release. Full server startup, client protocols and world generation remain untested; these builds are not production-ready. See the [migration record](docs/migration-26.3.md).
+`ver/26.3` targets Folia 26.3 Build 28 and requires Java 25. Download from [this fork's Releases](https://github.com/wosnxn123/Mili/releases), not from a patch donor. The release asset is `mili-26.3-paperclip.jar`; regular CI artifacts are not stable releases.
+
+Stop the server and back up the launcher, configuration and entire world before upgrading. Test loading, saving and restarting a copy. Replace the JAR the startup command actually runs and check any existing `auto_update/core.path`. To roll back, restore the matching pre-upgrade world and configuration as well as the old launcher. Avoid `26.3-9f255c1` and `26.3-c60a88e` (broken patch reader). See the [migration and validation record](docs/migration-26.3.md).
 
 ### Requirements
 
@@ -138,7 +140,7 @@ python scripts/download_launcher.py
 
 Build artifacts in `mili-server/build/libs/`:
 - `mili-paperclip-26.3-R0.1-SNAPSHOT.jar` — runnable Paperclip JAR
-- `mili_optimizer.dll` / `.so` / `.dylib` — Rust native optimization library (packaged in JAR)
+- The release bundles `mili_optimizer.dll`, `libmili_optimizer.so` and `libmili_optimizer_aarch64.so`. Server operators do not need a Rust toolchain.
 
 ### Rust Standalone Build & Test
 
@@ -231,12 +233,13 @@ Mili/
 
 ## Configuration
 
-Mili provides two TOML config files:
+Paths are relative to the server working directory. TOML configuration requires the Rust JNI library. Release targets are Linux x86_64, Linux ARM64 and Windows x86_64.
 
 | File | Package | Description |
 |------|---------|-------------|
-| `mili_config.toml` | `fun.bm.mili.config.modules` | Main config: game mechanics, experimental features, fix toggles |
-| `mili_carpet_config.toml` | `fun.bm.mili.carpet.config.modules` | Carpet compatibility rule mappings |
+| `mili_config/mili_global_config.toml` | `fun.bm.mili.config.modules` | Game mechanics, experimental features and fixes |
+| `luminol_config/luminol_global_config.toml` | `me.earthme.luminol.config.modules` | Inherited Luminol configuration |
+| `carpet_config/carpet_global_config.toml` | `fun.bm.mili.carpet.config.modules` | Carpet compatibility rules |
 
 Config categories:
 

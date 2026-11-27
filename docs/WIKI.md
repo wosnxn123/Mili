@@ -2,7 +2,7 @@
 
 > 本文档汇总 Mili 的修复、改动与新增功能，并说明各项功能对应的实现位置与优化点。
 >
-> **适用版本**：`26.2-R0.1-SNAPSHOT`（基于 Paper → Folia 构建）
+> **适用版本**：`26.3-R0.1-SNAPSHOT`（基于 Paper → Folia 构建）
 
 ---
 
@@ -27,9 +27,8 @@ Minecraft（原版）
 ```
 
 > Mili 原为 Lophine/Luminol 的衍生分支，现已迁移为直接基于 Folia，将 Luminol 的优化源码内联合并。
-> Luminol、Hyacinthusweight 均已删库。
 
-Mili 使用 **Hyacinthusweight**（基于 paperweight）补丁系统管理多层 fork：
+26.3 使用官方 **Paperweight**；源码归属链接不等于下载或自动更新源。模块关系如下：
 
 | 模块 | 说明 |
 |------|------|
@@ -38,7 +37,7 @@ Mili 使用 **Hyacinthusweight**（基于 paperweight）补丁系统管理多层
 | `mili-api` / `mili-server` | Mili 自己的 API 与核心补丁/源码 |
 | `mili-rust` | Rust 原生优化模块 |
 
-补丁文件位于 `mili-server/minecraft-patches/features/`，共 **121 个** feature 补丁。
+当前版本实际加载的 Minecraft 功能补丁以 `mili-server/minecraft-patches/features/` 为准；另有 API、Paper-server 与构建脚本补丁，不能将资料中的历史计数视为当前清单。
 
 ---
 
@@ -47,16 +46,17 @@ Mili 使用 **Hyacinthusweight**（基于 paperweight）补丁系统管理多层
 | 项目 | 说明 |
 |------|------|
 | JDK | Java 25（toolchain + `--release 25`） |
-| 构建工具 | Gradle 9.4.1（Kotlin DSL）+ Hyacinthusweight 补丁系统 |
+| 构建工具 | Gradle 9.8.1（Kotlin DSL）+ Paperweight 2.0.0-beta.24 |
 | Rust | edition 2024，通过 `cargo build --release` 产出 JNI 原生库 |
-| 产物 | `mili-server/build/libs/mili-paperclip-26.2-R0.1-SNAPSHOT.jar` |
-| Maven 坐标 | `fun.bm.mili:mili-api:26.2-R0.1-SNAPSHOT` |
+| 产物 | `mili-server/build/libs/mili-paperclip-26.3-R0.1-SNAPSHOT.jar` |
+| Maven 坐标 | `fun.bm.mili:mili-api:26.3-R0.1-SNAPSHOT` |
 
 首次构建必须先执行：
 
 ```bash
+python -I scripts/download_launcher.py
 ./gradlew applyAllPatches --no-configuration-cache --no-build-cache
-./gradlew :mili-server:createMojmapPaperclipJar
+./gradlew :mili-server:createPaperclipJar --no-configuration-cache
 ```
 
 ---
@@ -68,8 +68,8 @@ Mili 使用 **Hyacinthusweight**（基于 paperweight）补丁系统管理多层
 | 改动 | 说明 | 位置 |
 |------|------|------|
 | 重命名为 Mili | 服务端 Mod 名、自动更新指向 `MiliMC/Mili` | `0001-Rebrand-to-Luminol.patch` |
-| 新增 Mili 全局配置 | 注册 `mili_config.toml`，命名空间 `fun.bm.mili.config.modules` | 品牌补丁 |
-| 新增 Mili Carpet 配置 | 注册 `mili_carpet_config.toml`，命名空间 `fun.bm.mili.carpet.config.modules` | 品牌补丁 |
+| 新增 Mili 全局配置 | 注册 `mili_config/mili_global_config.toml`，命名空间 `fun.bm.mili.config.modules` | 品牌补丁 |
+| 新增 Mili Carpet 配置 | 注册 `carpet_config/carpet_global_config.toml`，命名空间 `fun.bm.mili.carpet.config.modules` | 品牌补丁 |
 
 ### 4.2 关键依赖
 
@@ -213,8 +213,8 @@ overflow-checks = true     # 防止算术溢出 UB
 
 Mili 提供两套 TOML 配置文件：
 
-- **`mili_config.toml`** → 包路径 `fun.bm.mili.config.modules`
-- **`mili_carpet_config.toml`** → 包路径 `fun.bm.mili.carpet.config.modules`
+- **`mili_config/mili_global_config.toml`** → 包路径 `fun.bm.mili.config.modules`
+- **`carpet_config/carpet_global_config.toml`** → 包路径 `fun.bm.mili.carpet.config.modules`
 
 | 类别 | 代表模块 | 说明 |
 |------|----------|------|
@@ -282,7 +282,7 @@ API 事件（`org.leavesmc.leaves.event.bot`）：
 
 ## 12. 配置速查表
 
-### 12.1 主配置（`mili_config.toml`）
+### 12.1 主配置（`mili_config/mili_global_config.toml`）
 
 | 配置键 | 类型 | 说明 |
 |--------|------|------|
@@ -302,9 +302,9 @@ API 事件（`org.leavesmc.leaves.event.bot`）：
 | `optimizations.network-optimizer.enabled` | Boolean | 网络优化器 |
 | `optimizations.mmap-region-storage.enabled` | Boolean | mmap 区域存储 |
 | `fixes.update-suppression-crash-fix.enabled` | Boolean | 更新抑制崩溃修复 |
-| `misc.auto-update.enabled` | Boolean | 自动更新 |
+| `misc.auto_update.enabled` | Boolean | 默认关闭。仅从本 fork 的 26.3 正式 Release 校验并暂存。`apply_on_restart`（重启采用）与 `replace_launcher`（替换启动 JAR，另需 `target_jar_path`）需显式启用且互斥。旧 Luminol 开关不触发更新，不覆盖外部 `core.path`。 |
 
-### 12.2 Carpet 兼容配置（`mili_carpet_config.toml`）
+### 12.2 Carpet 兼容配置（`carpet_config/carpet_global_config.toml`）
 
 | 配置键 | 说明 |
 |--------|------|
@@ -318,7 +318,7 @@ API 事件（`org.leavesmc.leaves.event.bot`）：
 ## 13. 注意事项与限制
 
 1. **实验性功能**：`experiment` 类别下的 Region Balancer、Cross-Region Helper 等属于实验性优化，建议先在测试环境验证后再上线。
-2. **Rust 优化器可选**：`mili-rust` 提供加速，但若 Rust 二进制缺失，Java 侧会回退到纯 Java 实现，不影响功能正确性。
+2. **启动需要 JNI**：全局配置通过 `mili-rust` 读写。发行包为 Linux x86_64、Linux ARM64 和 Windows x86_64 携带原生库；库缺失时不能指望配置系统回退到纯 Java。
 3. **Folia 语义**：部分修复（如全局实体计数器、跨区伤害追踪）是为了在 Folia 区域模型下保持与 Paper 一致的行为，启用后请留意相关插件的兼容性。
 4. **Carpet 规则映射**：并非所有 Carpet 规则都已实现，详细状态见 [`docs/carpet-compat-status.md`](carpet-compat-status.md)。
 5. **补丁工作流**：修改 `mili-server/src/minecraft/` 后必须执行 `./gradlew :mili-server:rebuildPatches` 并提交生成的 `.patch` 文件。

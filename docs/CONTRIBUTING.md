@@ -10,7 +10,7 @@
 1. 使用个人账号 Fork 仓库并克隆到本地：
 
 ```bash
-git clone https://github.com/xucy10/Mili.git
+git clone --branch ver/26.3 https://github.com/wosnxn123/Mili.git
 cd Mili
 
 # Windows 需启用长路径
@@ -20,6 +20,7 @@ git config --global core.longpaths true
 2. 应用补丁工作树（首次构建必须执行）：
 
 ```bash
+python -I scripts/download_launcher.py
 ./gradlew applyAllPatches --no-configuration-cache --no-build-cache
 ```
 
@@ -29,20 +30,16 @@ git config --global core.longpaths true
 
 | 依赖 | 版本 | 说明 |
 |------|------|------|
-| JDK | 25+ | Mili 26.2 分支需要 Java 25，不是 JDK 21 |
-| Rust | stable (edition 2024) | 可选，编译原生优化库 |
+| JDK | 25 | 26.3 构建与运行时 |
+| Rust | stable (edition 2024) | 完整打包与测试需要；只编译 Java 可不安装 |
 | Git | 2.x | Windows 需启用长路径支持 |
 
 ## 补丁模型概览
 
-Mili 使用 **Hyacinthusweight**（基于 paperweight）补丁系统，仓库在应用补丁后生成工作树目录：
+26.3 使用官方 **Paperweight**。`mili-api/`、`mili-server/` 中的普通自有源码直接维护；`mili-server/src/minecraft/java/` 与 `paper-server/` 是生成的 Git 工作树，不直接提交到根仓库。`folia-server/` 是生成输出，不能把本地生成提交误记为 `foliaRef`。
 
-- `mili-api/` — Mili API 模块
-- `mili-server/src/minecraft/` — 服务器实现（应用 121 个 feature 补丁后的源码）
-- `folia-server/` — Folia 子模块（上游，不直接修改）
-
-这些目录中的修改通过 `.patch` 文件管理：
-- 补丁文件位于 `mili-server/minecraft-patches/features/`（121 个）
+上游源码变更通过 `.patch` 文件管理：
+- Minecraft 功能补丁位于 `mili-server/minecraft-patches/features/`
 - 每次修改源码后需要重建补丁文件
 
 ## 如何添加新补丁
@@ -98,7 +95,7 @@ cargo test --release
 这些是 `applyAllPatches` 生成的文件。必须通过 `minecraft-patches/features/` 下的补丁文件修改，修改后执行 `rebuildAllServerPatches`。
 
 **如何运行本地测试？**
-- Java：`./gradlew test`
+- Java：`./gradlew :mili-api:test :mili-server:test :mili-server:verifyLauncherPatch --no-configuration-cache`。然后运行 `python -I scripts/verify_test_results.py` 检查确实执行了测试。
 - Rust：`cd mili-rust/src/rust && cargo test --release`
 
 ## 更多帮助

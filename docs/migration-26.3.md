@@ -1,8 +1,12 @@
 # Minecraft 26.3 迁移记录
 
-状态：**26.3 已完成编译、补丁重放与 Actions 打包，但旧预发布的 Riceear 补丁读取存在启动阻断。兼容修复已通过本地真实 JAR 的空缓存 patch-only 验证，尚待新一轮 Actions 打包发布；未启动 Minecraft 或接受 EULA，不可视为生产可用版本**。
+## 正式版候选与验证边界
 
-## 分支与上游基线
+上一轮 Riceear 修复已随 [`26.3-e7c5369`](https://github.com/wosnxn123/Mili/releases/tag/26.3-e7c5369) 发布，实际下载的 JAR 通过 17 项回归所对应的 CI，以及两个补丁的空缓存重放。用户已确认现版开服成功；这不是新候选的存档、客户端协议或三平台 JNI 验收结果。
+
+本轮基线为 Folia 26.3 [Build 28](https://fill.papermc.io/v3/projects/folia/versions/26.3/builds/28) `b5c780830a3987889675871592c76668f37d88cb`，采用它指定的 Paper `827eeeb9077c4cc7231eaacb7ffcf597d4fedd9f`、Mache `26.3+build.2`，保持 Java 25 和 Paperweight beta.24。上游修复了玩家和地图自动保存、传送票和调度问题。上游的 STABLE 不代表本 fork 已经完成验收。普通 CI 不发 Release；正式包必须来自同一成功运行的 artifact，以完整提交和 JAR SHA-256 核验。
+
+## 首次迁移的上游基线（历史）
 
 - 发布分支：`ver/26.3`，基于仓库原来的 26.2 `master`；目标仓库 `wosnxn123/Mili`。本地迁移最初在 `ver/26.3.x` 进行。
 - Minecraft / API：`26.3`；Folia 上游发布通道：`ALPHA`。
@@ -102,6 +106,4 @@ Bundler 与 Paperclip 打包任务写入一致的 UTF-8 `META-INF/riceear-versio
 - 最终核对发现该 Release 的 tag 原先指向旧 `master`（`853b00bb9a84cafd1023d48129d358fb7edf61a8`），因为两条 release-action 路径均未显式传 `commit`。经用户确认，公开标签与 Release metadata 均已修正为实际构建提交 `9f255c1aa9f62406835d62799445f5050f52af97`，并在发布说明中记录标签移动；资产 ID、大小和 SHA-256 不变，`master` 未修改。
 - 两条发布路径均补入 `commit: ${{ github.sha }}`，防止未来标签回退默认分支。后续 [Mili CI](https://github.com/wosnxn123/Mili/actions/runs/43545878652) 已成功，`26.3-c60a88e` tag 与 Release metadata 均指向实际提交 `c60a88eb8a086187a175d4236df9d845ff29e614`。Qodana 仍为 303 项分析问题与 40 项 Sanity 提示。该预发布验证了标签修复，但尚未包含后来发现的 Riceear 补丁读取修复。
 
-仍需完成：
-- 将 Riceear 读取修复纳入正式 Actions 构建，确认真实产物的空缓存 patch-only 检查通过后再发布新预发布。
-- 测试执行及启动 26.3 服务端，验证假玩家、协议、红石、世界生成、Mixin 与暂存更新；未代用户接受 Minecraft EULA。
+修复版 [`26.3-e7c5369` 的 CI](https://github.com/wosnxn123/Mili/actions/runs/43549660508) 随后成功：两份实际补丁的空缓存重建及哈希匹配。下载的发布 JAR 的 SHA-256 是 `fbd5c534448e95c4ac3405d5cc2656601ba46325318ba3910745afa48b80e051`。用户随后确认现版可开服。新基线的候选需单独验收，不能沿用此结论。
