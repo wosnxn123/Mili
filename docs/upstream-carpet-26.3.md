@@ -34,6 +34,7 @@
 | 0160 | 0132 AMS | `endermanPickUpDisabled`：关闭末影人的拾方块目标，不改变可拾白名单的配置值、已携带方块放置或其他末影人判定。 |
 | 0161 | 0134 TIS | `breedingCooldownDisabled`（成年 `age=0` 不进入正值冷却）及 `snowMeltMinLightLevel`（最低方块光照 0–16，默认 12，保留 `BlockFadeEvent`）。 |
 | 0181，共享钩子 | 0134 TIS | `leaderZombieSpawnWithMaxHealthDisabled`：保留 TIS 配置名和协议值，与 Mili 的 `oldLeaderZombieHealth` 在同一个生成条件取 OR，不重复修改 Zombie，也不互相覆盖配置。 |
+| 0204 | 0134 TIS / 0135 `CarpetLargeBarrel` | `largeBarrel` 默认关闭，重启生效。仅 `barrel_rows=3`、同一已加载且归当前 Folia 线程所有的区块、背靠背且各 27 格的木桶组成真实 54 格组合（水平或竖直）。跨区块、缺少另一半或容量不符时退回既有单桶路径，不改变 Purpur 行数设置和旧档。菜单、漏斗和比较器共用配对判定；尚无完整服务器运行验证。 |
 | API 0013、Paper-server 0025 | API 0015、Paper-server 0025 | `Server#getCarpet()` / `fun.bm.mili.api.carpet.CarpetApi.get()` 查询不可变的已广播规则快照（manager、name、value）。同步读取不需要区域线程，也不授予区域所有权。握手的 NBT 字段不变；规则重载完整发布而非先清空再逐条填充。 |
 
 API 只暴露 Mili 已经广播的值，不承诺底层规则能力探测，不含 Lophine 的隐藏规则元数据，也不与其插件二进制兼容。`setRule`、默认值持久化、变更事件、Scarpet 注册和插件启停撤销**未接入**。当前实现不保存插件对象或回调，因此未增加空生命周期钩子。
@@ -57,10 +58,9 @@ API 只暴露 Mili 已经广播的值，不承诺底层规则能力探测，不�
 | --- | --- |
 | 0131 Scarpet runtime、命令、应用库、事件续体 | donor 含 `carpet.script` 表达式、主机、模块和区域/实体 continuations，并连接大量 NMS 钩子。Mili 的计算器和客户端协议不能替代 runtime；未引入 `/script`、`commandScriptACE`、本地脚本自动载入、应用库下载/安装、native actors、world/command 函数或脚本事件。后续如实现本地受限脚本，需独立审计区域 ownership、能力权限、资源配额及注销语义；不开放任意远程脚本或任意命令。 |
 | 0131–0134 共享规则/命令框架 | donor 的 rule registry、配置事件、权限动态刷新、客户端命令桥、跨区域 command continuations 和 bot 调度不是 Mili 同名配置的直接替换。`/carpet` 写操作、插件写入/持久化、脚本回调以及命令和诊断框架未移植。 |
-| 0135 `CarpetBlockRotator` | `flippinCactus`、`flippinCactusExtras`、`flippinCactusSoundEffect`、`rotatorBlock`；需先拆出 0131 放置、交互、发射器及区域写入钩子，再审计玩家权限和事件，不复制整类。 |
+| 0135 `CarpetBlockRotator`（本地追加 0205） | 已接入主手仙人掌旋转、副手反向放置、AMS 扩展方块和音效、发射器旋转。保留 Paper 的交互拒绝与发射事件；在非本区域、未加载区块或发射事件替换物品时不执行特殊旋转。四项规则默认关闭（音效 0）。不依赖 Scarpet。不属于 `85752cd` 的已验证产物。 |
 | 0135 `CarpetDragonBreathDispenseBehavior` | `dispensersFireDragonBreath` / `dispenserNoItemCost` 依赖 0134 发射器行为、容器事件、返还物品及消耗事务，未移植。 |
 | 0135 `CarpetEntityRemoval` | `creativeHitRemoveEntity` 依赖 0134 命中/移除、跨区域所有权和原有移除事件；未引入额外实体移除命令。 |
-| 0135 `CarpetLargeBarrel` | `largeBarrel` 需适配真实 54 格库存、漏斗和菜单；已有其他大容器配置不等于这个实现。 |
 | 0135 CrashReport / CrashReportCategory | `deobfuscateCrashReportStackTrace` 未移植。donor 使用 `TisStackTraces` 的 26.3 空映射重新构建堆栈帧，不做实际名称反混淆且会丢掉模块/类加载器信息；不增加只保留名字但有该副作用的开关。 |
 | 0135 `VanillaLikeExperience` 与 0136 | 独立任务；本组补丁未修改该开关或末影珍珠实现。 |
 | 权限/不受控命令 | `antiCheatDisabled`、`debugNbtQueryNoPermission`、`enchantCommandNoRestriction`、`instantCommandBlock`、`openGameRulePermission`、`openSeedPermission`、`openTpPermission`、`opPlayerNoCheat`、`perfPermissionLevel`、`preventAdministratorCheat` 不从 donor 直接引入；如需能力，先有明确授权模型并保留 Paper 权限。 |

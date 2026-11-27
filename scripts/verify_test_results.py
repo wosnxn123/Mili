@@ -6,6 +6,8 @@ required = {
     'fun.bm.mili.regression.PathRecomputationTestSuite',
     'fun.bm.mili.regression.CommandTreeEnumerationTestSuite',
     'fun.bm.mili.update.MiliAutoUpdateTestSuite',
+    'net.minecraft.world.level.block.CactusRotationTest',
+    'net.minecraft.world.level.block.CarpetLargeBarrelTest',
     'org.leavesmc.leaves.plugin.ServerFeatureManagerTest',
     'org.leavesmc.leaves.protocol.servux.litematics.LitematicaSchematicTest',
 }

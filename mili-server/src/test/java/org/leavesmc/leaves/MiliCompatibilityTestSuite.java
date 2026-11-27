@@ -6,6 +6,7 @@ import org.leavesmc.leaves.plugin.ServerFeatureManagerTest;
 import org.leavesmc.leaves.protocol.servux.litematics.LitematicaSchematicTest;
 
 @Suite
-@SelectClasses({LitematicaSchematicTest.class, ServerFeatureManagerTest.class})
+@SelectClasses(value = {LitematicaSchematicTest.class, ServerFeatureManagerTest.class, net.minecraft.world.level.block.CactusRotationTest.class},
+        names = "net.minecraft.world.level.block.CarpetLargeBarrelTest")
 public class MiliCompatibilityTestSuite {
 }

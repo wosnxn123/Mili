@@ -292,6 +292,18 @@ public class GeneralCompatConfig implements IConfigModule {
     @ConfigInfo(name = "snowMeltMinLightLevel", comments = "雪层融化所需最低方块光照。12 为原版，16 禁用光照融化。")
     public static volatile int snowMeltMinLightLevel = 12;
 
+    @ConfigInfo(name = "flippinCactus", comments = "主手仙人掌右键旋转支持的方块，副手仙人掌反转放置方向。")
+    public static volatile boolean flippinCactus = false;
+
+    @ConfigInfo(name = "flippinCactusExtras", comments = "仙人掌也可旋转木桶、合成器、雕纹书架和置物架。")
+    public static volatile boolean flippinCactusExtras = false;
+
+    @ConfigInfo(name = "flippinCactusSoundEffect", comments = "旋转音效：0 关闭，1–5 为 AMS 音效。")
+    public static volatile int flippinCactusSoundEffect = 0;
+
+    @ConfigInfo(name = "rotatorBlock", comments = "装有仙人掌的发射器旋转前方方块，不消耗仙人掌。")
+    public static volatile boolean rotatorBlock = false;
+
     @ConfigInfo(name = "noCreeperBlockBreaking", comments = "苦力怕的爆炸不破坏方块，保留爆炸事件和实体伤害。")
     public static volatile boolean noCreeperBlockBreaking = false;
 
@@ -303,6 +315,10 @@ public class GeneralCompatConfig implements IConfigModule {
 
     @ConfigInfo(name = "disableBlazeFire", comments = "阻止生物发射的小火球点燃方块，不改发射器火球。")
     public static volatile boolean disableBlazeFire = false;
+
+    @me.earthme.luminol.config.flags.HotReloadUnsupported
+    @ConfigInfo(name = "largeBarrel", comments = "启用同一区块内、背靠背且各有 27 格的木桶配对。仅 barrel_rows 为 3 时有效；修改此开关需重启。")
+    public static volatile boolean largeBarrel = false;
 
     public static int normalizedSnowMeltMinLightLevel() {
         return Math.clamp(snowMeltMinLightLevel, 0, 16);

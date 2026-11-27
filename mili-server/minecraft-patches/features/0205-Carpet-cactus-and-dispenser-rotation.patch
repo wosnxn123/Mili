@@ -1,0 +1,369 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Tue, 23 Jun 2026 03:06:41 +0800
+Subject: [PATCH] Carpet: cactus rotation and dispenser rotators
+
+Ported from Lophine 0131 / 0135 at 7a51f49a512f1b5465f15a905d3704754e4bed02.
+Adapted from gnembon/fabric-carpet f358000b175ddbcf1dd0bc59641c715fb0545664
+(carpet.helpers.BlockRotator, LGPL-3.0-only). Keep the original notice.
+Preserve Paper interaction and dispense cancellation and Folia ownership.
+
+diff --git a/net/minecraft/core/Direction.java b/net/minecraft/core/Direction.java
+index 8172b0741cf9993f193015a58d2beca13112384b..5d7c2387fce5b2504ec3b5769b87901187b93589 100644
+--- a/net/minecraft/core/Direction.java
++++ b/net/minecraft/core/Direction.java
+@@ -135,8 +135,9 @@ public enum Direction implements Directional, StringRepresentable, ca.spottedlea
+     }
+ 
+     public static Direction[] orderedByNearest(final Entity entity) {
+-        float pitch = entity.getViewXRot(1.0F) * Mth.DEG_TO_RAD;
+-        float yaw = -(fun.bm.mili.carpet.config.modules.GeneralCompatConfig.placementRotationFix ? entity.getYRot(1.0F) : entity.getViewYRot(1.0F)) * Mth.DEG_TO_RAD;
++        boolean flipped = net.minecraft.world.level.block.CarpetBlockRotator.flippinEligibility(entity);
++        float pitch = entity.getViewXRot(1.0F) * (flipped ? -Mth.DEG_TO_RAD : Mth.DEG_TO_RAD);
++        float yaw = -((fun.bm.mili.carpet.config.modules.GeneralCompatConfig.placementRotationFix ? entity.getYRot(1.0F) : entity.getViewYRot(1.0F)) + (flipped ? 180.0F : 0.0F)) * Mth.DEG_TO_RAD;
+         float pitchSin = Mth.sin(pitch);
+         float pitchCos = Mth.cos(pitch);
+         float yawSin = Mth.sin(yaw);
+diff --git a/net/minecraft/server/level/ServerPlayerGameMode.java b/net/minecraft/server/level/ServerPlayerGameMode.java
+index 5ae6f76181fb6a69068533ae129510364e1546f4..432aa01d267b5b9f3dfb918b8687b70f380096d8 100644
+--- a/net/minecraft/server/level/ServerPlayerGameMode.java
++++ b/net/minecraft/server/level/ServerPlayerGameMode.java
+@@ -622,7 +622,8 @@ public class ServerPlayerGameMode {
+             boolean suppressUsingBlock = player.isSecondaryUseActive() && haveSomethingInOurHands;
+             ItemStack usedItemStack = itemStack.copy();
+             if (!suppressUsingBlock) {
+-                InteractionResult itemUse = state.useItemOn(player.getItemInHand(hand), level, player, hand, hitResult);
++                InteractionResult itemUse = !this.interactResult && net.minecraft.world.level.block.CarpetBlockRotator.flipBlockWithCactus(state, level, player, hand, hitResult)
++                    ? InteractionResult.SUCCESS : state.useItemOn(player.getItemInHand(hand), level, player, hand, hitResult);
+                 if (itemUse.consumesAction()) {
+                     CriteriaTriggers.ITEM_USED_ON_BLOCK.trigger(player, pos, usedItemStack);
+                     return itemUse;
+diff --git a/net/minecraft/world/item/context/UseOnContext.java b/net/minecraft/world/item/context/UseOnContext.java
+index 250f1d7c4fd56d3d50e3ae7561b17b49d959c7b2..69641bfb04301a28c6b104d50b6d9f3e654b5465 100644
+--- a/net/minecraft/world/item/context/UseOnContext.java
++++ b/net/minecraft/world/item/context/UseOnContext.java
+@@ -68,7 +68,8 @@ public class UseOnContext {
+     }
+ 
+     public Direction getHorizontalDirection() {
+-        return this.player == null ? Direction.NORTH : this.player.getDirection();
++        Direction direction = this.player == null ? Direction.NORTH : this.player.getDirection();
++        return net.minecraft.world.level.block.CarpetBlockRotator.flippinEligibility(this.player) ? direction.getOpposite() : direction;
+     }
+ 
+     public boolean isSecondaryUseActive() {
+diff --git a/net/minecraft/world/level/block/CarpetBlockRotator.java b/net/minecraft/world/level/block/CarpetBlockRotator.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..28858251a3c8841fbe22ffe2ff00195b42e87978
+--- /dev/null
++++ b/net/minecraft/world/level/block/CarpetBlockRotator.java
+@@ -0,0 +1,268 @@
++// SPDX-License-Identifier: LGPL-3.0-only
++// Adapted from gnembon/fabric-carpet f358000b175ddbcf1dd0bc59641c715fb0545664, carpet.helpers.BlockRotator.
++package net.minecraft.world.level.block;
++
++import net.minecraft.core.BlockPos;
++import net.minecraft.core.Direction;
++import net.minecraft.core.dispenser.BlockSource;
++import net.minecraft.core.dispenser.DispenseItemBehavior;
++import net.minecraft.core.dispenser.OptionalDispenseItemBehavior;
++import net.minecraft.world.InteractionHand;
++import net.minecraft.world.entity.Entity;
++import net.minecraft.world.entity.player.Player;
++import net.minecraft.world.item.ItemStack;
++import net.minecraft.world.item.Items;
++import net.minecraft.world.level.Level;
++import net.minecraft.world.level.block.BaseRailBlock;
++import net.minecraft.world.level.block.BedBlock;
++import net.minecraft.world.level.block.Block;
++import net.minecraft.world.level.block.Blocks;
++import net.minecraft.world.level.block.DirectionalBlock;
++import net.minecraft.world.level.block.DispenserBlock;
++import net.minecraft.world.level.block.EndRodBlock;
++import net.minecraft.world.level.block.HopperBlock;
++import net.minecraft.world.level.block.HorizontalDirectionalBlock;
++import net.minecraft.world.level.block.ObserverBlock;
++import net.minecraft.world.level.block.RotatedPillarBlock;
++import net.minecraft.world.level.block.Rotation;
++import net.minecraft.world.level.block.SlabBlock;
++import net.minecraft.world.level.block.StairBlock;
++import net.minecraft.world.level.block.piston.PistonBaseBlock;
++import net.minecraft.world.level.block.piston.PistonStructureResolver;
++import net.minecraft.world.level.block.state.BlockState;
++import net.minecraft.world.level.block.state.properties.Half;
++import net.minecraft.world.level.block.state.properties.SlabType;
++import net.minecraft.world.phys.BlockHitResult;
++import net.minecraft.world.phys.Vec3;
++import fun.bm.mili.carpet.config.modules.GeneralCompatConfig;
++import fun.bm.mili.carpet.InteractionUpdateCompatHelper;
++
++public class CarpetBlockRotator
++{
++    private static void carpetPlayFlipSound(Player player, Level world) {
++        int effect = GeneralCompatConfig.flippinCactusSoundEffect;
++        if (effect < 1 || effect > 5) return;
++        net.minecraft.sounds.SoundEvent sound = switch (effect) {
++            case 4 -> net.minecraft.sounds.SoundEvents.VILLAGER_AMBIENT;
++            case 5 -> net.minecraft.sounds.SoundEvents.ENDERMAN_TELEPORT;
++            default -> net.minecraft.sounds.SoundEvents.LEVER_CLICK;
++        };
++        float pitch = switch (effect) {
++            case 1 -> 0.95F;
++            case 2 -> 2.5F;
++            case 3 -> 0.75F;
++            default -> 1.0F;
++        };
++        world.playSound(null, player.blockPosition(), sound, net.minecraft.sounds.SoundSource.BLOCKS, 1.0F, pitch);
++    }
++
++    private static <T extends Comparable<T>, V extends T> BlockState carpetFlipValue(
++        BlockState state, net.minecraft.world.level.block.state.properties.Property<T> property, V value, Player player, Level world
++    ) {
++        // AMS injects immediately before the original setValue invocation, after its arguments are read.
++        if (GeneralCompatConfig.flippinCactus && GeneralCompatConfig.flippinCactusSoundEffect != 0) carpetPlayFlipSound(player, world);
++        return state.setValue(property, value);
++    }
++
++    public static boolean flipBlockWithCactus(BlockState state, Level world, Player player, InteractionHand hand, BlockHitResult hit)
++    {
++        if (!GeneralCompatConfig.flippinCactus || hand != InteractionHand.MAIN_HAND || !player.getAbilities().mayBuild
++            || !playerHoldsCactusMainhand(player) || !ownedAndLoaded(world, hit.getBlockPos(), 1) || !world.mayInteract(player, hit.getBlockPos()))
++        {
++            return false;
++        }
++        return InteractionUpdateCompatHelper.supplyWithSuppressedUpdates(() -> flipBlock(state, world, player, hand, hit));
++    }
++
++    private static boolean ownedAndLoaded(Level level, BlockPos pos, int radius) {
++        if (!(level instanceof net.minecraft.server.level.ServerLevel world)
++            || !ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(world, pos, radius)) return false;
++        return world.hasChunksAt(pos.getX() - radius, pos.getZ() - radius, pos.getX() + radius, pos.getZ() + radius);
++    }
++
++    private static ItemStack dispenserRotate(BlockSource source, ItemStack stack)
++    {
++        Direction sourceFace = source.state().getValue(DispenserBlock.FACING);
++        Level world = source.level();
++        BlockPos blockpos = source.pos().relative(sourceFace); // offset
++        if (!ownedAndLoaded(world, blockpos, 1)) return stack;
++        BlockState blockstate = world.getBlockState(blockpos);
++        if (blockstate.getBlock() instanceof PistonBaseBlock && !ownedAndLoaded(world, blockpos, PistonStructureResolver.MAX_PUSH_DEPTH + 2)) return stack;
++        Block block = blockstate.getBlock();
++
++        // Block rotation for blocks that can be placed in all 6 or 4 rotations.
++        if (block instanceof DirectionalBlock || block instanceof DispenserBlock)
++        {
++            Direction face = blockstate.getValue(DirectionalBlock.FACING);
++            if (block instanceof PistonBaseBlock && (
++                    blockstate.getValue(PistonBaseBlock.EXTENDED)
++                    || ( ((PistonBaseBlock)block).carpetHasNeighborSignal(world, blockpos, face) && (new PistonStructureResolver(world, blockpos, face, true)).resolve() )
++                    )
++            )
++            {
++                return stack;
++            }
++
++            Direction rotatedFace = face.getClockWise(sourceFace.getAxis());
++            if (sourceFace.get3DDataValue() % 2 == 0 || rotatedFace == face)
++            {   // Flip to make blocks always rotate clockwise relative to the dispenser
++                // when index is equal to zero. when index is equal to zero the dispenser is in the opposite direction.
++                rotatedFace = rotatedFace.getOpposite();
++            }
++            world.setBlock(blockpos, blockstate.setValue(DirectionalBlock.FACING, rotatedFace), 3);
++        }
++        else if (block instanceof HorizontalDirectionalBlock) // Block rotation for blocks that can be placed in only 4 horizontal rotations.
++        {
++            if (block instanceof BedBlock)
++                return stack;
++            Direction face = blockstate.getValue(HorizontalDirectionalBlock.FACING).getClockWise(Direction.Axis.Y);
++
++            if (sourceFace == Direction.DOWN)
++            { // same as above.
++                face = face.getOpposite();
++            }
++            world.setBlock(blockpos, blockstate.setValue(HorizontalDirectionalBlock.FACING, face), 3);
++        }
++        else if (block == Blocks.HOPPER)
++        {
++            Direction face = blockstate.getValue(HopperBlock.FACING);
++            if (face != Direction.DOWN)
++            {
++                face = face.getClockWise(Direction.Axis.Y);
++                world.setBlock(blockpos, blockstate.setValue(HopperBlock.FACING, face), 3);
++            }
++        }
++        // Send block update to the block that just have been rotated.
++        world.neighborChanged(blockpos, block, null);
++
++        return stack;
++    }
++
++    static boolean flipBlock(BlockState state, Level world, Player player, InteractionHand hand, BlockHitResult hit)
++    {
++        Block block = state.getBlock();
++        BlockPos pos = hit.getBlockPos();
++        Vec3 hitVec = hit.getLocation().subtract(pos.getX(), pos.getY(), pos.getZ());
++        Direction facing = hit.getDirection();
++        BlockState newState = null;
++        // AMS extras run before the standard horizontal rotation branches.
++        if (GeneralCompatConfig.flippinCactusExtras && GeneralCompatConfig.flippinCactus) {
++            if (block instanceof BarrelBlock) {
++                newState = state.setValue(BarrelBlock.FACING, state.getValue(BarrelBlock.FACING).getOpposite());
++            } else if (block instanceof CrafterBlock) {
++                newState = state.rotate(Rotation.CLOCKWISE_180);
++            } else if (block instanceof ChiseledBookShelfBlock) {
++                newState = state.setValue(HorizontalDirectionalBlock.FACING, state.getValue(HorizontalDirectionalBlock.FACING).getOpposite());
++            } else if (block instanceof ShelfBlock) {
++                Direction oldDirection = state.getValue(HorizontalDirectionalBlock.FACING);
++                Direction newDirection = oldDirection.getAxis().isHorizontal() ? oldDirection.getClockWise() : oldDirection.getOpposite();
++                newState = state.setValue(HorizontalDirectionalBlock.FACING, newDirection);
++            }
++            if (newState != null) {
++                world.setBlock(pos, newState, Block.UPDATE_CLIENTS | 1024);
++                world.setBlocksDirty(pos, state, newState);
++                carpetPlayFlipSound(player, world);
++                return true;
++            }
++        }
++        if ((block instanceof HorizontalDirectionalBlock || block instanceof BaseRailBlock) && !(block instanceof BedBlock))
++        {
++            newState = state.rotate(Rotation.CLOCKWISE_90);
++        }
++        else if (block instanceof ObserverBlock || block instanceof EndRodBlock)
++        {
++            newState = carpetFlipValue(state, DirectionalBlock.FACING, state.getValue(DirectionalBlock.FACING).getOpposite(), player, world);
++        }
++        else if (block instanceof DispenserBlock)
++        {
++            newState = carpetFlipValue(state, DispenserBlock.FACING, state.getValue(DispenserBlock.FACING).getOpposite(), player, world);
++        }
++        else if (block instanceof PistonBaseBlock)
++        {
++            if (!(state.getValue(PistonBaseBlock.EXTENDED)))
++                newState = carpetFlipValue(state, DirectionalBlock.FACING, state.getValue(DirectionalBlock.FACING).getOpposite(), player, world);
++        }
++        else if (block instanceof SlabBlock)
++        {
++            if (state.getValue(SlabBlock.TYPE) != SlabType.DOUBLE)
++            {
++                newState = carpetFlipValue(state, SlabBlock.TYPE, state.getValue(SlabBlock.TYPE) == SlabType.TOP ? SlabType.BOTTOM : SlabType.TOP, player, world);
++            }
++        }
++        else if (block instanceof HopperBlock)
++        {
++            if (state.getValue(HopperBlock.FACING) != Direction.DOWN)
++            {
++                newState = carpetFlipValue(state, HopperBlock.FACING, state.getValue(HopperBlock.FACING).getClockWise(), player, world);
++            }
++        }
++        else if (block instanceof StairBlock)
++        {
++            if ((facing == Direction.UP && hitVec.y == 1.0f) || (facing == Direction.DOWN && hitVec.y == 0.0f))
++            {
++                newState = carpetFlipValue(state, StairBlock.HALF, state.getValue(StairBlock.HALF) == Half.TOP ? Half.BOTTOM : Half.TOP , player, world);
++            }
++            else
++            {
++                boolean turnCounterClockwise = switch (facing) {
++                    case NORTH ->  (hitVec.x <= 0.5);
++                    case SOUTH -> !(hitVec.x <= 0.5);
++                    case EAST  ->  (hitVec.z <= 0.5);
++                    case WEST  -> !(hitVec.z <= 0.5);
++                    default    -> false;
++                };
++                newState = state.rotate(turnCounterClockwise ? Rotation.COUNTERCLOCKWISE_90 : Rotation.CLOCKWISE_90);
++            }
++        }
++        else if (block instanceof RotatedPillarBlock)
++        {
++            newState = carpetFlipValue(state, RotatedPillarBlock.AXIS, switch (state.getValue(RotatedPillarBlock.AXIS)) {
++                case X -> Direction.Axis.Z;
++                case Y -> Direction.Axis.X;
++                case Z -> Direction.Axis.Y;
++            }, player, world);
++        }
++        if (newState != null)
++        {
++            world.setBlock(pos, newState, Block.UPDATE_CLIENTS | 1024); // no constant matching 1024 in Block, what does this do?
++            world.setBlocksDirty(pos, state, newState);
++            return true;
++        }
++        return false;
++    }
++
++    private static boolean playerHoldsCactusMainhand(Player playerIn)
++    {
++        return playerIn.getMainHandItem().getItem() == Items.CACTUS;
++    }
++
++    public static boolean flippinEligibility(Entity entity)
++    {
++        return GeneralCompatConfig.flippinCactus && entity instanceof Player p && p.getOffhandItem().getItem() == Items.CACTUS;
++    }
++
++    public static class CactusDispenserBehaviour extends OptionalDispenseItemBehavior implements DispenseItemBehavior
++    {
++        @Override
++        protected ItemStack execute(BlockSource source, ItemStack stack)
++        {
++            if (GeneralCompatConfig.rotatorBlock)
++            {
++                org.bukkit.event.block.BlockDispenseEvent event = new org.bukkit.event.block.BlockDispenseEvent(
++                    org.bukkit.craftbukkit.block.CraftBlock.at(source.level(), source.pos()),
++                    org.bukkit.craftbukkit.inventory.CraftItemStack.asBukkitCopy(stack), new org.bukkit.util.Vector());
++                if (!event.callEvent() || !event.getItem().equals(org.bukkit.craftbukkit.inventory.CraftItemStack.asBukkitCopy(stack))
++                    || source.blockEntity().isRemoved() || source.level().getBlockEntity(source.pos()) != source.blockEntity()
++                    || source.level().getBlockState(source.pos()) != source.state()) {
++                    this.setSuccess(false);
++                    return stack;
++                }
++                return CarpetBlockRotator.dispenserRotate(source, stack);
++            }
++            else
++            {
++                return super.execute(source, stack);
++            }
++        }
++    }
++}
+diff --git a/net/minecraft/world/level/block/DispenserBlock.java b/net/minecraft/world/level/block/DispenserBlock.java
+index 152d037d7717e1364dcb8b3dfb518cd90b52dd32..7879bafd54bb0c61e403a10deaa20d54001bcdb2 100644
+--- a/net/minecraft/world/level/block/DispenserBlock.java
++++ b/net/minecraft/world/level/block/DispenserBlock.java
+@@ -111,6 +111,9 @@ public class DispenserBlock extends BaseEntityBlock {
+             return DEFAULT_BEHAVIOR;
+         }
+ 
++        if (fun.bm.mili.carpet.config.modules.GeneralCompatConfig.rotatorBlock && itemStack.is(net.minecraft.world.item.Items.CACTUS)) {
++            return new CarpetBlockRotator.CactusDispenserBehaviour();
++        }
+         DispenseItemBehavior behavior = DISPENSER_REGISTRY.get(itemStack.getItem());
+         return behavior != null ? behavior : getDefaultDispenseMethod(itemStack);
+     }
+diff --git a/net/minecraft/world/level/block/HopperBlock.java b/net/minecraft/world/level/block/HopperBlock.java
+index c4ed52e9ebd91f093c8feec661a58b70e99156e3..dec3414a85e26358a3d4dd9e00a75bf896cb6b1b 100644
+--- a/net/minecraft/world/level/block/HopperBlock.java
++++ b/net/minecraft/world/level/block/HopperBlock.java
+@@ -76,6 +76,7 @@ public class HopperBlock extends BaseEntityBlock implements org.leavesmc.leaves.
+     @Override
+     public BlockState getStateForPlacement(final BlockPlaceContext context) {
+         Direction direction = context.getClickedFace().getOpposite();
++        if (CarpetBlockRotator.flippinEligibility(context.getPlayer())) direction = direction.getOpposite();
+         return this.defaultBlockState().setValue(FACING, direction.getAxis() == Direction.Axis.Y ? Direction.DOWN : direction).setValue(ENABLED, true);
+     }
+ 
+diff --git a/net/minecraft/world/level/block/piston/PistonBaseBlock.java b/net/minecraft/world/level/block/piston/PistonBaseBlock.java
+index 360967cae29cd3f54c7dc498a8d95148dafef653..c2e8ea2b2e5483a64c75871531bb7bc6945cbe17 100644
+--- a/net/minecraft/world/level/block/piston/PistonBaseBlock.java
++++ b/net/minecraft/world/level/block/piston/PistonBaseBlock.java
+@@ -115,6 +115,10 @@ public class PistonBaseBlock extends DirectionalBlock {
+         }
+     }
+ 
++    public boolean carpetHasNeighborSignal(final SignalGetter level, final BlockPos pos, final Direction pushDirection) {
++        return this.getNeighborSignal(level, pos, pushDirection);
++    }
++
+     private boolean getNeighborSignal(final SignalGetter level, final BlockPos pos, final Direction pushDirection) {
+         for (Direction direction : DIRECTIONS) {
+             if (direction != pushDirection && level.hasSignal(pos.relative(direction), direction)) {

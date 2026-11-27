@@ -5,6 +5,10 @@ Minecraft feature patches 0131–0135; read-only API derived from API 0015 and
 Paper-server 0025. These patches identify Bacteriawa as their author.
 The 0135 renewable coral helper retains its LGPL-3.0-or-later source notice
 and its attribution to Fabric Carpet's FertilizableCoral and FeatureGenerator.
+The cactus rotation and dispenser behavior retain their LGPL-3.0-only
+source notice, based on gnembon/fabric-carpet revision
+f358000b175ddbcf1dd0bc59641c715fb0545664 (carpet.helpers.BlockRotator),
+via Lophine 0131 and 0135.
 The Lophine integration is distributed under GPL version 3 (see the project's
 LICENSE.md and licenses/GPL.md).
 

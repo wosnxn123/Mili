@@ -180,10 +180,15 @@ public final class CarpetCompatSync {
         rules.add(CarpetServerProtocol.CarpetRule.of("carpettisaddition", "breedingCooldownDisabled", GeneralCompatConfig.breedingCooldownDisabled));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpettisaddition", "snowMeltMinLightLevel", GeneralCompatConfig.normalizedSnowMeltMinLightLevel()));
 
+        rules.add(CarpetServerProtocol.CarpetRule.of("carpet", "flippinCactus", GeneralCompatConfig.flippinCactus));
+        rules.add(CarpetServerProtocol.CarpetRule.of("carpetamsaddition", "flippinCactusExtras", GeneralCompatConfig.flippinCactusExtras));
+        rules.add(CarpetServerProtocol.CarpetRule.of("carpetamsaddition", "flippinCactusSoundEffect", GeneralCompatConfig.flippinCactusSoundEffect));
+        rules.add(CarpetServerProtocol.CarpetRule.of("carpet", "rotatorBlock", GeneralCompatConfig.rotatorBlock));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpet", "noCreeperBlockBreaking", GeneralCompatConfig.noCreeperBlockBreaking));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpet", "noGhastBlockBreaking", GeneralCompatConfig.noGhastBlockBreaking));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpet", "disableGhastFire", GeneralCompatConfig.disableGhastFire));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpet", "disableBlazeFire", GeneralCompatConfig.disableBlazeFire));
+        rules.add(CarpetServerProtocol.CarpetRule.of("carpettisaddition", "largeBarrel", GeneralCompatConfig.largeBarrel));
         CarpetServerProtocol.CarpetRules.replace(rules);
     }
 }

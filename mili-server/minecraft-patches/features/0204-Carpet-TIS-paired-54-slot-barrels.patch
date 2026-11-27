@@ -1,0 +1,465 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Tue, 23 Jun 2026 03:06:41 +0800
+Subject: [PATCH] Carpet TIS paired 54-slot barrels
+
+Adapted from LophineLabs/Lophine 0134 and 0135 (7a51f49a512f1b5465f15a905d3704754e4bed02).
+The shared helper derives from Fallen_Breath and Carpet TIS Addition contributors
+(LGPL-3.0-or-later, 62c3cb6fff26cd9c4e12aa616b403c184a4a6ca0).
+Keep the two original barrel inventories on disk and apply the same pair
+resolution to menus, hoppers and comparator signals.
+
+diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
+index 5342ea3e0543ead0a9af20f81549f74e84efd172..02fc24b129bb5124dac2a0bcc5c9ce8572062d1e 100644
+--- a/net/minecraft/world/level/Level.java
++++ b/net/minecraft/world/level/Level.java
+@@ -1190,6 +1190,16 @@
+                 if (!this.isClientSide() && blockState.hasAnalogOutputSignal()) {
+                     this.updateNeighbourForOutputSignal(pos, blockState.getBlock());
+                 }
++                if (net.minecraft.world.level.block.CarpetLargeBarrel.pairingEnabled()) {
++                    // Refresh the old and new partner when this barrel is removed, placed or rotated.
++                    boolean wasBarrel = oldState.getBlock() instanceof net.minecraft.world.level.block.BarrelBlock;
++                    boolean isBarrel = blockState.getBlock() instanceof net.minecraft.world.level.block.BarrelBlock;
++                    if (wasBarrel != isBarrel || wasBarrel && oldState.getValue(net.minecraft.world.level.block.BarrelBlock.FACING)
++                        != blockState.getValue(net.minecraft.world.level.block.BarrelBlock.FACING)) {
++                        net.minecraft.world.level.block.CarpetLargeBarrel.updatePartnerComparators(this, pos, oldState);
++                        net.minecraft.world.level.block.CarpetLargeBarrel.updatePartnerComparators(this, pos, blockState);
++                    }
++                }
+             }
+ 
+             if (!skipUpdates && (updateFlags & Block.UPDATE_KNOWN_SHAPE) == 0 && updateLimit > 0) {
+diff --git a/net/minecraft/world/level/block/BarrelBlock.java b/net/minecraft/world/level/block/BarrelBlock.java
+index e327275c3d7ffc0185204674f423f9b48a06f03b..b5e15ffdc7cc01c4b42d12c10233813797b375cc 100644
+--- a/net/minecraft/world/level/block/BarrelBlock.java
++++ b/net/minecraft/world/level/block/BarrelBlock.java
+@@ -7,6 +7,7 @@
+ import net.minecraft.util.RandomSource;
+ import net.minecraft.world.Containers;
+ import net.minecraft.world.InteractionResult;
++import net.minecraft.world.MenuProvider;
+ import net.minecraft.world.entity.monster.piglin.PiglinAi;
+ import net.minecraft.world.entity.player.Player;
+ import net.minecraft.world.inventory.AbstractContainerMenu;
+@@ -36,12 +37,21 @@
+     protected InteractionResult useWithoutItem(
+         final BlockState state, final Level level, final BlockPos pos, final Player player, final BlockHitResult hitResult
+     ) {
+-        if (level instanceof ServerLevel serverLevel && level.getBlockEntity(pos) instanceof BarrelBlockEntity barrelBlockEntity && player.openMenu(barrelBlockEntity).isPresent()) { // Paper - Fix InventoryOpenEvent cancellation
+-            player.awardStat(Stats.OPEN_BARREL);
+-            PiglinAi.angerNearbyPiglins(serverLevel, player, true);
++        if (level instanceof ServerLevel serverLevel) {
++            MenuProvider menu = CarpetLargeBarrel.pairingEnabled() ? CarpetLargeBarrel.getMenuProvider(level, pos)
++                : level.getBlockEntity(pos) instanceof BarrelBlockEntity barrel ? barrel : null;
++            if (menu != null && player.openMenu(menu).isPresent()) { // Paper - Fix InventoryOpenEvent cancellation
++                player.awardStat(Stats.OPEN_BARREL);
++                PiglinAi.angerNearbyPiglins(serverLevel, player, true);
++            }
+         }
+ 
+         return InteractionResult.SUCCESS;
++    }
++
++    @Override
++    public @Nullable MenuProvider getMenuProvider(final BlockState state, final Level level, final BlockPos pos) {
++        return CarpetLargeBarrel.pairingEnabled() ? CarpetLargeBarrel.getMenuProvider(level, pos) : super.getMenuProvider(state, level, pos);
+     }
+ 
+     // Leaves start - behaviour 1.21.1-
+@@ -77,6 +87,9 @@
+ 
+     @Override
+     protected int getAnalogOutputSignal(final BlockState state, final Level level, final BlockPos pos, final Direction direction) {
++        if (CarpetLargeBarrel.pairingEnabled()) {
++            return AbstractContainerMenu.getRedstoneSignalFromContainer(CarpetLargeBarrel.getContainer(level, pos));
++        }
+         return AbstractContainerMenu.getRedstoneSignalFromBlockEntity(level.getBlockEntity(pos));
+     }
+ 
+diff --git a/net/minecraft/world/level/block/entity/BarrelBlockEntity.java b/net/minecraft/world/level/block/entity/BarrelBlockEntity.java
+index cb255428e2b4219edab25de629139ae24ebdd275..8dc3188d40d121e00df1babd3423345d8660bdaa 100644
+--- a/net/minecraft/world/level/block/entity/BarrelBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/BarrelBlockEntity.java
+@@ -87,7 +87,8 @@
+         public boolean isOwnContainer(final Player player) {
+             if (player.containerMenu instanceof ChestMenu) {
+                 Container container = ((ChestMenu)player.containerMenu).getContainer();
+-                return container == BarrelBlockEntity.this;
++                return container == BarrelBlockEntity.this
++                    || container instanceof net.minecraft.world.level.block.CarpetLargeBarrel.Pair pair && pair.contains(BarrelBlockEntity.this);
+             } else {
+                 return false;
+             }
+diff --git a/net/minecraft/world/level/block/entity/BlockEntity.java b/net/minecraft/world/level/block/entity/BlockEntity.java
+index 514a37cc759c229e04d347329e713cb0f794456f..7aae30c061beff635f6a35d687dc904595dbede7 100644
+--- a/net/minecraft/world/level/block/entity/BlockEntity.java
++++ b/net/minecraft/world/level/block/entity/BlockEntity.java
+@@ -236,6 +236,10 @@
+         level.blockEntityChanged(worldPosition);
+         if (!blockState.isAir()) {
+             level.updateNeighbourForOutputSignal(worldPosition, blockState.getBlock());
++            if (blockState.getBlock() instanceof net.minecraft.world.level.block.BarrelBlock
++                && net.minecraft.world.level.block.CarpetLargeBarrel.pairingEnabled()) {
++                net.minecraft.world.level.block.CarpetLargeBarrel.updatePartnerComparators(level, worldPosition, blockState);
++            }
+         }
+     }
+ 
+diff --git a/net/minecraft/world/level/block/entity/HopperBlockEntity.java b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+index 8957f82c4824ab4346b4e8fcc52f8d4eafecdbae..29abbca6c61487be5e1729a5244e1e484beb4720 100644
+--- a/net/minecraft/world/level/block/entity/HopperBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+@@ -19,7 +19,9 @@
+ import net.minecraft.world.inventory.HopperMenu;
+ import net.minecraft.world.item.ItemStack;
+ import net.minecraft.world.level.Level;
++import net.minecraft.world.level.block.BarrelBlock;
+ import net.minecraft.world.level.block.Block;
++import net.minecraft.world.level.block.CarpetLargeBarrel;
+ import net.minecraft.world.level.block.ChestBlock;
+ import net.minecraft.world.level.block.HopperBlock;
+ import net.minecraft.world.level.block.state.BlockState;
+@@ -297,6 +299,7 @@
+         io.papermc.paper.threadedregions.RegionizedWorldData worldData = level.getCurrentWorldData(); // Folia - region threading
+         worldData.skipPushModeEventFire = worldData.skipHopperEvents; // Folia - region threading
+         final long disallowedSlots = callPrepareTransferEvent(level, hopper, destination, true); // Paper - Add PrepareHopperTransferEvent
++        if (!validBarrelPair(destination)) return false;
+         boolean foundItem = false;
+         for (int i = 0; i < hopper.getContainerSize(); ++i) {
+             if (isSlotDisallowed(disallowedSlots, i)) continue; // Paper - Add PrepareHopperTransferEvent
+@@ -320,6 +323,10 @@
+                     }
+                 }
+ 
++                if (!validBarrelPair(destination)) {
++                    origItemStack.setCount(originalItemCount);
++                    return false;
++                }
+                 final ItemStack remainingItem = addItem(hopper, destination, movedItem, direction);
+                 final int remainingItemCount = remainingItem.getCount();
+                 if (remainingItemCount != movedItemCount) {
+@@ -366,6 +373,7 @@
+                     return true;
+                 }
+             }
++            if (!validBarrelPair(container)) return false;
+             final int toRemove = Math.min(movedItem.getCount(), container.getItem(i).getCount());
+             final ItemStack remainingItem = addItem(container, hopper, container.removeItem(i, toRemove), null);
+             final int remainingItemCount = remainingItem.getCount();
+@@ -399,6 +407,10 @@
+                 }
+             }
+ 
++            if (!validBarrelPair(container)) {
++                origItemStack.setCount(originalItemCount);
++                return false;
++            }
+             final ItemStack remainingItem = addItem(container, hopper, movedItem, null);
+             final int remainingItemCount = remainingItem.getCount();
+             if (remainingItemCount != movedItemCount) {
+@@ -566,6 +578,10 @@
+         return event.getDisallowedSlots();
+     }
+ 
++    private static boolean validBarrelPair(final Container container) {
++        return !(container instanceof CarpetLargeBarrel.Pair pair) || pair.isCurrent();
++    }
++
+     private static boolean isSlotDisallowed(final long disallowedSlots, final int slot) {
+         return (disallowedSlots & (1L << slot)) != 0;
+     }
+@@ -655,12 +671,16 @@
+     public static boolean suckInItems(final Level level, final Hopper hopper) {
+         io.papermc.paper.threadedregions.RegionizedWorldData worldData = io.papermc.paper.threadedregions.TickRegionScheduler.getCurrentRegionizedWorldData(); // Folia - region threading
+         BlockPos blockPos = BlockPos.containing(hopper.getLevelX(), hopper.getLevelY() + 1.0, hopper.getLevelZ());
+-        BlockState blockState = level.getBlockState(blockPos);
++        BlockState blockState = transferBlockState(level, blockPos);
++        if (blockState == null) {
++            return false;
++        }
+         Container sourceContainer = me.earthme.luminol.config.modules.optimizations.LeavesSleepingBlockEntityConfig.enabled ? getExtractInventory(level, hopper, blockPos, blockState) : getSourceContainer(level, hopper, blockPos, blockState); // Leaves - Lithium Sleeping Block Entity
+         if (sourceContainer != null) {
+             Direction direction = Direction.DOWN;
+             worldData.skipPullModeEventFire = worldData.skipHopperEvents; // Paper - Perf: Optimize Hoppers // Folia - region threading
+             final long disallowedSlots = callPrepareTransferEvent(level, sourceContainer, hopper, false); // Paper - Add PrepareHopperTransferEvent
++            if (!validBarrelPair(sourceContainer)) return false;
+             // Leaves start - Lithium Sleeping Block Entity
+             if (me.earthme.luminol.config.modules.optimizations.LeavesSleepingBlockEntityConfig.enabled) {
+                 Boolean res = lithiumExtract(level, hopper, sourceContainer);
+@@ -812,7 +832,8 @@
+         org.bukkit.event.inventory.HopperInventorySearchEvent.ContainerType containerType
+     ) {
+         org.bukkit.event.inventory.HopperInventorySearchEvent event = new org.bukkit.event.inventory.HopperInventorySearchEvent(
+-            (container != null) ? new org.bukkit.craftbukkit.inventory.CraftInventory(container) : null,
++            container instanceof CarpetLargeBarrel.Pair ? getInventory(container)
++                : container != null ? new org.bukkit.craftbukkit.inventory.CraftInventory(container) : null,
+             containerType,
+             hopper,
+             searchLocation
+@@ -862,7 +883,8 @@
+     }
+ 
+     public static @Nullable Container getContainerAt(final Level level, final BlockPos pos) {
+-        return getContainerAt(level, pos, level.getBlockState(pos), pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, true); // Paper - Optimize hoppers
++        BlockState state = transferBlockState(level, pos);
++        return state == null ? null : getContainerAt(level, pos, state, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, true); // Paper - Optimize hoppers
+     }
+ 
+     private static @Nullable Container getContainerAt(
+@@ -884,9 +906,19 @@
+         return result;
+     }
+ 
++    private static @Nullable BlockState transferBlockState(final Level level, final BlockPos pos) {
++        if (!CarpetLargeBarrel.pairingEnabled()) {
++            return level.getBlockState(pos);
++        }
++        return ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(level, pos) ? level.getBlockStateIfLoaded(pos) : null;
++    }
++
+     private static @Nullable Container getBlockContainer(final Level level, final BlockPos pos, final BlockState state) {
+         if (!level.spigotConfig.hopperCanLoadChunks && !level.hasChunkAt(pos)) return null; // Spigot
+         Block block = state.getBlock();
++        if (block instanceof BarrelBlock && CarpetLargeBarrel.pairingEnabled()) {
++            return CarpetLargeBarrel.getContainer(level, pos);
++        }
+         if (block instanceof WorldlyContainerHolder worldlyContainerHolder) {
+             return worldlyContainerHolder.getContainer(state, level, pos);
+         } else if (state.hasBlockEntity() && level.getBlockEntity(pos) instanceof Container container) {
+@@ -1320,6 +1352,11 @@
+     }
+ 
+     public @Nullable Container lithium$getExtractBlockInventory(Level world, BlockPos extractBlockPos, BlockState extractBlockState) {
++        if (fun.bm.mili.carpet.config.modules.GeneralCompatConfig.largeBarrel && extractBlockState.getBlock() instanceof BarrelBlock) {
++            // The other half may change without notifying this hopper. Do not cache a barrel or sleep on one half.
++            this.invalidateBlockExtractionData();
++            return getBlockContainer(world, extractBlockPos, extractBlockState);
++        }
+         Container blockInventory = this.extractBlockInventory;
+         if (this.extractionMode == HopperCachingState.BlockInventory.NO_BLOCK_INVENTORY) {
+             return null;
+@@ -1355,6 +1392,14 @@
+     }
+ 
+     public @Nullable Container lithium$getInsertBlockInventory(Level world) {
++        if (fun.bm.mili.carpet.config.modules.GeneralCompatConfig.largeBarrel) {
++            BlockPos target = this.getBlockPos().relative(this.facing);
++            BlockState targetState = transferBlockState(world, target);
++            if (targetState == null || targetState.getBlock() instanceof BarrelBlock) {
++                this.invalidateBlockInsertionData();
++                return targetState == null ? null : getBlockContainer(world, target, targetState);
++            }
++        }
+         Container blockInventory = this.insertBlockInventory;
+         if (this.insertionMode == HopperCachingState.BlockInventory.NO_BLOCK_INVENTORY) {
+             return null;
+@@ -1619,7 +1664,7 @@
+         if (hasPrepareTransferListeners(world)) {
+             return null; // Paper prepare-transfer callbacks need uncached per-attempt slot filters
+         }
+-        if (insertInventory == null || hopperBlockEntity instanceof net.minecraft.world.WorldlyContainer) {
++        if (insertInventory == null || insertInventory instanceof CarpetLargeBarrel.Pair || hopperBlockEntity instanceof net.minecraft.world.WorldlyContainer) {
+             //call the vanilla code to allow other mods inject features
+             //e.g. carpet mod allows hoppers to insert items into wool blocks
+             return null;
+diff --git a/net/minecraft/world/level/block/CarpetLargeBarrel.java b/net/minecraft/world/level/block/CarpetLargeBarrel.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..92c8730c530889df2ea68f9692f84ab08e96f189
+--- /dev/null
++++ b/net/minecraft/world/level/block/CarpetLargeBarrel.java
+@@ -0,0 +1,194 @@
++/*
++ * SPDX-License-Identifier: LGPL-3.0-or-later
++ * Derived from Carpet TIS Addition, Fallen_Breath and contributors.
++ * Upstream revision: 62c3cb6fff26cd9c4e12aa616b403c184a4a6ca0.
++ */
++package net.minecraft.world.level.block;
++
++import ca.spottedleaf.moonrise.common.util.TickThread;
++import fun.bm.mili.carpet.config.modules.GeneralCompatConfig;
++import fun.bm.mili.config.modules.function.ContainerExpansionConfig;
++import java.util.function.Function;
++import net.minecraft.core.BlockPos;
++import net.minecraft.core.Direction;
++import net.minecraft.network.chat.Component;
++import net.minecraft.server.level.ServerLevel;
++import net.minecraft.world.CompoundContainer;
++import net.minecraft.world.Container;
++import net.minecraft.world.MenuProvider;
++import net.minecraft.world.entity.ContainerUser;
++import net.minecraft.world.entity.player.Inventory;
++import net.minecraft.world.entity.player.Player;
++import net.minecraft.world.inventory.AbstractContainerMenu;
++import net.minecraft.world.inventory.ChestMenu;
++import net.minecraft.world.inventory.MenuType;
++import net.minecraft.world.level.Level;
++import net.minecraft.world.level.block.entity.BarrelBlockEntity;
++import net.minecraft.world.level.block.entity.BaseContainerBlockEntity;
++import net.minecraft.world.level.block.state.BlockState;
++import net.minecraft.world.level.chunk.LevelChunk;
++import net.minecraft.world.phys.Vec3;
++import org.bukkit.craftbukkit.inventory.CraftInventoryDoubleChest;
++import org.jspecify.annotations.Nullable;
++
++public final class CarpetLargeBarrel {
++    private static final int HALF_SIZE = 27;
++
++    private CarpetLargeBarrel() {
++    }
++
++    public static boolean pairingEnabled() {
++        return GeneralCompatConfig.largeBarrel && ContainerExpansionConfig.barrelRows == 3;
++    }
++
++    public static @Nullable Container getContainer(final Level level, final BlockPos pos) {
++        if (!(level instanceof ServerLevel serverLevel)) {
++            return null;
++        }
++        BarrelBlockEntity barrel = getLoadedBarrel(serverLevel, pos);
++        if (barrel == null) {
++            return null;
++        }
++        Pair pair = pair(barrel, ContainerExpansionConfig.barrelRows, other -> getLoadedBarrel(serverLevel, other));
++        return pair == null ? barrel : pair;
++    }
++
++    public static @Nullable MenuProvider getMenuProvider(final Level level, final BlockPos pos) {
++        return switch (getContainer(level, pos)) {
++            case Pair pair -> CraftInventoryDoubleChest.Provider.wrap(pair, pair);
++            case BarrelBlockEntity barrel -> barrel;
++            case null, default -> null;
++        };
++    }
++
++    private static @Nullable BarrelBlockEntity getLoadedBarrel(final ServerLevel level, final BlockPos pos) {
++        if (!TickThread.isTickThreadFor(level, pos) || level.isOutsideBuildHeight(pos)) {
++            return null;
++        }
++        LevelChunk chunk = level.getChunkIfLoaded(pos);
++        if (chunk == null || !(chunk.getBlockState(pos).getBlock() instanceof BarrelBlock)
++            || !(chunk.getBlockEntity(pos) instanceof BarrelBlockEntity barrel) || barrel.isRemoved()) {
++            return null;
++        }
++        return barrel;
++    }
++
++    static @Nullable Pair pair(final BarrelBlockEntity barrel, final int configuredRows,
++                               final Function<BlockPos, @Nullable BarrelBlockEntity> lookup) {
++        if (configuredRows != 3 || !isPairHalf(barrel)) {
++            return null;
++        }
++        final Direction facing = barrel.getBlockState().getValue(BarrelBlock.FACING);
++        final BarrelBlockEntity other = partner(barrel.getBlockPos(), facing, lookup);
++        if (other == null) {
++            return null;
++        }
++        return facing.getAxisDirection() == Direction.AxisDirection.NEGATIVE ? new Pair(barrel, other) : new Pair(other, barrel);
++    }
++
++    private static boolean isPairHalf(final BarrelBlockEntity barrel) {
++        return !barrel.isRemoved() && barrel.getContainerSize() == HALF_SIZE && barrel.getBlockState().getBlock() instanceof BarrelBlock;
++    }
++
++    private static @Nullable BarrelBlockEntity partner(final BlockPos pos, final Direction facing,
++                                                       final Function<BlockPos, @Nullable BarrelBlockEntity> lookup) {
++        final BlockPos otherPos = pos.relative(facing.getOpposite());
++        // Both halves must keep one tick owner even after a region split, and
++        // must load and unload together while the menu is open.
++        if ((pos.getX() >> 4) != (otherPos.getX() >> 4) || (pos.getZ() >> 4) != (otherPos.getZ() >> 4)) {
++            return null;
++        }
++        final BarrelBlockEntity other = lookup.apply(otherPos);
++        return other != null && isPairHalf(other) && other.getBlockState().getValue(BarrelBlock.FACING) == facing.getOpposite()
++            ? other : null;
++    }
++
++    // Read the counterpart of the passed state, not of the current world state:
++    // the old half may already have been rotated or removed when called.
++    public static void updatePartnerComparators(final Level level, final BlockPos pos, final BlockState state) {
++        if (!(level instanceof ServerLevel serverLevel) || ContainerExpansionConfig.barrelRows != 3
++            || !(state.getBlock() instanceof BarrelBlock) || !TickThread.isTickThreadFor(level, pos)) {
++            return;
++        }
++        BarrelBlockEntity other = partner(pos, state.getValue(BarrelBlock.FACING), target -> getLoadedBarrel(serverLevel, target));
++        if (other != null) {
++            level.updateNeighbourForOutputSignal(other.getBlockPos(), other.getBlockState().getBlock());
++        }
++    }
++
++    public static final class Pair extends CompoundContainer implements MenuProvider {
++        private final BarrelBlockEntity first;
++        private final BarrelBlockEntity second;
++        private boolean started;
++
++        private Pair(final BarrelBlockEntity first, final BarrelBlockEntity second) {
++            super(first, second);
++            this.first = first;
++            this.second = second;
++        }
++
++        public boolean isCurrent() {
++            if (!(this.first.getLevel() instanceof ServerLevel level) || !pairingEnabled()
++                || getLoadedBarrel(level, this.first.getBlockPos()) != this.first || !isPairHalf(this.first)) {
++                return false;
++            }
++            return partner(this.first.getBlockPos(), this.first.getBlockState().getValue(BarrelBlock.FACING),
++                target -> getLoadedBarrel(level, target)) == this.second;
++        }
++
++        @Override
++        public @Nullable AbstractContainerMenu createMenu(final int syncId, final Inventory inventory, final Player player) {
++            if (player.level() != this.first.getLevel() || !this.isCurrent()
++                || !checkLock(this.first, player) || !this.isCurrent() || !checkLock(this.second, player) || !this.isCurrent()) {
++                return null;
++            }
++            this.first.unpackLootTable(player);
++            if (!this.isCurrent()) {
++                return null;
++            }
++            this.second.unpackLootTable(player);
++            return this.isCurrent() ? this.createMenu(syncId, inventory) : null;
++        }
++
++        ChestMenu createMenu(final int syncId, final Inventory inventory) {
++            return new ChestMenu(MenuType.GENERIC_9x6, syncId, inventory, this, 6) {
++                @Override
++                public boolean stillValid(final Player player) {
++                    return player.level() == Pair.this.first.getLevel() && Pair.this.isCurrent() && super.stillValid(player);
++                }
++            };
++        }
++
++        private static boolean checkLock(final BarrelBlockEntity barrel, final Player player) {
++            if (barrel.canOpen(player)) {
++                return true;
++            }
++            if (!player.isSpectator()) {
++                BaseContainerBlockEntity.sendChestLockedNotifications(Vec3.atCenterOf(barrel.getBlockPos()), player, barrel.getDisplayName());
++            }
++            return false;
++        }
++
++        @Override
++        public void startOpen(final ContainerUser user) {
++            if (!this.started && this.isCurrent()) {
++                this.started = true;
++                super.startOpen(user);
++            }
++        }
++
++        @Override
++        public void stopOpen(final ContainerUser user) {
++            Level level = this.first.getLevel();
++            if (this.started && level != null && TickThread.isTickThreadFor(level, this.first.getBlockPos())) {
++                this.started = false;
++                super.stopOpen(user);
++            }
++        }
++
++        @Override
++        public Component getDisplayName() {
++            return this.first.getCustomName() != null ? this.first.getDisplayName() : this.second.getDisplayName();
++        }
++    }
++}
