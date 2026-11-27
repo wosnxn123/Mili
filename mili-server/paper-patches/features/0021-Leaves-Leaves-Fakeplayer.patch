@@ -53,7 +53,7 @@ index 124420f4adf0bd27e9b84b81f9d5e10eeab2d7e0..1834fadd616f91ac0f79725fb4b5ccf0
          if (nmsEntity.level() != this.getHandle().getLevel()) {
              throw new IllegalArgumentException(entity + " wasn't created with this world, you must create the entity with the world you want to add it to.");
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
-index 7faf4e99d8fcba0c630ca5726f612cbe02ca506e..e0698fc0bcd0bbc9c58ad1959dd5114c35a9c40c 100644
+index 86b8d9184dd12d67ff4933a8b029446ee33f09c3..557697c0fb0f322e468c8ae1a118b3132c763804 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 @@ -287,6 +287,7 @@ public final class CraftServer implements Server {
@@ -96,10 +96,10 @@ index 7faf4e99d8fcba0c630ca5726f612cbe02ca506e..e0698fc0bcd0bbc9c58ad1959dd5114c
      /**
       * Gets the TPS from the region which owns the specified location, or {@code null} if no region owns
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-index 840a36b56f40f969a83fd3c602035bcc484b60aa..d5e54cd9c1f83e86885a8304a05e7e44e6ab09ae 100644
+index 85ce4d64509ee035f424bccc1eab040fab9a07ca..e5f92359f32f47cfe3e81eafa4e3a42839c93681 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-@@ -250,7 +250,7 @@ public class CraftWorld extends CraftRegionAccessor implements World {
+@@ -251,7 +251,7 @@ public class CraftWorld extends CraftRegionAccessor implements World {
  
      @Override
      public int getPlayerCount() {
@@ -108,7 +108,7 @@ index 840a36b56f40f969a83fd3c602035bcc484b60aa..d5e54cd9c1f83e86885a8304a05e7e44
      }
  
      @Override
-@@ -1139,9 +1139,9 @@ public class CraftWorld extends CraftRegionAccessor implements World {
+@@ -1184,9 +1184,9 @@ public class CraftWorld extends CraftRegionAccessor implements World {
  
      @Override
      public List<Player> getPlayers() {
@@ -120,7 +120,7 @@ index 840a36b56f40f969a83fd3c602035bcc484b60aa..d5e54cd9c1f83e86885a8304a05e7e44
              HumanEntity bukkitEntity = human.getBukkitEntity();
  
              if ((bukkitEntity != null) && (bukkitEntity instanceof Player)) {
-@@ -1646,7 +1646,7 @@ public class CraftWorld extends CraftRegionAccessor implements World {
+@@ -1691,7 +1691,7 @@ public class CraftWorld extends CraftRegionAccessor implements World {
      public void playSound(final net.kyori.adventure.sound.Sound sound) {
          org.spigotmc.AsyncCatcher.catchOp("play sound"); // Paper
          final long seed = sound.seed().orElseGet(this.world.getRandom()::nextLong);
@@ -129,7 +129,7 @@ index 840a36b56f40f969a83fd3c602035bcc484b60aa..d5e54cd9c1f83e86885a8304a05e7e44
              player.connection.send(io.papermc.paper.adventure.PaperAdventure.asSoundPacket(sound, player.getX(), player.getY(), player.getZ(), seed, null));
          }
      }
-@@ -1674,7 +1674,7 @@ public class CraftWorld extends CraftRegionAccessor implements World {
+@@ -1719,7 +1719,7 @@ public class CraftWorld extends CraftRegionAccessor implements World {
          org.spigotmc.AsyncCatcher.catchOp("play sound"); // Paper
          final long seed = sound.seed().orElseGet(this.getHandle().getRandom()::nextLong);
          if (emitter == net.kyori.adventure.sound.Sound.Emitter.self()) {
@@ -138,7 +138,7 @@ index 840a36b56f40f969a83fd3c602035bcc484b60aa..d5e54cd9c1f83e86885a8304a05e7e44
                  player.connection.send(io.papermc.paper.adventure.PaperAdventure.asSoundPacket(sound, player, seed, null));
              }
          } else if (emitter instanceof CraftEntity craftEntity) {
-@@ -1792,7 +1792,7 @@ public class CraftWorld extends CraftRegionAccessor implements World {
+@@ -1837,7 +1837,7 @@ public class CraftWorld extends CraftRegionAccessor implements World {
              Preconditions.checkArgument(particle.getDataType().isInstance(data), "data (%s) should be %s", data.getClass(), particle.getDataType());
          }
          this.getHandle().sendParticlesSource(
@@ -148,10 +148,10 @@ index 840a36b56f40f969a83fd3c602035bcc484b60aa..d5e54cd9c1f83e86885a8304a05e7e44
              CraftParticle.createParticleParam(particle, data),
              force,
 diff --git a/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java b/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
-index bbf0a2a3266f39519d37cefae81ab871eaa90d20..a37120cbc3f5d14b57d210daacd0c55cf9af3e05 100644
+index 359b4f32cff7566dbdfeaddf003779abab74b8c5..c8dbe90423598a5a7e313a821e4185bb2b43564d 100644
 --- a/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
 +++ b/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
-@@ -142,6 +142,8 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
+@@ -144,6 +144,8 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
              return new CraftHumanEntity(server, (net.minecraft.world.entity.player.Player) entity);
          }
  
@@ -161,10 +161,10 @@ index bbf0a2a3266f39519d37cefae81ab871eaa90d20..a37120cbc3f5d14b57d210daacd0c55c
          if (entity instanceof EnderDragonPart complexPart) {
              if (complexPart.parentMob instanceof EnderDragon) {
 diff --git a/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java b/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java
-index 6fc47749329624761beb6425ec7a6836078bdba8..bacbbd97981ba9a2422dc99c20e0032a2b97a1f0 100644
+index 87475b27e047a2be093d7bdd62d37229f5476b8e..dc04d9894cb4335bafd8ea771fd0e82bd3a7359b 100644
 --- a/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java
 +++ b/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java
-@@ -1019,7 +1019,11 @@ public class CraftEventFactory {
+@@ -1021,7 +1021,11 @@ public class CraftEventFactory {
          event.setKeepInventory(keepInventory);
          event.setKeepLevel(victim.keepLevel); // SPIGOT-2222: pre-set keepLevel
          populateFields(victim, event); // Paper - make cancellable

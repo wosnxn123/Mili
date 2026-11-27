@@ -5,7 +5,7 @@ Subject: [PATCH] Leaves: Bytebuf API
 
 
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
-index 50178d97cfcea22fcb2fcc3f7cdbe42544aab00d..c369bbbf4162780846189851d49e21ead834a278 100644
+index cde0d1ea5dfdcb8e13574c38d858f112e18c5fb3..35d4c045951aeb7d7186b7016198a209756a8eeb 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 @@ -399,6 +399,8 @@ public final class CraftServer implements Server {
@@ -30,7 +30,7 @@ index 50178d97cfcea22fcb2fcc3f7cdbe42544aab00d..c369bbbf4162780846189851d49e21ea
 +    // Leaves end - Bytebuf API
  }
 diff --git a/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java b/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
-index 68ef166341f54df7c9c429998edd3e932736a734..6bb763651952844c2e70f2334ec3611e570eab30 100644
+index 9fe22219049b60779f36697cd6bd0c861c40421a..fafd5e52c95ae26eb4dae467907346eb2aa890f5 100644
 --- a/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
 +++ b/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
 @@ -3471,4 +3471,16 @@ public class CraftPlayer extends CraftHumanEntity implements Player, PluginMessa

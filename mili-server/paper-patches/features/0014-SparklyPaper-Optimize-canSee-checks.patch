@@ -6,19 +6,13 @@ Subject: [PATCH] SparklyPaper: Optimize canSee checks
 Co-authored by: MrPowerGamerBR <git@mrpowergamerbr.com>
 As part of: SparklyPaper
 
+Keep Folia's concurrent visibility map for cross-region callers; only port
+the fast visibility checks, not the old non-concurrent backing map.
+
 diff --git a/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java b/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
-index b4bad46fc9a62ef52243f6b3152c03fa04c5cc02..53b11ec272cd0a8b329430249ba058b2b38ae4a3 100644
+index 64cd31efef6947671040a33b037b29e023f4d07a..017d49609970bca566340bfd5d2e90725b72f71c 100644
 --- a/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
 +++ b/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
-@@ -241,7 +241,7 @@ public class CraftPlayer extends CraftHumanEntity implements Player, PluginMessa
-     private long lastPlayed = 0;
-     private boolean hasPlayedBefore = false;
-     private final ConversationTracker conversationTracker = new ConversationTracker();
--    private final Map<UUID, Set<WeakReference<Plugin>>> invertedVisibilityEntities = new HashMap<>();
-+    private final Map<UUID, Set<WeakReference<Plugin>>> invertedVisibilityEntities = new it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap<>(); // SparklyPaper - optimize canSee checks
-     private final Set<UUID> unlistedEntities = new HashSet<>(); // Paper - Add Listing API for Player
-     private static final WeakHashMap<Plugin, WeakReference<Plugin>> pluginWeakReferences = new WeakHashMap<>();
-     private int hash = 0;
 @@ -2101,9 +2101,16 @@ public class CraftPlayer extends CraftHumanEntity implements Player, PluginMessa
  
      @Override

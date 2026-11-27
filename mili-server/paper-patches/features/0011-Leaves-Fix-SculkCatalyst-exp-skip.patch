@@ -8,10 +8,10 @@ As part of: Leaves (https://github.com/LeavesMC/Leaves/blob/f553c53e4230aa032e54
 Licensed under: GPL-3.0 (https://www.gnu.org/licenses/gpl-3.0.html)
 
 diff --git a/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java b/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java
-index eb3fc0621a60b05787c1087b26874b025721d828..6fc47749329624761beb6425ec7a6836078bdba8 100644
+index faf1dd73f21aaa63a412da4001ae68756bea8b32..87475b27e047a2be093d7bdd62d37229f5476b8e 100644
 --- a/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java
 +++ b/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java
-@@ -977,7 +977,7 @@ public class CraftEventFactory {
+@@ -979,7 +979,7 @@ public class CraftEventFactory {
      public static EntityDeathEvent callEntityDeathEvent(ServerLevel level, net.minecraft.world.entity.LivingEntity victim, DamageSource damageSource, List<Entity.DefaultDrop> drops, boolean delayedDrops) { // Paper - Restore vanilla drops behavior
          CraftLivingEntity entity = (CraftLivingEntity) victim.getBukkitEntity();
          CraftDamageSource bukkitDamageSource = new CraftDamageSource(damageSource);
@@ -20,7 +20,7 @@ index eb3fc0621a60b05787c1087b26874b025721d828..6fc47749329624761beb6425ec7a6836
          populateFields(victim, event); // Paper - make cancellable
          event.callEvent();
  
-@@ -987,6 +987,7 @@ public class CraftEventFactory {
+@@ -989,6 +989,7 @@ public class CraftEventFactory {
  
          playDeathSound(victim, event, damageSource);
          victim.expToDrop = event.getDroppedExp();
@@ -28,7 +28,7 @@ index eb3fc0621a60b05787c1087b26874b025721d828..6fc47749329624761beb6425ec7a6836
  
          Runnable dropAll = () -> {
              dropAllItems(drops, item -> victim.spawnAtLocation(level, item));
-@@ -1030,6 +1031,7 @@ public class CraftEventFactory {
+@@ -1032,6 +1033,7 @@ public class CraftEventFactory {
          victim.newLevel = event.getNewLevel();
          victim.newTotalExp = event.getNewTotalExp();
          victim.expToDrop = event.getDroppedExp();
