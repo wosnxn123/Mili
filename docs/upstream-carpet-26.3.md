@@ -40,7 +40,7 @@
 | 0206 | 0134 TIS / 0135 `CarpetDragonBreathDispenseBehavior` | 两项默认关闭。`dispensersFireDragonBreath` 在已加载且归当前 Folia 线程所有的作用范围内生成龙息云；发射事件的向量是绝对位置，可重定向。换成其他物品时保留选中龙息，替代品按它自己的原生发射和目标规则执行；同种改写也不扣选中龙息。取消、空替代物、无效或跨区域目标、生成被拒绝时不生成云或扣除龙息；跨区不排队。`dispenserNoItemCost` 保留发射器选中物品与耐久，容器返还仍用原生库存插入或掉落路径，不影响投掷器；普通发射行为的正前方区块未加载或不归当前线程时不执行。未引入 Scarpet，也未做真实服务器事件联测。 |
 | API 0013、Paper-server 0025 | API 0015、Paper-server 0025 | `Server#getCarpet()` / `fun.bm.mili.api.carpet.CarpetApi.get()` 查询不可变的已广播规则快照（manager、name、value）。同步读取不需要区域线程，也不授予区域所有权。握手的 NBT 字段不变；规则重载完整发布而非先清空再逐条填充。 |
 
-API 只暴露 Mili 已经广播的值，不承诺底层规则能力探测，不含 Lophine 的隐藏规则元数据，也不与其插件二进制兼容。`setRule`、默认值持久化、变更事件、Scarpet 注册和插件启停撤销**未接入**。当前实现不保存插件对象或回调，因此未增加空生命周期钩子。
+插件 API 保留原有不可变读取快照。API 0080 为已公布、支持直接更新的原生规则增加 `setRule`、显式保存和全局区域上的 `CarpetRuleChangeEvent`。默认没有插件可写；启停/换载后重新校验实际插件身份。仅重启生效的值只可保存，不产生实时事件。具体边界见[规则 API](carpet-plugin-api.md)。不与 Lophine 插件二进制兼容，不暴露未实现的 Scarpet 函数或隐藏规则。
 
 ## 已存在，不重复覆盖
 
@@ -60,7 +60,7 @@ API 只暴露 Mili 已经广播的值，不承诺底层规则能力探测，不�
 | 上游部分 | 阻断 / 状态 |
 | --- | --- |
 | 0131 Scarpet runtime、命令、应用库、事件续体 | donor 含 `carpet.script` 表达式、主机、模块和区域/实体 continuations，并连接大量 NMS 钩子。Mili 的计算器和客户端协议不能替代 runtime；未引入 `/script`、`commandScriptACE`、本地脚本自动载入、应用库下载/安装、native actors、world/command 函数或脚本事件。后续如实现本地受限脚本，需独立审计区域 ownership、能力权限、资源配额及注销语义；不开放任意远程脚本或任意命令。 |
-| 0131–0134 共享规则/命令框架 | donor 的 rule registry、配置事件、权限动态刷新、客户端命令桥、跨区域 command continuations 和 bot 调度不是 Mili 同名配置的直接替换。`/carpet` 写操作、插件写入/持久化、脚本回调以及命令和诊断框架未移植。 |
+| 0131–0134 共享规则/命令框架 | donor 的 rule registry、配置事件、权限动态刷新、客户端命令桥、跨区域 command continuations 和 bot 调度不是 Mili 同名配置的直接替换。Mili 已另行接入受控的原生规则插件写入、持久化和变更事件。上游 `/carpet` 命令写入、脚本回调和整套命令/诊断框架不由该接口提供。 |
 | 0135 CrashReport / CrashReportCategory | `deobfuscateCrashReportStackTrace` 未移植。donor 使用 `TisStackTraces` 的 26.3 空映射重新构建堆栈帧，不做实际名称反混淆且会丢掉模块/类加载器信息；不增加只保留名字但有该副作用的开关。 |
 | 0135 `VanillaLikeExperience` 与 0136 | 独立任务；本组补丁未修改该开关或末影珍珠实现。 |
 | 权限/不受控命令 | `antiCheatDisabled`、`debugNbtQueryNoPermission`、`enchantCommandNoRestriction`、`instantCommandBlock`、`openGameRulePermission`、`openSeedPermission`、`openTpPermission`、`opPlayerNoCheat`、`perfPermissionLevel`、`preventAdministratorCheat` 不从 donor 直接引入；如需能力，先有明确授权模型并保留 Paper 权限。 |

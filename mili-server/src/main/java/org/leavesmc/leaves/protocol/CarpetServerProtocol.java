@@ -30,6 +30,26 @@ public class CarpetServerProtocol implements LeavesProtocol {
 
     private static final String HI = "69";
     private static final String HELLO = "420";
+    private static final java.util.Set<ServerPlayer> subscribers = java.util.Collections.synchronizedSet(
+            java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>()));
+
+    @ProtocolHandler.PlayerLeave
+    public static void onPlayerLeave(ServerPlayer player) {
+        subscribers.remove(player);
+    }
+
+    public static void refreshSubscribers() {
+        List<ServerPlayer> online;
+        synchronized (subscribers) { online = List.copyOf(subscribers); }
+        for (ServerPlayer player : online) {
+            player.getBukkitEntity().taskScheduler.schedule((ServerPlayer current) -> {
+                if (current != player || !subscribers.contains(current) || current.hasDisconnected()) return;
+                CompoundTag data = new CompoundTag();
+                CarpetRules.write(data);
+                ProtocolUtils.sendPayloadPacket(current, new CarpetPayload(data));
+            }, null, 1L);
+        }
+    }
 
     @Contract("_ -> new")
     public static Identifier id(String path) {
@@ -46,6 +66,7 @@ public class CarpetServerProtocol implements LeavesProtocol {
     @ProtocolHandler.PayloadReceiver(payload = CarpetPayload.class)
     private static void handleHello(@NotNull ServerPlayer player, @NotNull CarpetServerProtocol.CarpetPayload payload) {
         if (payload.nbt.contains(HELLO)) {
+            subscribers.add(player);
             LOGGER.info("Player {} joined with carpet {}", player.getScoreboardName(), payload.nbt.getString(HELLO).orElse("Unknown"));
             CompoundTag data = new CompoundTag();
             CarpetRules.write(data);
@@ -73,18 +94,30 @@ public class CarpetServerProtocol implements LeavesProtocol {
             return List.copyOf(rules.values());
         }
 
-        public static synchronized void register(CarpetRule rule) {
-            Map<String, CarpetRule> updated = new HashMap<>(rules);
-            updated.put(rule.name(), rule);
-            rules = Map.copyOf(updated);
+        public static void register(CarpetRule rule) {
+            register(rule, null);
         }
 
-        public static synchronized void replace(Collection<CarpetRule> replacement) {
-            Map<String, CarpetRule> updated = new HashMap<>();
-            for (CarpetRule rule : replacement) {
+        public static void register(CarpetRule rule, String pluginName) {
+            Map<String, CarpetRule> previous, next;
+            synchronized (CarpetRules.class) {
+                previous = rules;
+                Map<String, CarpetRule> updated = new HashMap<>(previous);
                 updated.put(rule.name(), rule);
+                rules = next = Map.copyOf(updated);
             }
-            rules = Map.copyOf(updated);
+            fun.bm.mili.carpet.MiliCarpetApi.published(previous, next, pluginName);
+        }
+
+        public static void replace(Collection<CarpetRule> replacement) {
+            Map<String, CarpetRule> updated = new HashMap<>();
+            for (CarpetRule rule : replacement) updated.put(rule.name(), rule);
+            Map<String, CarpetRule> next = Map.copyOf(updated), previous;
+            synchronized (CarpetRules.class) {
+                previous = rules;
+                rules = next;
+            }
+            fun.bm.mili.carpet.MiliCarpetApi.published(previous, next, null);
         }
 
         public static boolean hasRules() {

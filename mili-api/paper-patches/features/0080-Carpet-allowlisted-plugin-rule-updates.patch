@@ -1,0 +1,59 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Patch Build <noreply@example.invalid>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Expose opt-in Carpet rule updates to server plugins
+
+Adapt the non-script mutation contract from Lophine API 0015 at
+7a51f49a512f1b5465f15a905d3704754e4bed02. Retain Mili's snapshot API.
+
+Co-Authored-By: Claude Code <noreply@anthropic.com>
+
+diff --git a/src/main/java/fun/bm/mili/api/carpet/CarpetApi.java b/src/main/java/fun/bm/mili/api/carpet/CarpetApi.java
+index 7f588c728ee6e72248f592e51bac45e2aeec17a6..49e89aa96208ea754915f0a3d382ab3a1c697573 100644
+--- a/src/main/java/fun/bm/mili/api/carpet/CarpetApi.java
++++ b/src/main/java/fun/bm/mili/api/carpet/CarpetApi.java
+@@ -7,9 +7,8 @@ import java.util.Objects;
+ import java.util.Optional;
+ 
+ /**
+- * Read-only view of the rule values Mili publishes to Carpet clients. Calling
+- * these methods is safe from any thread and does not confer region ownership.
+- * This API cannot change rules, execute commands or register Scarpet functions.
++ * Mili 发布给 Carpet 客户端的规则快照以及受限的插件更新接口。
++ * 读取不授予区域所有权，写入不执行命令或脚本。
+  */
+ public interface CarpetApi {
+     /**
+@@ -40,6 +39,19 @@ public interface CarpetApi {
+         return rules().stream().filter(rule -> rule.name().equals(name)).findFirst();
+     }
+ 
++    /**
++     * 请求在全局区域更新一个已发布、可通过插件修改的原生规则。
++     * 插件必须已启用并在服务端配置中获准。不要在任何 tick 线程等待结果。
++     * 仅重启生效的规则要求持久化；写入失败不能改变正在运行的值。
++     *
++     * @param owner 已注册的请求插件
++     * @param name 区分大小写的规则名
++     * @param value 该规则允许的字符串值
++     * @param persist 是否保存到当前服务器的 Carpet 配置
++     * @return 更新结果；不允许修改、值无效或插件已卸载时以异常结束
++     */
++    java.util.concurrent.CompletableFuture<CarpetRuleUpdate> setRule(org.bukkit.plugin.Plugin owner, String name, String value, boolean persist);
++
+     /**
+      * A published rule value, not a handle to a live setting.
+      *
+diff --git a/src/main/java/org/bukkit/Server.java b/src/main/java/org/bukkit/Server.java
+index 24d5682685882521f0a592401221eedec2479303..5432c84c0b0529244d7634d81b37e079af750e54 100644
+--- a/src/main/java/org/bukkit/Server.java
++++ b/src/main/java/org/bukkit/Server.java
+@@ -2900,7 +2900,7 @@ public interface Server extends PluginMessageRecipient, net.kyori.adventure.audi
+ 
+     // Mili start - Carpet rule API
+     /**
+-     * Returns a read-only view of this server's Carpet compatibility rules.
++     * Returns this server's Carpet compatibility rule API.
+      *
+      * @return Carpet compatibility rule API
+      */

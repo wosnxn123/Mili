@@ -1,7 +1,7 @@
 Carpet compatibility gameplay rules for Mili 26.3
 
 Integration source: LophineLabs/Lophine 7a51f49a512f1b5465f15a905d3704754e4bed02,
-Minecraft feature patches 0131–0135; read-only API derived from API 0015 and
+Minecraft feature patches 0131–0135; read and opt-in rule mutation API adapted from API 0015 and
 Paper-server 0025. These patches identify Bacteriawa as their author.
 The 0135 renewable coral helper retains its LGPL-3.0-or-later source notice
 and its attribution to Fabric Carpet's FertilizableCoral and FeatureGenerator.
