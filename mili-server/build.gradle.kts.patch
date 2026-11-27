@@ -143,7 +143,7 @@
          isTransitive = false
      }
      implementation("io.netty:netty-codec-haproxy:4.2.16.Final") // Add support for proxy protocol
-@@ -197,26 +248,43 @@
+@@ -197,26 +248,45 @@
      implementation("me.lucko:spark-paper:1.10.191")
  }
  
@@ -165,6 +165,8 @@
 +
 +
  tasks.jar {
++    // 随二进制分发补丁的版权与许可声明。
++    from(rootProject.file("licenses")) { into("META-INF/licenses/mili") }
      manifest {
          val git = Git(rootProject.layout.projectDirectory.path)
          val mcVersion = rootProject.providers.gradleProperty("mcVersion").get()
@@ -193,7 +195,7 @@
              "Build-Number" to (build ?: ""),
              "Build-Time" to buildTime.toString(),
              "Git-Branch" to gitBranch,
-@@ -247,7 +315,20 @@
+@@ -247,7 +317,20 @@
      options.forkOptions.memoryMaximumSize = "1G"
  }
  
@@ -215,7 +217,7 @@
      badAnnotations.add("Lio/papermc/paper/annotation/DoNotUse;")
      jarToScan.set(tasks.jar.flatMap { it.archiveFile })
      classpath.from(configurations.compileClasspath)
-@@ -282,16 +363,109 @@
+@@ -282,16 +365,109 @@
      val provider = objects.newInstance<MockitoAgentProvider>()
      provider.fileCollection.from(mockitoAgent)
      jvmArgumentProviders.add(provider)
@@ -327,7 +329,7 @@
  }
  
  val generatedDir: java.nio.file.Path = layout.projectDirectory.dir("../paper-server/src/generated/java").asFile.toPath()
-@@ -320,8 +494,8 @@
+@@ -320,8 +496,8 @@
          .asFile
      javaLauncher.set(project.javaToolchains.launcherFor {
          languageVersion.set(JavaLanguageVersion.of(25))
@@ -338,7 +340,7 @@
      })
      jvmArgs("-XX:+AllowEnhancedClassRedefinition", "--enable-native-access=ALL-UNNAMED")
  
-@@ -337,9 +511,9 @@
+@@ -337,9 +513,9 @@
          systemProperty("disable.watchdog", true)
      }
      systemProperty("io.papermc.paper.suppress.sout.nags", true)
@@ -349,7 +351,7 @@
      systemProperty("joml.nounsafe", true)
      systemProperty("paper.updatingMinecraft", providers.gradleProperty("updatingMinecraft").getOrElse("false").toBoolean())
  
-@@ -377,7 +551,7 @@
+@@ -377,7 +553,7 @@
  }
  
  fill {

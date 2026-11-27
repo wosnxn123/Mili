@@ -180,6 +180,10 @@ public final class CarpetCompatSync {
         rules.add(CarpetServerProtocol.CarpetRule.of("carpettisaddition", "breedingCooldownDisabled", GeneralCompatConfig.breedingCooldownDisabled));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpettisaddition", "snowMeltMinLightLevel", GeneralCompatConfig.normalizedSnowMeltMinLightLevel()));
 
+        rules.add(CarpetServerProtocol.CarpetRule.of("carpet", "noCreeperBlockBreaking", GeneralCompatConfig.noCreeperBlockBreaking));
+        rules.add(CarpetServerProtocol.CarpetRule.of("carpet", "noGhastBlockBreaking", GeneralCompatConfig.noGhastBlockBreaking));
+        rules.add(CarpetServerProtocol.CarpetRule.of("carpet", "disableGhastFire", GeneralCompatConfig.disableGhastFire));
+        rules.add(CarpetServerProtocol.CarpetRule.of("carpet", "disableBlazeFire", GeneralCompatConfig.disableBlazeFire));
         CarpetServerProtocol.CarpetRules.replace(rules);
     }
 }

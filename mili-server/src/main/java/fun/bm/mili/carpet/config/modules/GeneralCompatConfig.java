@@ -292,6 +292,18 @@ public class GeneralCompatConfig implements IConfigModule {
     @ConfigInfo(name = "snowMeltMinLightLevel", comments = "雪层融化所需最低方块光照。12 为原版，16 禁用光照融化。")
     public static volatile int snowMeltMinLightLevel = 12;
 
+    @ConfigInfo(name = "noCreeperBlockBreaking", comments = "苦力怕的爆炸不破坏方块，保留爆炸事件和实体伤害。")
+    public static volatile boolean noCreeperBlockBreaking = false;
+
+    @ConfigInfo(name = "noGhastBlockBreaking", comments = "恶魂大火球爆炸不破坏方块。")
+    public static volatile boolean noGhastBlockBreaking = false;
+
+    @ConfigInfo(name = "disableGhastFire", comments = "大火球爆炸不点燃方块。")
+    public static volatile boolean disableGhastFire = false;
+
+    @ConfigInfo(name = "disableBlazeFire", comments = "阻止生物发射的小火球点燃方块，不改发射器火球。")
+    public static volatile boolean disableBlazeFire = false;
+
     public static int normalizedSnowMeltMinLightLevel() {
         return Math.clamp(snowMeltMinLightLevel, 0, 16);
     }

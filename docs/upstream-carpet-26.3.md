@@ -71,9 +71,11 @@ API 只暴露 Mili 已经广播的值，不承诺底层规则能力探测，不�
 
 #### 0131
 
-- `chainStone`, `cleanLogs`, `creativeFlyDrag`, `creativeFlySpeed`, `customMOTD`, `desertShrubs`, `disableDamageImmunity`, `disableGhastFire`, `fillUpdates`
+`disableGhastFire`、`disableBlazeFire`、`noCreeperBlockBreaking`、`noGhastBlockBreaking` 已经由 MiniTweaks 0202 接入，保留爆炸事件，并分别控制地形破坏和点火。
+
+- `chainStone`, `cleanLogs`, `creativeFlyDrag`, `creativeFlySpeed`, `customMOTD`, `desertShrubs`, `disableDamageImmunity`, `fillUpdates`
 - `forceloadLimit`, `hardcodeTNTangle`, `huskSpawningInTemples`, `lightningKillsDropsFix`, `maxEntityCollisions`, `mergeTNT`, `missingTools`, `moreBlueSkulls`, `movableAmethyst`
-- `movableBlockEntities`, `noCreeperBlockBreaking`, `noGhastBlockBreaking`, `optimizedTNT`, `persistentParrots`, `pickaxeMinedBedrock`, `piglinsSpawningInBastions`, `pingPlayerListLimit`, `pushLimit`
+- `movableBlockEntities`, `optimizedTNT`, `persistentParrots`, `pickaxeMinedBedrock`, `piglinsSpawningInBastions`, `pingPlayerListLimit`, `pushLimit`
 - `railPowerLimit`, `renewableSponges`, `sculkSensorRange`, `shulkerSpawningInEndCities`, `simulationDistance`, `structureBlockLimit`, `summonNaturalLightning`, `superSecretSetting`
 - `tntRandomRange`, `updateSuppressionBlock`, `xpFromExplosions`
 

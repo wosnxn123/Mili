@@ -266,6 +266,8 @@ tasks.withType<JavaCompile> {
 
 
 tasks.jar {
+    // 随二进制分发补丁的版权与许可声明。
+    from(rootProject.file("licenses")) { into("META-INF/licenses/mili") }
     manifest {
         val git = Git(rootProject.layout.projectDirectory.path)
         val mcVersion = rootProject.providers.gradleProperty("mcVersion").get()

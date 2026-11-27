@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Helvetica Volubi <suisuroru@blue-millennium.fun>
+Date: Tue, 3 Nov 2026 23:21:32 +0800
+Subject: [PATCH] Anonymous Object: Fix incorrect ticket lock size computing
+
+As requested by the original author, this patch will be anonymous and hide the original commit address.
+This patch is used with permission from the original author.
+Licensed under: GPL-3.0 (https://www.gnu.org/licenses/gpl-3.0.html)
+
+Ported from: https://github.com/LophineLabs/Lophine/blob/7a51f49a512f1b5465f15a905d3704754e4bed02/lophine-server/minecraft-patches/features/0008-Anonymous-Object-Fix-incorrect-ticket-lock-size-comp.patch
+
+diff --git a/ca/spottedleaf/moonrise/patches/chunk_system/scheduling/ChunkHolderManager.java b/ca/spottedleaf/moonrise/patches/chunk_system/scheduling/ChunkHolderManager.java
+index 68a9fda32c09c067c0bdb3436be5a33852392d46..0244707f6b24467ccf439e0e9c71634b60bbfd4c 100644
+--- a/ca/spottedleaf/moonrise/patches/chunk_system/scheduling/ChunkHolderManager.java
++++ b/ca/spottedleaf/moonrise/patches/chunk_system/scheduling/ChunkHolderManager.java
+@@ -958,14 +958,18 @@ public final class ChunkHolderManager {
+ 
+             final int lowerChunkX = CoordinateUtils.getChunkX(sectionKey) << sectionShift;
+             final int lowerChunkZ = CoordinateUtils.getChunkZ(sectionKey) << sectionShift;
++            // Anonymous start - Fix incorrect ticket lock size computing
++            final int upperChunkX = lowerChunkX + (1 << sectionShift) - 1;
++            final int upperChunkZ = lowerChunkZ + (1 << sectionShift) - 1;
++            // Anonymous end - Fix incorrect ticket lock size computing
+ 
+             final int ticketShift = ThreadedTicketLevelPropagator.SECTION_SHIFT;
+             final int ticketMask = (1 << ticketShift) - 1;
+             final ReentrantAreaLock.Node ticketLock = this.ticketLockArea.lock(
+                 ((lowerChunkX >> ticketShift) - 1) << ticketShift,
+                 ((lowerChunkZ >> ticketShift) - 1) << ticketShift,
+-                (((lowerChunkX >> ticketShift) + 1) << ticketShift) | ticketMask,
+-                (((lowerChunkZ >> ticketShift) + 1) << ticketShift) | ticketMask
++                (((upperChunkX >> ticketShift) + 1) << ticketShift) | ticketMask, // Anonymous - Fix incorrect ticket lock size computing
++                (((upperChunkZ >> ticketShift) + 1) << ticketShift) | ticketMask // Anonymous - Fix incorrect ticket lock size computing
+             );
+ 
+             try {
