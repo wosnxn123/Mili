@@ -8,6 +8,8 @@ required = {
     'fun.bm.mili.regression.CreativeRemovalTestSuite',
     'fun.bm.mili.carpet.CarpetRuleApiTestSuite',
     'fun.bm.mili.carpet.GameplayCompatTestSuite',
+    'fun.bm.mili.carpet.WorldGameplayRulesTest',
+    'fun.bm.mili.carpet.EntityGameplayRulesTest',
     'fun.bm.mili.portal.PortalSearchChunkLoadsTest',
     'fun.bm.mili.update.MiliAutoUpdateTestSuite',
     'net.minecraft.world.level.block.CactusRotationTest',

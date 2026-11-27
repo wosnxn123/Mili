@@ -1,0 +1,136 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Carpet: stock villager inventory menu and precise placements
+
+Adapted from Lophine 7a51f49a512f1b5465f15a905d3704754e4bed02, Minecraft patches 0131-0134.
+Use the native 3x3 inventory protocol and original pre-spawn/placement callbacks.
+See META-INF/licenses/carpet-26.3.txt for source and license notices.
+
+diff --git a/net/minecraft/world/entity/EntityType.java b/net/minecraft/world/entity/EntityType.java
+index 2bf7eab..ddb20fa 100644
+--- a/net/minecraft/world/entity/EntityType.java
++++ b/net/minecraft/world/entity/EntityType.java
+@@ -173,6 +173,19 @@ public class EntityType<T extends Entity> implements EntityTypeTest<Entity, T>,
+         return this.spawn(level, postSpawnConfig, spawnPos, spawnReason, tryMoveDown, movedUp, createSpawnReason); // CraftBukkit
+     }
+ 
++    public @Nullable T carpetSpawnFromEgg(final ServerLevel level, final ItemStack itemStack, final @Nullable LivingEntity user,
++        final BlockPos pos, final boolean tryMoveDown, final boolean movedUp, final Vec3 click) {
++        final var reason = org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.SPAWNER_EGG;
++        TypedEntityData<EntityType<?>> data = itemStack.get(DataComponents.ENTITY_DATA);
++        PostSpawnProcessor<T> config = data != null && !data.contains("Paper.SpawnReason")
++            ? appendCustomEntityStackConfig(appendComponentsConfig(entity -> entity.spawnReason = reason, itemStack), level, itemStack, user)
++            : createDefaultStackConfig(level, itemStack, user);
++        return this.spawn(level, config.andThen(entity -> {
++            Vec3 desired = fun.bm.mili.carpet.EntityGameplayRules.precisePlacement(pos, click, entity.getY());
++            entity.snapTo(desired.x, desired.y, desired.z, entity.getYRot(), entity.getXRot());
++        }), pos, EntitySpawnReason.SPAWN_ITEM_USE, tryMoveDown, movedUp, reason);
++    }
++
+     public static <T extends Entity> PostSpawnProcessor<T> createDefaultStackConfig(
+         final Level level, final ItemStack itemStack, final @Nullable LivingEntity user
+     ) {
+diff --git a/net/minecraft/world/entity/npc/villager/Villager.java b/net/minecraft/world/entity/npc/villager/Villager.java
+index 35cb13a..766573a 100644
+--- a/net/minecraft/world/entity/npc/villager/Villager.java
++++ b/net/minecraft/world/entity/npc/villager/Villager.java
+@@ -355,6 +355,12 @@ public class Villager extends AbstractVillager implements VillagerDataHolder, Re
+             return super.mobInteract(player, hand);
+         }
+ 
++        if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.openVillagerInventory && player instanceof net.minecraft.server.level.ServerPlayer serverPlayer
++            && player.isShiftKeyDown() && hand == InteractionHand.MAIN_HAND
++            && ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(this)
++            && this.distanceToSqr(player) < 64.0) {
++            return fun.bm.mili.carpet.EntityGameplayRules.openVillagerInventory(serverPlayer, this);
++        }
+         if (this.isBaby()) {
+             this.setUnhappy();
+             return InteractionResult.SUCCESS;
+diff --git a/net/minecraft/world/item/ArmorStandItem.java b/net/minecraft/world/item/ArmorStandItem.java
+index e2761c0..0bae031 100644
+--- a/net/minecraft/world/item/ArmorStandItem.java
++++ b/net/minecraft/world/item/ArmorStandItem.java
+@@ -35,11 +35,12 @@ public class ArmorStandItem extends Item {
+         BlockPlaceContext placeContext = new BlockPlaceContext(context);
+         BlockPos blockPos = placeContext.getClickedPos();
+         ItemStack itemStack = context.getItemInHand();
+-        Vec3 pos = Vec3.atBottomCenterOf(blockPos);
++        boolean precise = fun.bm.mili.carpet.config.modules.EntityGameplayConfig.preciseEntityPlacement;
++        Vec3 pos = precise ? fun.bm.mili.carpet.EntityGameplayRules.precisePlacement(blockPos, context.getClickLocation(), blockPos.getY()) : Vec3.atBottomCenterOf(blockPos);
+         AABB box = EntityTypes.ARMOR_STAND.getDimensions().makeBoundingBox(pos.x(), pos.y(), pos.z());
+         if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.entityPlacementIgnoreCollision || level.noCollision(null, box) && level.getEntities(null, box).isEmpty()) {
+             if (level instanceof ServerLevel serverLevel) {
+-                if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.entityPlacementIgnoreCollision && !fun.bm.mili.carpet.EntityGameplayRules.ownsLoaded(serverLevel, blockPos, 2)) return InteractionResult.FAIL;
++                if ((precise || fun.bm.mili.carpet.config.modules.EntityGameplayConfig.entityPlacementIgnoreCollision) && !fun.bm.mili.carpet.EntityGameplayRules.ownsLoaded(serverLevel, blockPos, 2)) return InteractionResult.FAIL;
+                 PostSpawnProcessor<ArmorStand> entityConfig = EntityType.createDefaultStackConfig(serverLevel, itemStack, context.getPlayer());
+                 ArmorStand entity = EntityTypes.ARMOR_STAND.create(serverLevel, entityConfig, blockPos, EntitySpawnReason.SPAWN_ITEM_USE, true, true);
+                 if (entity == null) {
+@@ -47,7 +48,7 @@ public class ArmorStandItem extends Item {
+                 }
+ 
+                 float yRot = Mth.floor((Mth.wrapDegrees(context.getRotation() - 180.0F) + 22.5F) / 45.0F) * 45.0F;
+-                entity.snapTo(entity.getX(), entity.getY(), entity.getZ(), yRot, 0.0F);
++                entity.snapTo(precise ? pos.x : entity.getX(), entity.getY(), precise ? pos.z : entity.getZ(), yRot, 0.0F);
+                 // CraftBukkit start
+                 if (org.bukkit.craftbukkit.event.CraftEventFactory.callEntityPlaceEvent(context, entity).isCancelled()) {
+                     if (context.getPlayer() != null) context.getPlayer().containerMenu.sendAllDataToRemote(); // Paper - Fix inventory desync
+diff --git a/net/minecraft/world/item/EndCrystalItem.java b/net/minecraft/world/item/EndCrystalItem.java
+index 3a748c8..854742a 100644
+--- a/net/minecraft/world/item/EndCrystalItem.java
++++ b/net/minecraft/world/item/EndCrystalItem.java
+@@ -42,8 +42,11 @@ public class EndCrystalItem extends Item {
+         }
+ 
+         if (level instanceof ServerLevel serverLevel) {
+-            if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.entityPlacementIgnoreCollision && !fun.bm.mili.carpet.EntityGameplayRules.ownsLoaded(serverLevel, above, 2)) return InteractionResult.FAIL;
+-            EndCrystal crystal = new EndCrystal(level, x + 0.5, y, z + 0.5);
++            boolean precise = fun.bm.mili.carpet.config.modules.EntityGameplayConfig.preciseEntityPlacement;
++            if ((precise || fun.bm.mili.carpet.config.modules.EntityGameplayConfig.entityPlacementIgnoreCollision) && !fun.bm.mili.carpet.EntityGameplayRules.ownsLoaded(serverLevel, above, 2)) return InteractionResult.FAIL;
++            net.minecraft.world.phys.Vec3 location = precise ? fun.bm.mili.carpet.EntityGameplayRules.precisePlacement(above, context.getClickLocation(), y)
++                : new net.minecraft.world.phys.Vec3(x + 0.5, y, z + 0.5);
++            EndCrystal crystal = new EndCrystal(level, location.x, location.y, location.z);
+             crystal.setShowBottom(false);
+             // CraftBukkit start
+             if (org.bukkit.craftbukkit.event.CraftEventFactory.callEntityPlaceEvent(context, crystal).isCancelled()) {
+diff --git a/net/minecraft/world/item/SpawnEggItem.java b/net/minecraft/world/item/SpawnEggItem.java
+index a5dfdce..c49bbd8 100644
+--- a/net/minecraft/world/item/SpawnEggItem.java
++++ b/net/minecraft/world/item/SpawnEggItem.java
+@@ -83,7 +83,7 @@ public class SpawnEggItem extends Item {
+                 }
+ 
+                 return spawnMob(
+-                    type, context.getPlayer(), itemStack, serverLevel, spawnPos, true, !Objects.equals(pos, spawnPos) && clickedFace == Direction.UP
++                    type, context.getPlayer(), itemStack, serverLevel, spawnPos, true, !Objects.equals(pos, spawnPos) && clickedFace == Direction.UP, context.getClickLocation()
+                 );
+             }
+         }
+@@ -96,9 +96,15 @@ public class SpawnEggItem extends Item {
+         final ServerLevel level,
+         final BlockPos spawnPos,
+         final boolean tryMoveDown,
+-        final boolean movedUp
++        final boolean movedUp,
++        final Vec3 click
+     ) {
+-        if (type.spawn(level, itemStack, user, spawnPos, EntitySpawnReason.SPAWN_ITEM_USE, tryMoveDown, movedUp) != null) {
++        boolean precise = fun.bm.mili.carpet.config.modules.EntityGameplayConfig.preciseEntityPlacement;
++        if (precise && !fun.bm.mili.carpet.EntityGameplayRules.ownsLoaded(level, spawnPos, 2)) return InteractionResult.FAIL;
++        var spawned = precise
++            ? type.carpetSpawnFromEgg(level, itemStack, user, spawnPos, tryMoveDown, movedUp, click)
++            : type.spawn(level, itemStack, user, spawnPos, EntitySpawnReason.SPAWN_ITEM_USE, tryMoveDown, movedUp);
++        if (spawned != null) {
+             itemStack.consume(1, user);
+             level.gameEvent(user, GameEvent.ENTITY_PLACE, spawnPos);
+             return InteractionResult.SUCCESS;
+@@ -127,7 +133,7 @@ public class SpawnEggItem extends Item {
+             }
+ 
+             if (level.mayInteract(player, pos) && player.mayUseItemAt(pos, hitResult.getDirection(), itemStack)) {
+-                InteractionResult result = spawnMob(type, player, itemStack, serverLevel, pos, false, false);
++                InteractionResult result = spawnMob(type, player, itemStack, serverLevel, pos, false, false, hitResult.getLocation());
+                 if (result == InteractionResult.SUCCESS) {
+                     player.awardStat(Stats.ITEM_USED.get(this));
+                 }

@@ -1,0 +1,109 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Carpet: native movement synchronization and renewable egg
+
+Adapted from Lophine 7a51f49a512f1b5465f15a905d3704754e4bed02, Minecraft patches 0131-0134.
+Use stock attribute and ability packets, plus a local dragon-breath block spread event.
+See META-INF/licenses/carpet-26.3.txt for source and license notices.
+
+diff --git a/net/minecraft/network/protocol/game/ClientboundPlayerAbilitiesPacket.java b/net/minecraft/network/protocol/game/ClientboundPlayerAbilitiesPacket.java
+index 1b4b9ca..dc3b5ad 100644
+--- a/net/minecraft/network/protocol/game/ClientboundPlayerAbilitiesPacket.java
++++ b/net/minecraft/network/protocol/game/ClientboundPlayerAbilitiesPacket.java
+@@ -26,7 +26,8 @@ public class ClientboundPlayerAbilitiesPacket implements Packet<ClientGamePacket
+         this.isFlying = abilities.flying;
+         this.canFly = abilities.mayfly;
+         this.instabuild = abilities.instabuild;
+-        this.flyingSpeed = abilities.getFlyingSpeed();
++        this.flyingSpeed = abilities.instabuild
++            ? abilities.getFlyingSpeed() * (float) fun.bm.mili.carpet.config.modules.EntityGameplayConfig.creativeFlySpeed() : abilities.getFlyingSpeed();
+         this.walkingSpeed = abilities.getWalkingSpeed();
+     }
+ 
+diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
+index 028bb81..5cce74f 100644
+--- a/net/minecraft/server/level/ServerPlayer.java
++++ b/net/minecraft/server/level/ServerPlayer.java
+@@ -938,6 +938,7 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+ 
+     @Override
+     public void tick() {
++        fun.bm.mili.carpet.EntityGameplayRules.updateGroundSpeed(this);
+         // Luminol start - Status bars
+         this.statusBarList.tick();
+         // Luminol end - Status bars
+@@ -1213,7 +1214,8 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+     public void handleShoulderEntities() {
+         this.playShoulderEntityAmbientSound(this.getShoulderEntityLeft());
+         this.playShoulderEntityAmbientSound(this.getShoulderEntityRight());
+-        if (this.fallDistance > 0.5 || this.isInWater() || this.getAbilities().flying || this.isSleeping() || this.isInPowderSnow) {
++        if (this.fallDistance > 0.5 && (!fun.bm.mili.carpet.config.modules.EntityGameplayConfig.persistentParrots || this.getAbilities().invulnerable)
++            || this.isInWater() || this.getAbilities().flying || this.isSleeping() || this.isInPowderSnow) {
+             if (!this.level().paperConfig().entities.behavior.parrotsAreUnaffectedByPlayerMovement) // Paper - Add option to make parrots stay
+             this.removeEntitiesOnShoulder();
+         }
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index 5e34735..a9dbc6c 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -795,7 +795,13 @@ public abstract class Player extends Avatar implements ContainerUser {
+         // CraftBukkit start - Don't filter out 0 damage
+         boolean damaged = super.hurtServer(level, source, damage);
+         if (damaged) {
+-            this.removeEntitiesOnShoulder();
++            if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.persistentParrots && this instanceof ServerPlayer serverPlayer && !this.isShiftKeyDown()) {
++                float chance = Math.clamp(damage / 15.0F, 0.0F, 1.0F);
++                if (!serverPlayer.getShoulderEntityLeft().isEmpty() && this.getRandom().nextFloat() < chance) serverPlayer.releaseLeftShoulderEntity();
++                if (!serverPlayer.getShoulderEntityRight().isEmpty() && this.getRandom().nextFloat() < chance) serverPlayer.releaseRightShoulderEntity();
++            } else {
++                this.removeEntitiesOnShoulder();
++            }
+         }
+         return damaged;
+         // CraftBukkit end
+@@ -2280,7 +2286,9 @@ public abstract class Player extends Avatar implements ContainerUser {
+     @Override
+     protected float getFlyingSpeed() {
+         if (this.abilities.flying && !this.isPassenger()) {
+-            return this.isSprinting() ? this.abilities.getFlyingSpeed() * 2.0F : this.abilities.getFlyingSpeed();
++            float speed = this.abilities.getFlyingSpeed();
++            if (this.abilities.instabuild) speed *= (float) fun.bm.mili.carpet.config.modules.EntityGameplayConfig.creativeFlySpeed();
++            return this.isSprinting() ? speed * 2.0F : speed;
+         } else {
+             return this.isSprinting() ? 0.025999999F : 0.02F;
+         }
+diff --git a/net/minecraft/world/level/block/DragonEggBlock.java b/net/minecraft/world/level/block/DragonEggBlock.java
+index 83ff1e5..d32f8b2 100644
+--- a/net/minecraft/world/level/block/DragonEggBlock.java
++++ b/net/minecraft/world/level/block/DragonEggBlock.java
+@@ -25,6 +25,29 @@ public class DragonEggBlock extends FallingBlock {
+         super(properties);
+     }
+ 
++    @Override
++    protected boolean isRandomlyTicking(final BlockState state) {
++        return fun.bm.mili.carpet.config.modules.EntityGameplayConfig.renewableDragonEgg;
++    }
++
++    @Override
++    protected void randomTick(final BlockState state, final net.minecraft.server.level.ServerLevel world, final BlockPos source, final RandomSource random) {
++        if (!fun.bm.mili.carpet.config.modules.EntityGameplayConfig.renewableDragonEgg || random.nextInt(64) != 0 || !fun.bm.mili.carpet.EntityGameplayRules.ownsLoaded(world, source, 2)) return;
++        var box = net.minecraft.world.phys.AABB.encapsulatingFullBlocks(source, source.offset(1, 1, 1));
++        var clouds = world.getEntitiesOfClass(net.minecraft.world.entity.AreaEffectCloud.class, box,
++            cloud -> ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(cloud) && cloud.isAlive()
++                && cloud.getParticle().getType() == net.minecraft.core.particles.ParticleTypes.DRAGON_BREATH);
++        if (clouds.isEmpty()) return;
++        var cloud = clouds.get(random.nextInt(clouds.size()));
++        BlockPos target = source.offset(random.nextInt(16) - random.nextInt(16), random.nextInt(8) - random.nextInt(8),
++            random.nextInt(16) - random.nextInt(16));
++        if (!fun.bm.mili.carpet.EntityGameplayRules.ownsLoaded(world, target) || !world.getWorldBorder().isWithinBounds(target) || !world.isEmptyBlock(target)) return;
++        if (org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockSpreadEvent(world, source, target, state, Block.UPDATE_CLIENTS)
++            && !cloud.isRemoved() && ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(cloud)) {
++            cloud.setRadius(cloud.getRadius() * 0.2F);
++        }
++    }
++
+     @Override
+     protected VoxelShape getShape(final BlockState state, final BlockGetter level, final BlockPos pos, final CollisionContext context) {
+         return SHAPE;

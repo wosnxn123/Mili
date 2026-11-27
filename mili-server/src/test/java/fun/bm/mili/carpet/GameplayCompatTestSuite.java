@@ -14,6 +14,8 @@ final class GameplayCompatTestSuite {
     void publishesDistinctManagerRulesAndBoundsDistances() {
         var entries = new ArrayList<CarpetRule>();
         GameplayCompatRules.registerProtocolRules(entries);
+        WorldGameplayRules.registerProtocolRules(entries);
+        EntityGameplayRules.registerProtocolRules(entries);
         var names = new HashSet<String>();
         for (var entry : entries) assertTrue(names.add(entry.name()), entry::name);
         assertTrue(entries.contains(CarpetRule.of("carpetamsaddition", "useItemCooldownDisabled", false)));
@@ -24,6 +26,19 @@ final class GameplayCompatTestSuite {
             GameplayCompatConfig.xpTrackingDistance = 900;
             assertEquals(128.0D, GameplayCompatConfig.xpTrackingDistance());
         } finally { GameplayCompatConfig.xpTrackingDistance = previous; }
+    }
+
+    @Test
+    void xpCounterSaturatesAndDoesNotClaimTheCommandByDefault() {
+        assertEquals(137L, CollectionGameplayRules.addWithoutOverflow(100L, 37L));
+        assertEquals(Long.MAX_VALUE, CollectionGameplayRules.addWithoutOverflow(Long.MAX_VALUE - 1, 3L));
+        boolean old = GameplayCompatConfig.hopperXpCounters;
+        try {
+            GameplayCompatConfig.hopperXpCounters = false;
+            var commands = new com.mojang.brigadier.CommandDispatcher<net.minecraft.commands.CommandSourceStack>();
+            CollectionGameplayRules.register(commands);
+            assertNull(commands.getRoot().getChild("xcounter"));
+        } finally { GameplayCompatConfig.hopperXpCounters = old; }
     }
 
     @Test

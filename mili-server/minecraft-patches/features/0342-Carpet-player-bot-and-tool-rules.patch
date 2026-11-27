@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Carpet: player, bot and tool mechanics
+
+Adapted from Lophine 7a51f49a512f1b5465f15a905d3704754e4bed02, Minecraft patches 0131-0134.
+Keep ServerPlayer interaction validation, Paper mining events, and the native bot type.
+See META-INF/licenses/carpet-26.3.txt for source and license notices.
+
+diff --git a/net/minecraft/world/entity/item/ItemEntity.java b/net/minecraft/world/entity/item/ItemEntity.java
+index 2ed0361..eb56017 100644
+--- a/net/minecraft/world/entity/item/ItemEntity.java
++++ b/net/minecraft/world/entity/item/ItemEntity.java
+@@ -420,6 +420,11 @@ public class ItemEntity extends Entity implements TraceableEntity, ChangePublish
+ 
+     @Override
+     public void playerTouch(final Player player) {
++        if (player instanceof org.leavesmc.leaves.bot.ServerBot
++            && ("NoPickUp".equals(fun.bm.mili.carpet.config.modules.EntityGameplayConfig.fakePlayerPickUpController)
++                || ("MainHandOnly".equals(fun.bm.mili.carpet.config.modules.EntityGameplayConfig.fakePlayerPickUpController) && !player.getMainHandItem().isEmpty()))) {
++            return;
++        }
+         if (!this.level().isClientSide()) {
+             ItemStack itemStack = this.getItem();
+             Item item = itemStack.getItem();
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index 1fb6719..5e34735 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -671,6 +671,7 @@ public abstract class Player extends Avatar implements ContainerUser {
+ 
+     public float getDestroySpeed(final BlockState state) {
+         if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.applyToolEffectsImmediately) this.detectEquipmentUpdates();
++        if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.kirinArm) return Float.MAX_VALUE;
+         float speed = this.inventory.getSelectedItem().getDestroySpeed(state);
+         if (speed > 1.0F) {
+             speed += (float)this.getAttributeValue(Attributes.MINING_EFFICIENCY);
+diff --git a/net/minecraft/world/item/Item.java b/net/minecraft/world/item/Item.java
+index aef1a9c..ca10861 100644
+--- a/net/minecraft/world/item/Item.java
++++ b/net/minecraft/world/item/Item.java
+@@ -198,6 +198,11 @@ public class Item implements ItemLike, FeatureElement {
+ 
+     public float getDestroySpeed(final ItemStack itemStack, final BlockState state) {
+         Tool tool = itemStack.get(DataComponents.TOOL);
++        if (tool != null && itemStack.is(net.minecraft.tags.ItemTags.PICKAXES)
++            && (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.missingTools && state.getSoundType() == net.minecraft.world.level.block.SoundType.GLASS
++                || fun.bm.mili.carpet.config.modules.EntityGameplayConfig.pickaxeMinedBedrock && state.is(net.minecraft.world.level.block.Blocks.BEDROCK))) {
++            return tool.getMiningSpeed(net.minecraft.world.level.block.Blocks.STONE.defaultBlockState());
++        }
+         return tool != null ? tool.getMiningSpeed(state) : 1.0F;
+     }
+ 
+diff --git a/net/minecraft/world/level/block/state/BlockBehaviour.java b/net/minecraft/world/level/block/state/BlockBehaviour.java
+index 3d2747e..4d02e92 100644
+--- a/net/minecraft/world/level/block/state/BlockBehaviour.java
++++ b/net/minecraft/world/level/block/state/BlockBehaviour.java
+@@ -363,7 +363,8 @@ public abstract class BlockBehaviour implements FeatureElement, org.leavesmc.lea
+     }
+ 
+     protected float getDestroyProgress(final BlockState state, final Player player, final BlockGetter level, final BlockPos pos) {
+-        float destroySpeed = state.getDestroySpeed(level, pos);
++        float destroySpeed = fun.bm.mili.carpet.config.modules.EntityGameplayConfig.pickaxeMinedBedrock && state.is(net.minecraft.world.level.block.Blocks.BEDROCK)
++            && player.getMainHandItem().is(net.minecraft.tags.ItemTags.PICKAXES) ? 50.0F : state.getDestroySpeed(level, pos);
+         if (destroySpeed == -1.0F) {
+             return 0.0F;
+         }

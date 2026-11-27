@@ -1,0 +1,86 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Carpet: natural mob spawning and structure populations
+
+Adapted from Lophine 7a51f49a512f1b5465f15a905d3704754e4bed02, Minecraft patches 0131-0134.
+Keep native generation bounds, cap accounting and spawn events.
+See META-INF/licenses/carpet-26.3.txt for source and license notices.
+
+diff --git a/net/minecraft/world/entity/SpawnPlacements.java b/net/minecraft/world/entity/SpawnPlacements.java
+index 4da7ca7..c352e83 100644
+--- a/net/minecraft/world/entity/SpawnPlacements.java
++++ b/net/minecraft/world/entity/SpawnPlacements.java
+@@ -63,6 +63,7 @@ public class SpawnPlacements {
+     }
+ 
+     public static SpawnPlacementType getPlacementType(final EntityType<?> type) {
++        if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.piglinsSpawningInBastions && type == EntityTypes.PIGLIN_BRUTE) return SpawnPlacementTypes.ON_GROUND;
+         SpawnPlacements.Data data = DATA_BY_TYPE.get(type);
+         return data == null ? SpawnPlacementTypes.NO_RESTRICTIONS : data.placement;
+     }
+diff --git a/net/minecraft/world/level/NaturalSpawner.java b/net/minecraft/world/level/NaturalSpawner.java
+index e591c57..8067a99 100644
+--- a/net/minecraft/world/level/NaturalSpawner.java
++++ b/net/minecraft/world/level/NaturalSpawner.java
+@@ -157,6 +157,13 @@ public final class NaturalSpawner {
+         profiler.push("spawner");
+ 
+         for (MobCategory mobCategory : spawningCategories) {
++            if (mobCategory == MobCategory.MONSTER) {
++                String fakePeace = fun.bm.mili.carpet.config.modules.EntityGameplayConfig.fakePeace;
++                if ("true".equals(fakePeace) || fakePeace != null && java.util.Arrays.stream(fakePeace.split(","))
++                    .map(String::trim).anyMatch(level.dimension().identifier().toString()::equals)) {
++                    continue;
++                }
++            }
+             // Paper start - Optional per player mob spawns
+             final boolean canSpawn;
+             int maxSpawns = Integer.MAX_VALUE;
+@@ -186,7 +193,8 @@ public final class NaturalSpawner {
+             }
+             if (canSpawn) {
+                 spawnCategoryForChunk(mobCategory, level, chunk, state::canSpawn, state::afterSpawn,
+-                    maxSpawns, level.paperConfig().entities.spawning.perPlayerMobSpawns ? level.getChunkSource().chunkMap::updatePlayerMobTypeMap : null);
++                    fun.bm.mili.carpet.config.modules.EntityGameplayConfig.overspawningReintroduced ? Integer.MAX_VALUE : maxSpawns,
++                    level.paperConfig().entities.spawning.perPlayerMobSpawns ? level.getChunkSource().chunkMap::updatePlayerMobTypeMap : null);
+                 // Paper end - Optional per player mob spawns
+             }
+         }
+diff --git a/net/minecraft/world/level/chunk/ChunkGenerator.java b/net/minecraft/world/level/chunk/ChunkGenerator.java
+index 366776f..998f3ee 100644
+--- a/net/minecraft/world/level/chunk/ChunkGenerator.java
++++ b/net/minecraft/world/level/chunk/ChunkGenerator.java
+@@ -654,6 +654,32 @@ public abstract class ChunkGenerator {
+         for (Entry<Structure, LongSet> entry : structures.entrySet()) {
+             Structure structure = entry.getKey();
+             StructureSpawnOverride override = structure.spawnOverrides().get(mobCategory);
++            if (mobCategory == MobCategory.MONSTER) {
++                net.minecraft.resources.Identifier structureId = structureManager.registryAccess()
++                    .lookupOrThrow(Registries.STRUCTURE).getKey(structure);
++                if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.huskSpawningInTemples
++                    && net.minecraft.world.level.levelgen.structure.BuiltinStructures.DESERT_PYRAMID.identifier().equals(structureId)) {
++                    override = new StructureSpawnOverride(StructureSpawnOverride.BoundingBoxType.STRUCTURE,
++                        WeightedList.of(new MobSpawnSettings.SpawnerData(net.minecraft.world.entity.EntityTypes.HUSK,
++                            net.minecraft.util.valueproviders.ConstantInt.of(1))));
++                } else if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.shulkerSpawningInEndCities
++                    && net.minecraft.world.level.levelgen.structure.BuiltinStructures.END_CITY.identifier().equals(structureId)) {
++                    override = new StructureSpawnOverride(StructureSpawnOverride.BoundingBoxType.PIECE,
++                        WeightedList.of(new MobSpawnSettings.SpawnerData(net.minecraft.world.entity.EntityTypes.SHULKER,
++                            net.minecraft.util.valueproviders.ConstantInt.of(4))));
++                } else if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.piglinsSpawningInBastions
++                    && net.minecraft.world.level.levelgen.structure.BuiltinStructures.BASTION_REMNANT.identifier().equals(structureId)) {
++                    override = new StructureSpawnOverride(StructureSpawnOverride.BoundingBoxType.PIECE,
++                        WeightedList.<MobSpawnSettings.SpawnerData>builder()
++                            .add(new MobSpawnSettings.SpawnerData(net.minecraft.world.entity.EntityTypes.PIGLIN_BRUTE,
++                                net.minecraft.util.valueproviders.UniformInt.of(1, 2)), 5)
++                            .add(new MobSpawnSettings.SpawnerData(net.minecraft.world.entity.EntityTypes.PIGLIN,
++                                net.minecraft.util.valueproviders.UniformInt.of(2, 4)), 10)
++                            .add(new MobSpawnSettings.SpawnerData(net.minecraft.world.entity.EntityTypes.HOGLIN,
++                                net.minecraft.util.valueproviders.UniformInt.of(1, 2)), 2)
++                            .build());
++                }
++            }
+             if (override != null) {
+                 MutableBoolean inOverrideBox = new MutableBoolean(false);
+                 Predicate<StructureStart> check = override.boundingBox() == StructureSpawnOverride.BoundingBoxType.PIECE

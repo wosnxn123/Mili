@@ -1,0 +1,99 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Carpet: native enchantment pairs and crafting remainder
+
+Adapted from Lophine 7a51f49a512f1b5465f15a905d3704754e4bed02, Minecraft patches 0131-0134.
+Do not relax unrelated exclusivity or creative permissions; charge tool durability only on take.
+See META-INF/licenses/carpet-26.3.txt for source and license notices.
+
+diff --git a/net/minecraft/world/inventory/AnvilMenu.java b/net/minecraft/world/inventory/AnvilMenu.java
+index 3a65b4e..da16fc6 100644
+--- a/net/minecraft/world/inventory/AnvilMenu.java
++++ b/net/minecraft/world/inventory/AnvilMenu.java
+@@ -198,7 +198,10 @@ public class AnvilMenu extends ItemCombinerMenu {
+                         int level = entry.getIntValue();
+                         level = current == level ? level + 1 : Math.max(level, current);
+                         Enchantment enchantment = enchantmentHolder.value();
+-                        boolean compatible = enchantment.canEnchant(input);
++                        boolean compatible = enchantment.canEnchant(input)
++                            || (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.knockbackStick
++                                && input.is(net.minecraft.world.item.Items.STICK)
++                                && enchantmentHolder.is(net.minecraft.world.item.enchantment.Enchantments.KNOCKBACK));
+                         if (this.player.hasInfiniteMaterials() || input.is(Items.ENCHANTED_BOOK)) {
+                             compatible = true;
+                         }
+diff --git a/net/minecraft/world/inventory/ResultSlot.java b/net/minecraft/world/inventory/ResultSlot.java
+index b4c5202..3aad0a3 100644
+--- a/net/minecraft/world/inventory/ResultSlot.java
++++ b/net/minecraft/world/inventory/ResultSlot.java
+@@ -86,7 +86,22 @@ public class ResultSlot extends Slot {
+         return level instanceof ServerLevel serverLevel
+             ? serverLevel.recipeAccess()
+                 .getRecipeFor(RecipeType.CRAFTING, input, serverLevel, this.craftSlots.getCurrentRecipe()) // Paper - Perf: Improve mass crafting; check last recipe used first
+-                .map(recipe -> recipe.value().getRemainingItems(input))
++                .map(recipe -> {
++                    NonNullList<ItemStack> remaining = recipe.value().getRemainingItems(input);
++                    if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.craftableCarvedPumpkin && recipe.id().identifier().equals(
++                        net.minecraft.resources.Identifier.fromNamespaceAndPath("mili", "carpet_carved_pumpkin"))) {
++                        for (int i = 0; i < input.size(); i++) {
++                            ItemStack inputStack = input.getItem(i);
++                            if (inputStack.is(net.minecraft.world.item.Items.SHEARS)) {
++                                ItemStack remainder = inputStack.copyWithCount(1);
++                                remainder.hurtAndBreak(1, serverLevel, null, broken -> {});
++                                remaining.set(i, remainder);
++                                break;
++                            }
++                        }
++                    }
++                    return remaining;
++                })
+                 .orElseGet(() -> CraftingRecipe.defaultCraftingReminder(input)) // Paper - Fix #1822: Return default remainder when recipe is null
+             : CraftingRecipe.defaultCraftingReminder(input);
+     }
+diff --git a/net/minecraft/world/item/crafting/RecipeManager.java b/net/minecraft/world/item/crafting/RecipeManager.java
+index 255ea58..99599a3 100644
+--- a/net/minecraft/world/item/crafting/RecipeManager.java
++++ b/net/minecraft/world/item/crafting/RecipeManager.java
+@@ -90,6 +90,11 @@ public class RecipeManager implements RecipeAccess {
+                 new ShapelessRecipe(new Recipe.CommonInfo(true), new CraftingRecipe.CraftingBookInfo(CraftingBookCategory.MISC, ""),
+                     new ItemStackTemplate(Items.POLISHED_BLACKSTONE_BUTTON), List.of(Ingredient.of(Items.DEEPSLATE)))));
+         }
++        if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.craftableCarvedPumpkin) {
++            addCompatRecipe(recipeMap, new RecipeHolder<>(compatRecipeKey("carpet_carved_pumpkin"),
++                new ShapelessRecipe(new Recipe.CommonInfo(true), new CraftingRecipe.CraftingBookInfo(CraftingBookCategory.MISC, ""),
++                    new ItemStackTemplate(Items.CARVED_PUMPKIN), List.of(Ingredient.of(Items.SHEARS), Ingredient.of(Items.PUMPKIN)))));
++        }
+         if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.rottenFleshBurnedIntoLeather) {
+             addCompatRecipe(recipeMap, new RecipeHolder<>(compatRecipeKey("carpet_leather"), new SmeltingRecipe(new Recipe.CommonInfo(true),
+                 new AbstractCookingRecipe.CookingBookInfo(CookingBookCategory.MISC, ""), Ingredient.of(Items.ROTTEN_FLESH),
+diff --git a/net/minecraft/world/item/enchantment/Enchantment.java b/net/minecraft/world/item/enchantment/Enchantment.java
+index 1a5826a..415d5cb 100644
+--- a/net/minecraft/world/item/enchantment/Enchantment.java
++++ b/net/minecraft/world/item/enchantment/Enchantment.java
+@@ -163,8 +163,24 @@ public record Enchantment(Component description, Enchantment.EnchantmentDefiniti
+         return "Enchantment " + this.description.getString();
+     }
+ 
++    private static boolean carpetDamageEnchantment(final Holder<Enchantment> enchantment) {
++        return enchantment.is(Enchantments.SHARPNESS) || enchantment.is(Enchantments.SMITE)
++            || enchantment.is(Enchantments.BANE_OF_ARTHROPODS) || enchantment.is(Enchantments.IMPALING)
++            || enchantment.is(Enchantments.DENSITY) || enchantment.is(Enchantments.BREACH);
++    }
++
++    private static boolean carpetProtectionEnchantment(final Holder<Enchantment> enchantment) {
++        return enchantment.is(Enchantments.PROTECTION) || enchantment.is(Enchantments.BLAST_PROTECTION)
++            || enchantment.is(Enchantments.FIRE_PROTECTION) || enchantment.is(Enchantments.PROJECTILE_PROTECTION);
++    }
++
+     public static boolean areCompatible(final Holder<Enchantment> enchantment, final Holder<Enchantment> other) {
+-        return !enchantment.equals(other) && !enchantment.value().exclusiveSet.contains(other) && !other.value().exclusiveSet.contains(enchantment);
++        if (enchantment.equals(other)) return false;
++        if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.superBow && (enchantment.is(Enchantments.INFINITY) && other.is(Enchantments.MENDING)
++            || enchantment.is(Enchantments.MENDING) && other.is(Enchantments.INFINITY))) return true;
++        if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.damageEnchantmentCompatible && carpetDamageEnchantment(enchantment) && carpetDamageEnchantment(other)) return true;
++        if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.protectionEnchantmentCompatible && carpetProtectionEnchantment(enchantment) && carpetProtectionEnchantment(other)) return true;
++        return !enchantment.value().exclusiveSet.contains(other) && !other.value().exclusiveSet.contains(enchantment);
+     }
+ 
+     public static Component getFullname(final Holder<Enchantment> enchantment, final int level) {

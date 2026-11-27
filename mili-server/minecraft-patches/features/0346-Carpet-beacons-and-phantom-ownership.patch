@@ -1,0 +1,111 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Carpet: owner-thread beacon effects and phantom budgets
+
+Adapted from Lophine 7a51f49a512f1b5465f15a905d3704754e4bed02, Minecraft patches 0131-0134.
+Beacon recipients are checked again on their owner; phantom budget is tied to native region spawning state.
+See META-INF/licenses/carpet-26.3.txt for source and license notices.
+
+diff --git a/net/minecraft/world/level/NaturalSpawner.java b/net/minecraft/world/level/NaturalSpawner.java
+index 8067a99..24fc062 100644
+--- a/net/minecraft/world/level/NaturalSpawner.java
++++ b/net/minecraft/world/level/NaturalSpawner.java
+@@ -203,6 +203,17 @@ public final class NaturalSpawner {
+     }
+ 
+     // Paper start - Add mobcaps commands
++    public static boolean carpetMaySpawnPhantom(final ServerLevel level, final BlockPos pos) {
++        final MobCategory category = net.minecraft.world.entity.EntityTypes.PHANTOM.getCategory();
++        final int limit = level.getWorld().getSpawnLimit(org.bukkit.craftbukkit.util.CraftSpawnCategory.toBukkit(category));
++        if (limit <= 0) return false;
++        final var state = level.getChunkSource().getLastSpawnState();
++        if (state == null) return false;
++        return level.paperConfig().entities.spawning.perPlayerMobSpawns
++            ? state.canSpawnForCategoryGlobal(category, limit)
++            : state.canSpawnForCategoryGlobal(category, limit) && state.canSpawnForCategoryLocal(category, ChunkPos.containing(pos));
++    }
++
+     public static int globalLimitForCategory(final ServerLevel level, final MobCategory category, final int spawnableChunkCount) {
+         final int categoryLimit = level.getWorld().getSpawnLimitUnsafe(org.bukkit.craftbukkit.util.CraftSpawnCategory.toBukkit(category));
+         if (categoryLimit < 1) {
+@@ -709,6 +720,10 @@ public final class NaturalSpawner {
+             }
+         }
+ 
++        public void carpetCountPhantom(final Mob entity, final ChunkAccess chunk) {
++            this.afterSpawn(entity, chunk);
++        }
++
+         private void afterSpawn(final Mob mob, final ChunkAccess chunk) {
+             EntityType<?> type = mob.getType();
+             BlockPos pos = mob.blockPosition();
+diff --git a/net/minecraft/world/level/block/entity/BeaconBlockEntity.java b/net/minecraft/world/level/block/entity/BeaconBlockEntity.java
+index ec1e65c..56346e0 100644
+--- a/net/minecraft/world/level/block/entity/BeaconBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/BeaconBlockEntity.java
+@@ -337,6 +337,32 @@ public class BeaconBlockEntity extends BlockEntity implements MenuProvider, Name
+             int baseAmp = computeEffectAmplifier(levels, primaryPower, secondaryPower); // Paper - diff out applyEffects logic components - see below
+ 
+             int durationTicks = computeEffectDuration(levels); // Paper - diff out applyEffects logic components - see below
++            if ((fun.bm.mili.carpet.config.modules.EntityGameplayConfig.beaconRangeExpand() != 0 || fun.bm.mili.carpet.config.modules.EntityGameplayConfig.beaconWorldHeight) && level instanceof net.minecraft.server.level.ServerLevel world) {
++                final int extra = fun.bm.mili.carpet.config.modules.EntityGameplayConfig.beaconRangeExpand();
++                final double width = Math.max(0.0, entity.getEffectRange() + extra);
++                final AABB original = new AABB(worldPosition).inflate(width);
++                final double yRadius = entity.getEffectRange();
++                final AABB bounds = new AABB(original.minX, fun.bm.mili.carpet.config.modules.EntityGameplayConfig.beaconWorldHeight ? level.getMinY() - 64.0 : worldPosition.getY() - yRadius,
++                    original.minZ, original.maxX, fun.bm.mili.carpet.config.modules.EntityGameplayConfig.beaconWorldHeight ? level.getMaxY() + 64.0 : worldPosition.getY() + 1.0 + yRadius + level.getHeight(), original.maxZ);
++                final BlockPos source = worldPosition.immutable();
++                final MobEffectInstance primary = new MobEffectInstance(primaryPower, durationTicks, baseAmp, true, true);
++                final MobEffectInstance secondary = hasSecondaryEffect(levels, primaryPower, secondaryPower)
++                    ? new MobEffectInstance(secondaryPower, durationTicks, 0, true, true) : null;
++                for (net.minecraft.server.level.ServerPlayer candidate : world.players()) {
++                    // Use the immutable position only as a hint; check the player's actual bounds on its owner.
++                    if (!bounds.inflate(2.0).contains(candidate.position())) continue;
++                    java.util.function.Consumer<net.minecraft.server.level.ServerPlayer> apply = player -> {
++                        if (player.level() != world || player.isRemoved() || player.isSpectator() || !bounds.intersects(player.getBoundingBox())) return;
++                        applyEffectsAndCallEvent(world, source, List.of(player), new MobEffectInstance(primary), true);
++                        if (secondary != null && player.level() == world && !player.isRemoved() && bounds.intersects(player.getBoundingBox())) {
++                            applyEffectsAndCallEvent(world, source, List.of(player), new MobEffectInstance(secondary), false);
++                        }
++                    };
++                    if (ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(candidate)) apply.accept(candidate);
++                    else candidate.getBukkitEntity().taskScheduler.schedule(apply, null, 1L);
++                }
++                return;
++            }
+             List<Player> players = getHumansInRange(level, worldPosition, levels, entity); // Paper - diff out applyEffects logic components - see below
+ 
+             applyEffectsAndCallEvent(level, worldPosition, players, new MobEffectInstance(primaryPower, durationTicks, baseAmp, true, true), true); // Paper - BeaconEffectEvent
+diff --git a/net/minecraft/world/level/levelgen/PhantomSpawner.java b/net/minecraft/world/level/levelgen/PhantomSpawner.java
+index ec3a437..a4eba4c 100644
+--- a/net/minecraft/world/level/levelgen/PhantomSpawner.java
++++ b/net/minecraft/world/level/levelgen/PhantomSpawner.java
+@@ -57,6 +57,7 @@ public class PhantomSpawner implements CustomSpawner {
+                                             BlockPos spawnPos = playerPos.above(20 + random.nextInt(15))
+                                                 .east(-10 + random.nextInt(21))
+                                                 .south(-10 + random.nextInt(21));
++                                            if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.limitPhantomSpawn && !fun.bm.mili.carpet.EntityGameplayRules.ownsLoaded(level, spawnPos)) continue;
+                                             BlockState blockState = level.getBlockState(spawnPos);
+                                             FluidState fluidState = level.getFluidState(spawnPos);
+                                             if (NaturalSpawner.isValidEmptySpawnBlock(level, spawnPos, blockState, fluidState, EntityTypes.PHANTOM)) {
+@@ -64,6 +65,7 @@ public class PhantomSpawner implements CustomSpawner {
+                                                 int groupSize = 1 + random.nextInt(difficulty.getDifficulty().getId() + 1);
+ 
+                                                 for (int i = 0; i < groupSize; i++) {
++                                                    if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.limitPhantomSpawn && !NaturalSpawner.carpetMaySpawnPhantom(level, spawnPos)) break;
+                                                     // Paper start - PhantomPreSpawnEvent
+                                                     com.destroystokyo.paper.event.entity.PhantomPreSpawnEvent event = new com.destroystokyo.paper.event.entity.PhantomPreSpawnEvent(org.bukkit.craftbukkit.util.CraftLocation.toBukkit(spawnPos, level), player.getBukkitEntity(), org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.NATURAL);
+                                                     if (!event.callEvent()) {
+@@ -79,6 +81,11 @@ public class PhantomSpawner implements CustomSpawner {
+                                                         phantom.snapTo(spawnPos, 0.0F, 0.0F);
+                                                         groupData = phantom.finalizeSpawn(level, difficulty, EntitySpawnReason.NATURAL, groupData);
+                                                         level.addFreshEntityWithPassengers(phantom, org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.NATURAL); // CraftBukkit
++                                                        if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.limitPhantomSpawn && !phantom.isRemoved()) {
++                                                            var state = level.getChunkSource().getLastSpawnState();
++                                                            var chunk = level.getChunkIfLoaded(spawnPos.getX() >> 4, spawnPos.getZ() >> 4);
++                                                            if (state != null && chunk != null) state.carpetCountPhantom(phantom, chunk);
++                                                        }
+                                                     }
+                                                 }
+                                             }

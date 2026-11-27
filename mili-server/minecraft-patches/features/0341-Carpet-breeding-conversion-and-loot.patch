@@ -1,0 +1,148 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Carpet: native breeding, conversion and death drops
+
+Adapted from Lophine 7a51f49a512f1b5465f15a905d3704754e4bed02, Minecraft patches 0131-0134.
+Retain EntityBreedEvent, conversion events and death drop lists; no script continuations.
+See META-INF/licenses/carpet-26.3.txt for source and license notices.
+
+diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
+index 6a2f731..028bb81 100644
+--- a/net/minecraft/server/level/ServerPlayer.java
++++ b/net/minecraft/server/level/ServerPlayer.java
+@@ -1416,6 +1416,19 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+         List<DefaultDrop> loot = new java.util.ArrayList<>(this.getInventory().getContainerSize()); // Paper - Restore vanilla drops behavior
+         boolean keepInventory = this.level().getGameRules().get(GameRules.KEEP_INVENTORY) || this.isSpectator();
+         if (!keepInventory) {
++            final net.minecraft.world.entity.monster.Creeper skullSource = fun.bm.mili.carpet.config.modules.EntityGameplayConfig.playerDropHead
++                && source.getEntity() instanceof net.minecraft.world.entity.monster.Creeper creeper
++                && ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(creeper) && creeper.carpetCanDropSkull() ? creeper : null;
++            if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.headHunter || skullSource != null) {
++                ItemStack head = new ItemStack(net.minecraft.world.item.Items.PLAYER_HEAD);
++                head.set(net.minecraft.core.component.DataComponents.PROFILE, net.minecraft.world.item.component.ResolvableProfile.createResolved(this.getGameProfile()));
++                loot.add(new DefaultDrop(head, stack -> {
++                    if (this.spawnAtLocation(this.level(), stack) != null && skullSource != null
++                        && ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(skullSource)) {
++                        skullSource.carpetRecordSkullDrop();
++                    }
++                }));
++            }
+             for (ItemStack item : this.getInventory().getContents()) {
+                 if (!item.isEmpty() && !EnchantmentHelper.has(item, net.minecraft.world.item.enchantment.EnchantmentEffectComponents.PREVENT_EQUIPMENT_DROP)) {
+                     loot.add(new DefaultDrop(item, stack -> this.drop(stack, false, net.minecraft.util.Prediction.PREDICTED, true, false, null))); // Paper - Restore vanilla drops behavior; drop function taken from Inventory#dropAll (don't fire drop event)
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 25d1311..1229855 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -1967,6 +1967,16 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+         boolean playerKilled = this.lastHurtByPlayerMemoryTime > 0;
+         if (this.shouldDropLoot(level)) {
+             this.dropFromLootTable(level, source, playerKilled);
++            double scrapChance = fun.bm.mili.carpet.config.modules.EntityGameplayConfig.renewableNetheriteScrap();
++            if (scrapChance > 0 && this instanceof net.minecraft.world.entity.monster.zombie.ZombifiedPiglin piglin
++                && !piglin.isBaby() && this.getRandom().nextDouble() < scrapChance) {
++                this.spawnAtLocation(level, Items.NETHERITE_SCRAP);
++            }
++            double elytraChance = fun.bm.mili.carpet.config.modules.EntityGameplayConfig.renewableElytra();
++            if (elytraChance > 0 && this instanceof net.minecraft.world.entity.monster.Phantom
++                && source.getEntity() instanceof net.minecraft.world.entity.monster.Shulker && this.getRandom().nextDouble() < elytraChance) {
++                this.spawnAtLocation(level, Items.ELYTRA);
++            }
+             if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.easyWitherSkeletonSkullDrop && this instanceof net.minecraft.world.entity.monster.skeleton.WitherSkeleton) {
+                 this.spawnAtLocation(level, Items.WITHER_SKELETON_SKULL);
+             }
+diff --git a/net/minecraft/world/entity/animal/parrot/Parrot.java b/net/minecraft/world/entity/animal/parrot/Parrot.java
+index b9a98c9..8509697 100644
+--- a/net/minecraft/world/entity/animal/parrot/Parrot.java
++++ b/net/minecraft/world/entity/animal/parrot/Parrot.java
+@@ -162,6 +162,7 @@ public class Parrot extends ShoulderRidingEntity {
+ 
+     @Override
+     protected void registerGoals() {
++        this.goalSelector.addGoal(2, new net.minecraft.world.entity.ai.goal.BreedGoal(this, 1.0));
+         this.goalSelector.addGoal(0, new TamableAnimal.TamableAnimalPanicGoal(1.25));
+         this.goalSelector.addGoal(0, new FloatGoal(this));
+         this.goalSelector.addGoal(1, new LookAtPlayerGoal(this, Player.class, 8.0F));
+@@ -280,6 +281,8 @@ public class Parrot extends ShoulderRidingEntity {
+             }
+ 
+             return InteractionResult.SUCCESS;
++        } else if (this.isFood(itemStack) && this.isTame() && !this.isOrderedToSit()) {
++            return super.mobInteract(player, hand);
+         } else if (!itemStack.is(ItemTags.PARROT_POISONOUS_FOOD)) {
+             if (!this.isFlying() && this.isTame() && this.isOwnedBy(player)) {
+                 if (!this.level().isClientSide()) {
+@@ -303,7 +306,9 @@ public class Parrot extends ShoulderRidingEntity {
+ 
+     @Override
+     public boolean isFood(final ItemStack itemStack) {
+-        return false;
++        String food = fun.bm.mili.carpet.config.modules.EntityGameplayConfig.breedableParrots;
++        return food != null && !"none".equalsIgnoreCase(food) && !itemStack.isEmpty() && !itemStack.is(ItemTags.PARROT_POISONOUS_FOOD)
++            && net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(itemStack.getItem()).toString().equals(food);
+     }
+ 
+     public static boolean checkParrotSpawnRules(
+@@ -318,12 +323,14 @@ public class Parrot extends ShoulderRidingEntity {
+ 
+     @Override
+     public boolean canMate(final Animal partner) {
+-        return false;
++        return fun.bm.mili.carpet.config.modules.EntityGameplayConfig.breedableParrots != null && !"none".equalsIgnoreCase(fun.bm.mili.carpet.config.modules.EntityGameplayConfig.breedableParrots) && this.isTame() && partner instanceof Parrot parrot
++            && parrot.isTame() && super.canMate(partner);
+     }
+ 
+     @Override
+     public @Nullable AgeableMob getBreedOffspring(final ServerLevel level, final AgeableMob partner) {
+-        return null;
++        return partner instanceof Parrot && fun.bm.mili.carpet.config.modules.EntityGameplayConfig.breedableParrots != null && !"none".equalsIgnoreCase(fun.bm.mili.carpet.config.modules.EntityGameplayConfig.breedableParrots)
++            ? EntityTypes.PARROT.create(level, EntitySpawnReason.BREEDING) : null;
+     }
+ 
+     @Override
+diff --git a/net/minecraft/world/entity/monster/Creeper.java b/net/minecraft/world/entity/monster/Creeper.java
+index abddc6b..b91bad8 100644
+--- a/net/minecraft/world/entity/monster/Creeper.java
++++ b/net/minecraft/world/entity/monster/Creeper.java
+@@ -174,9 +174,17 @@ public class Creeper extends Monster {
+         return SoundEvents.CREEPER_DEATH;
+     }
+ 
++    public boolean carpetCanDropSkull() {
++        return this.isPowered() && (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.superChargedCreeper || !this.droppedSkulls);
++    }
++
++    public void carpetRecordSkullDrop() {
++        this.droppedSkulls = true;
++    }
++
+     @Override
+     public boolean killedEntityPreEvent(final ServerLevel level, final LivingEntity entity, final DamageSource source) { // Paper
+-        if (this.shouldDropLoot(level) && this.isPowered() && !this.droppedSkulls) {
++        if (this.shouldDropLoot(level) && this.carpetCanDropSkull()) {
+             entity.dropFromLootTable(level, source, false, BuiltInLootTables.CHARGED_CREEPER, itemStack -> {
+                 entity.spawnAtLocation(level, itemStack);
+                 entity.postDeathEventTasks.add(() -> this.droppedSkulls = true); // Paper
+diff --git a/net/minecraft/world/entity/monster/Guardian.java b/net/minecraft/world/entity/monster/Guardian.java
+index 4dfab4d..d8a7b03 100644
+--- a/net/minecraft/world/entity/monster/Guardian.java
++++ b/net/minecraft/world/entity/monster/Guardian.java
+@@ -69,6 +69,17 @@ public class Guardian extends Monster {
+         this.clientSideTailAnimationO = this.clientSideTailAnimation;
+     }
+ 
++    @Override
++    public void thunderHit(final ServerLevel level, final net.minecraft.world.entity.LightningBolt lightning) {
++        if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.renewableSponges && !(this instanceof ElderGuardian) && !this.isRemoved()
++            && ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(this)
++            && this.convertTo(net.minecraft.world.entity.EntityTypes.ELDER_GUARDIAN,
++                net.minecraft.world.entity.ConversionParams.single(this, false, true), converted -> {},
++                org.bukkit.event.entity.EntityTransformEvent.TransformReason.LIGHTNING,
++                org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.LIGHTNING) != null) return;
++        super.thunderHit(level, lightning);
++    }
++
+     @Override
+     protected void registerGoals() {
+         MoveTowardsRestrictionGoal goal = new MoveTowardsRestrictionGoal(this, 1.0);

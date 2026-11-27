@@ -36,7 +36,7 @@ public class GeneralCompatConfig implements IConfigModule {
     public static boolean dustTrapdoorReintroduced = false;
 
     @ConfigInfo(name = "shulkerBoxCCEReintroduced", comments = """
-            将潜影盒 CCE 更新抑制映射到 Mili 的 cce-update-suppression 选项。""")
+            仅兼容旧 TOML。26.3 不再用类型转换异常中断比较器更新。""")
     public static boolean shulkerBoxCCEReintroduced = false;
 
     @ConfigInfo(name = "instantBlockUpdaterReintroduced", comments = """

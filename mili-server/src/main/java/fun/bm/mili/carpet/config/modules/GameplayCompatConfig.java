@@ -12,6 +12,36 @@ import org.jetbrains.annotations.Nullable;
 @ConfigClassInfo(category = EnumConfigCategory.ROOT, name = "gameplay", directory = {"carpet"},
     comments = "Carpet 26.3 兼容玩法。默认保留 Mili、Paper 和原版行为。")
 public final class GameplayCompatConfig implements IConfigModule {
+    @ConfigInfo(name = "blockDropsDirectlyEnterInventory", comments = "采掘产生的掉落物经事件放行和原生拾取延迟后尝试进入采掘者背包。仅同区域近距离生效。")
+    public static volatile boolean blockDropsDirectlyEnterInventory = false;
+    @HotReloadUnsupported
+    @ConfigInfo(name = "hopperXpCounters", comments = "启用朝向羊毛的漏斗统计经验；/xcounter 按当前世界和颜色查询。重启生效。")
+    public static volatile boolean hopperXpCounters = false;
+    @ConfigInfo(name = "maxEntityCollisions", comments = "正数限制每只生物每刻推动的目标数；0 保留 Paper 配置，不改变挤压游戏规则。")
+    public static volatile int maxEntityCollisions = 0;
+    @ConfigInfo(name = "blowUpEverything", comments = "将方块自身的基础爆炸抗性视为 0；爆炸事件和其他世界保护仍然适用。")
+    public static volatile boolean blowUpEverything = false;
+    @ConfigInfo(name = "enhancedWorldEater", comments = "0–16：替换基础抗性至少为 17 的普通方块抗性；-1 关闭。基岩、铁砧和末地传送设施除外。")
+    public static volatile double enhancedWorldEater = -1;
+    @ConfigInfo(name = "phantomSpawnAlert", comments = "幻翼自然生成成功后，只向同世界、可见触发玩家的接收者发送提示。")
+    public static volatile boolean phantomSpawnAlert = false;
+    @ConfigInfo(name = "witchGlowstoneDustDropController", comments = "女巫正常战利品结算后追加的荧石粉，-1 不干预，最多一组。")
+    public static volatile int witchGlowstoneDustDropController = -1;
+    @ConfigInfo(name = "witchRedstoneDustDropController", comments = "女巫正常战利品结算后追加的红石粉，-1 不干预，最多一组。")
+    public static volatile int witchRedstoneDustDropController = -1;
+    @ConfigInfo(name = "truePeacefulMode", comments = "生物不会选择玩家作为有效目标；不会修改世界难度或清除其他目标。")
+    public static volatile boolean truePeacefulMode = false;
+    @ConfigInfo(name = "flattenTriangularDistribution", comments = "将三角分布改为均匀分布，保留随机调用次数。与已有 old-feature 配置取或。")
+    public static volatile boolean flattenTriangularDistribution = false;
+
+    public static double effectiveWorldEaterResistance() {
+        double value = enhancedWorldEater;
+        return Double.isFinite(value) && value >= 0 && value <= 16 ? value : -1;
+    }
+    public static boolean useFlatDistribution() {
+        return flattenTriangularDistribution || fun.bm.mili.config.modules.function.OldFeatureConfig.flattenTriangularDistribution;
+    }
+
     @ConfigInfo(name = "cleanLogs", comments = "关闭死亡消息游戏规则时，不记录命名生物死亡日志。")
     public static volatile boolean cleanLogs = false;
 

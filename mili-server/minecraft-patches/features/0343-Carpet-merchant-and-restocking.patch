@@ -1,0 +1,115 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Carpet: native merchant and hotbar restocking
+
+Adapted from Lophine 7a51f49a512f1b5465f15a905d3704754e4bed02, Minecraft patches 0131-0134.
+Do not erase stored trade uses, replace merchant sessions or bypass purchase events.
+See META-INF/licenses/carpet-26.3.txt for source and license notices.
+
+diff --git a/net/minecraft/world/entity/ai/gossip/GossipContainer.java b/net/minecraft/world/entity/ai/gossip/GossipContainer.java
+index 41f8df3..52c32a9 100644
+--- a/net/minecraft/world/entity/ai/gossip/GossipContainer.java
++++ b/net/minecraft/world/entity/ai/gossip/GossipContainer.java
+@@ -122,6 +122,15 @@ public class GossipContainer {
+ 
+     public int getReputation(final UUID entity, final Predicate<GossipType> types) {
+         GossipContainer.EntityGossips entry = this.gossips.get(entity);
++        if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.sharedVillagerDiscounts && types.test(GossipType.MAJOR_POSITIVE)) {
++            int otherReputation = entry == null ? 0 : entry.weightedValue(type -> types.test(type) && type != GossipType.MAJOR_POSITIVE);
++            int sharedReputation = 0;
++            for (GossipContainer.EntityGossips gossip : this.gossips.values()) {
++                sharedReputation += gossip.weightedValue(type -> type == GossipType.MAJOR_POSITIVE);
++                if (sharedReputation >= GossipType.MAJOR_POSITIVE.max * GossipType.MAJOR_POSITIVE.weight) break;
++            }
++            return otherReputation + Math.min(sharedReputation, GossipType.MAJOR_POSITIVE.max * GossipType.MAJOR_POSITIVE.weight);
++        }
+         return entry != null ? entry.weightedValue(types) : 0;
+     }
+ 
+diff --git a/net/minecraft/world/entity/npc/villager/Villager.java b/net/minecraft/world/entity/npc/villager/Villager.java
+index dae68c2..35cb13a 100644
+--- a/net/minecraft/world/entity/npc/villager/Villager.java
++++ b/net/minecraft/world/entity/npc/villager/Villager.java
+@@ -361,6 +361,17 @@ public class Villager extends AbstractVillager implements VillagerDataHolder, Re
+         }
+ 
+         if (!this.level().isClientSide()) {
++            if (this.level() instanceof ServerLevel serverLevel && hand == InteractionHand.MAIN_HAND) {
++                var data = this.getVillagerData();
++                if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.easyRefreshTrades && this.getVillagerXp() <= 0 && data.level() == 1
++                    && !itemStack.is(Items.EMERALD_BLOCK) && data.profession().value().getTrades(1) != null) {
++                    this.getOffers().clear();
++                    this.updateTrades(serverLevel);
++                }
++                if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.quickVillagerLevelUp && data.level() < 5 && !this.getOffers().isEmpty()) {
++                    this.increaseMerchantCareer(serverLevel);
++                }
++            }
+             boolean noOffers = this.getOffers().isEmpty();
+             if (hand == InteractionHand.MAIN_HAND) {
+                 if (noOffers) {
+diff --git a/net/minecraft/world/entity/player/Inventory.java b/net/minecraft/world/entity/player/Inventory.java
+index 068cecc..fc8c324 100644
+--- a/net/minecraft/world/entity/player/Inventory.java
++++ b/net/minecraft/world/entity/player/Inventory.java
+@@ -347,6 +347,23 @@ public class Inventory implements Container, Nameable {
+     }
+ 
+     public void tick() {
++        if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.forceRestock && this.player instanceof net.minecraft.server.level.ServerPlayer
++            && !this.player.isSpectator() && this.player.containerMenu == this.player.inventoryMenu) {
++            for (int slot = 0; slot < getSelectionSize(); slot++) {
++                ItemStack hotbar = this.items.get(slot);
++                if (!hotbar.isStackable() || hotbar.getCount() >= hotbar.getMaxStackSize()) continue;
++                for (int i = getSelectionSize(); i < this.items.size(); i++) {
++                    ItemStack source = this.items.get(i);
++                    if (source.isEmpty() || !ItemStack.isSameItemSameComponents(hotbar, source)) continue;
++                    int moved = Math.min(source.getCount(), hotbar.getMaxStackSize() - hotbar.getCount());
++                    hotbar.grow(moved);
++                    source.shrink(moved);
++                    if (source.isEmpty()) this.items.set(i, ItemStack.EMPTY);
++                    this.setChanged();
++                    if (hotbar.getCount() >= hotbar.getMaxStackSize()) break;
++                }
++            }
++        }
+         for (int i = 0; i < this.items.size(); i++) {
+             ItemStack itemStack = this.getItem(i);
+             if (!itemStack.isEmpty()) {
+diff --git a/net/minecraft/world/item/trading/MerchantOffer.java b/net/minecraft/world/item/trading/MerchantOffer.java
+index a57c055..fc284ad 100644
+--- a/net/minecraft/world/item/trading/MerchantOffer.java
++++ b/net/minecraft/world/item/trading/MerchantOffer.java
+@@ -185,7 +185,7 @@ public class MerchantOffer {
+     }
+ 
+     public void increaseUses() {
+-        this.uses++;
++        if (!this.carpetUnlimitedNormalStock()) this.uses++;
+     }
+ 
+     public int getDemand() {
+@@ -216,8 +216,12 @@ public class MerchantOffer {
+         return this.xp;
+     }
+ 
++    private boolean carpetUnlimitedNormalStock() {
++        return this.maxUses > 0 && (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.infiniteTrades || fun.bm.mili.carpet.config.modules.EntityGameplayConfig.villagerInfiniteTrade);
++    }
++
+     public boolean isOutOfStock() {
+-        return this.uses + this.voidTradeUses >= this.maxUses; // Mili - force void trade
++        return (this.carpetUnlimitedNormalStock() ? this.voidTradeUses : this.uses + this.voidTradeUses) >= this.maxUses; // Mili - force void trade
+     }
+ 
+     public void setToOutOfStock() {
+@@ -264,7 +268,7 @@ public class MerchantOffer {
+         ItemStack.STREAM_CODEC.encode(output, offer.getResult());
+         ItemCost.OPTIONAL_STREAM_CODEC.encode(output, offer.getItemCostB());
+         output.writeBoolean(offer.isOutOfStock());
+-        output.writeInt(offer.getUses());
++        output.writeInt(offer.carpetUnlimitedNormalStock() ? offer.voidTradeUses : offer.getUses());
+         output.writeInt(offer.getMaxUses());
+         output.writeInt(offer.getXp());
+         output.writeInt(offer.getSpecialPriceDiff());

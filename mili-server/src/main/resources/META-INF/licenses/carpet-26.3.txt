@@ -15,6 +15,10 @@ notice and attribution to Fallen_Breath and Carpet TIS Addition contributors
 The clean creative removal helper retains its LGPL-3.0-or-later notice
 and attribution to Fallen_Breath and Carpet TIS Addition contributors
 (62c3cb6fff26cd9c4e12aa616b403c184a4a6ca0), via Lophine 0134 and 0135.
+The native hopper XP counter is adapted from the Carpet TIS Addition gameplay
+at revision 62c3cb6fff26cd9c4e12aa616b403c184a4a6ca0. The villager inventory
+menu is adapted from Carpet Org Addition through Lophine, under the MIT notice
+below. Mining-drop collection retains the native Paper spawn and pickup events.
 The Lophine integration is distributed under GPL version 3 (see the project's
 LICENSE.md and licenses/GPL.md).
 

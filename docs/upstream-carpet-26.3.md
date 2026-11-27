@@ -50,7 +50,7 @@
 | --- | --- |
 | 0131 | `commandTick`（转发到 `CommandConfig`）、`creativeNoClip`（转发到原配置/0114）、`explosionNoBlockDamage`、`fastRedstoneDust`（0117）、`interactionUpdates`、`lagFreeSpawning`、`placementRotationFix`、`tntDoNotUpdate`、`tntPrimerMomentumRemoved`、`viewDistance`、`xpNoCooldown`。 |
 | 0132 | `bambooModelNoOffset`、`betterCraftableBoneBlock`、`betterCraftableDispenser`、`creativeOneHitKill`、`powerfulExpMending`、`sensibleEnderman`、`shulkerGolem`。 |
-| 0133 | `dustTrapdoorReintroduced`、`shulkerBoxCCEReintroduced`、`xpNoCooldown`；`villagerVoidTrading` 与独立补丁 0185 属同一行为，勿重复复制村民交易栈。 |
+| 0133 | `dustTrapdoorReintroduced`、`xpNoCooldown`；`shulkerBoxCCEReintroduced` 仅保留旧 TOML 解析，0402 不再通过异常中断比较器更新，也不再向客户端公布为可用规则。`villagerVoidTrading` 与独立补丁 0185 属同一行为，勿重复复制村民交易栈。 |
 | 0134 | `antiSpamDisabled`、`blockPlacementIgnoreEntity`、`clientSettingsLostOnRespawnFix`、`commandTick`、`creativeNoItemCooldown`、`creativeOneHitKill`、`creativeOpenContainerForcibly`、`dustTrapdoorReintroduced`、`entityInstantDeathRemoval`、`hopperCountersUnlimitedSpeed`、`hopperNoItemCost`、`instantBlockUpdaterReintroduced`（0106 / `RedStoneConfig`）、`observerNoDetection`、`tickCommandPermission`、`tntDoNotUpdate`、`tntDupingFix`、`tntFuseDuration`、`tntIgnoreRedstoneSignal`、`totallyNoBlockUpdate`、`yeetOutOfOrderChatKick`、`yeetUpdateSuppressionCrash`（0103 / `UpdateSuppressionCrashFixConfig`）。已有 TISCM MSPT、Carpet HUD 和现有假玩家支持保留；Mili HUD/区域性能分析不等于上游完整微时序事件流。 |
 
 ## 未接入及阻断

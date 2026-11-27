@@ -1,0 +1,179 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Carpet owned plant growth and bonemeal
+
+From Lophine 7a51f49a, Minecraft 0131, 0132. See META-INF/licenses/carpet-26.3.txt.
+Reuse native random ticks and their Paper events in owned, loaded footprints. Use the existing bonemeal and item spawn paths.
+
+Additional source:
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Carpet AMS features
+
+diff --git a/net/minecraft/world/level/block/BambooStalkBlock.java b/net/minecraft/world/level/block/BambooStalkBlock.java
+--- a/net/minecraft/world/level/block/BambooStalkBlock.java
++++ b/net/minecraft/world/level/block/BambooStalkBlock.java
+@@ -101,6 +101,11 @@
+     protected void tick(final BlockState state, final ServerLevel level, final BlockPos pos, final RandomSource random) {
+         if (!state.canSurvive(level, pos)) {
+             level.destroyBlock(pos, true);
++            return;
++        }
++        if ((fun.bm.mili.carpet.config.modules.WorldGameplayConfig.scheduledRandomTickAllPlants || fun.bm.mili.carpet.config.modules.WorldGameplayConfig.scheduledRandomTickBamboo)
++            && fun.bm.mili.carpet.WorldGameplayRules.ownsLoadedBox(level, pos.getX() - 1, pos.getZ() - 1, pos.getX() + 1, pos.getZ() + 1)) {
++            state.randomTick(level, pos, random);
+         }
+     }
+ 
+diff --git a/net/minecraft/world/level/block/CactusBlock.java b/net/minecraft/world/level/block/CactusBlock.java
+--- a/net/minecraft/world/level/block/CactusBlock.java
++++ b/net/minecraft/world/level/block/CactusBlock.java
+@@ -40,6 +40,11 @@
+     protected void tick(final BlockState state, final ServerLevel level, final BlockPos pos, final RandomSource random) {
+         if (!state.canSurvive(level, pos)) {
+             level.destroyBlock(pos, true);
++            return;
++        }
++        if ((fun.bm.mili.carpet.config.modules.WorldGameplayConfig.scheduledRandomTickAllPlants || fun.bm.mili.carpet.config.modules.WorldGameplayConfig.scheduledRandomTickCactus)
++            && fun.bm.mili.carpet.WorldGameplayRules.ownsLoadedBox(level, pos.getX() - 1, pos.getZ() - 1, pos.getX() + 1, pos.getZ() + 1)) {
++            state.randomTick(level, pos, random);
+         }
+     }
+ 
+diff --git a/net/minecraft/world/level/block/ChorusFlowerBlock.java b/net/minecraft/world/level/block/ChorusFlowerBlock.java
+--- a/net/minecraft/world/level/block/ChorusFlowerBlock.java
++++ b/net/minecraft/world/level/block/ChorusFlowerBlock.java
+@@ -36,6 +36,11 @@
+     protected void tick(final BlockState state, final ServerLevel level, final BlockPos pos, final RandomSource random) {
+         if (!state.canSurvive(level, pos)) {
+             level.destroyBlock(pos, true);
++            return;
++        }
++        if ((fun.bm.mili.carpet.config.modules.WorldGameplayConfig.scheduledRandomTickAllPlants || fun.bm.mili.carpet.config.modules.WorldGameplayConfig.scheduledRandomTickChorusFlower)
++            && fun.bm.mili.carpet.WorldGameplayRules.ownsLoadedBox(level, pos.getX() - 2, pos.getZ() - 2, pos.getX() + 2, pos.getZ() + 2)) {
++            state.randomTick(level, pos, random);
+         }
+     }
+ 
+diff --git a/net/minecraft/world/level/block/GrowingPlantBlock.java b/net/minecraft/world/level/block/GrowingPlantBlock.java
+--- a/net/minecraft/world/level/block/GrowingPlantBlock.java
++++ b/net/minecraft/world/level/block/GrowingPlantBlock.java
+@@ -55,6 +55,12 @@
+     protected void tick(final BlockState state, final ServerLevel level, final BlockPos pos, final RandomSource random) {
+         if (!state.canSurvive(level, pos)) {
+             level.destroyBlock(pos, true);
++            return;
++        }
++        if ((fun.bm.mili.carpet.config.modules.WorldGameplayConfig.scheduledRandomTickAllPlants || fun.bm.mili.carpet.config.modules.WorldGameplayConfig.scheduledRandomTickStem)
++            && state.getBlock() instanceof GrowingPlantHeadBlock
++            && fun.bm.mili.carpet.WorldGameplayRules.ownsLoadedBox(level, pos.getX() - 1, pos.getZ() - 1, pos.getX() + 1, pos.getZ() + 1)) {
++            state.randomTick(level, pos, random);
+         }
+     }
+ 
+diff --git a/net/minecraft/world/level/block/SugarCaneBlock.java b/net/minecraft/world/level/block/SugarCaneBlock.java
+--- a/net/minecraft/world/level/block/SugarCaneBlock.java
++++ b/net/minecraft/world/level/block/SugarCaneBlock.java
+@@ -36,6 +36,11 @@
+     protected void tick(final BlockState state, final ServerLevel level, final BlockPos pos, final RandomSource random) {
+         if (!state.canSurvive(level, pos)) {
+             level.destroyBlock(pos, true);
++            return;
++        }
++        if ((fun.bm.mili.carpet.config.modules.WorldGameplayConfig.scheduledRandomTickAllPlants || fun.bm.mili.carpet.config.modules.WorldGameplayConfig.scheduledRandomTickSugarCane)
++            && fun.bm.mili.carpet.WorldGameplayRules.ownsLoadedBox(level, pos.getX() - 1, pos.getZ() - 1, pos.getX() + 1, pos.getZ() + 1)) {
++            state.randomTick(level, pos, random);
+         }
+     }
+ 
+diff --git a/net/minecraft/world/level/block/SaplingBlock.java b/net/minecraft/world/level/block/SaplingBlock.java
+--- a/net/minecraft/world/level/block/SaplingBlock.java
++++ b/net/minecraft/world/level/block/SaplingBlock.java
+@@ -45,6 +45,12 @@
+         if (state.getValue(STAGE) == 0) {
+             level.setBlock(pos, state.cycle(STAGE), Block.UPDATE_NONE);
+         } else {
++            if (fun.bm.mili.carpet.config.modules.WorldGameplayConfig.desertShrubs
++                && level.getBiome(pos).is(net.minecraft.tags.BiomeTags.HAS_DESERT_PYRAMID)
++                && fun.bm.mili.carpet.WorldGameplayRules.drySaplingArea(level, pos)) {
++                org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockGrowEvent(level, pos, Blocks.DEAD_BUSH.defaultBlockState(), Block.UPDATE_ALL);
++                return;
++            }
+             // CraftBukkit start
+             io.papermc.paper.threadedregions.RegionizedWorldData worldData = level.getCurrentWorldData(); // Folia - region threading
+             if (worldData.captureTreeGeneration) { // Folia - region threading
+diff --git a/net/minecraft/world/level/block/FlowerBlock.java b/net/minecraft/world/level/block/FlowerBlock.java
+--- a/net/minecraft/world/level/block/FlowerBlock.java
++++ b/net/minecraft/world/level/block/FlowerBlock.java
+@@ -14,7 +14,7 @@
+ import net.minecraft.world.phys.shapes.VoxelShape;
+ import org.jspecify.annotations.Nullable;
+ 
+-public class FlowerBlock extends VegetationBlock implements SuspiciousEffectHolder {
++public class FlowerBlock extends VegetationBlock implements SuspiciousEffectHolder, BonemealableBlock {
+     private static final VoxelShape SHAPE = Block.column(6.0, 0.0, 10.0);
+     private final SuspiciousStewEffects suspiciousStewEffects;
+ 
+@@ -44,4 +44,24 @@
+     public @Nullable MobEffectInstance getBeeInteractionEffect() {
+         return null;
+     }
++
++    @Override
++    public boolean isValidBonemealTarget(final net.minecraft.world.level.LevelReader level, final BlockPos pos, final BlockState state, final BonemealSource source) {
++        return fun.bm.mili.carpet.config.modules.WorldGameplayConfig.fertilizableSmallFlower
++            && (!(level instanceof net.minecraft.server.level.ServerLevel world) || fun.bm.mili.carpet.GameplayCompatRules.ownsLoaded(world, pos));
++    }
++
++    @Override
++    public boolean isBonemealSuccess(final net.minecraft.world.level.Level level, final net.minecraft.util.RandomSource random,
++                                     final BlockPos pos, final BlockState state, final BonemealSource source) {
++        return this.isValidBonemealTarget(level, pos, state, source);
++    }
++
++    @Override
++    public void performBonemeal(final net.minecraft.server.level.ServerLevel level, final net.minecraft.util.RandomSource random,
++                                 final BlockPos pos, final BlockState state, final BonemealSource source) {
++        if (this.isValidBonemealTarget(level, pos, state, source)) {
++            Block.popResource(level, pos, new net.minecraft.world.item.ItemStack(this));
++        }
++    }
+ }
+diff --git a/net/minecraft/world/level/block/SporeBlossomBlock.java b/net/minecraft/world/level/block/SporeBlossomBlock.java
+--- a/net/minecraft/world/level/block/SporeBlossomBlock.java
++++ b/net/minecraft/world/level/block/SporeBlossomBlock.java
+@@ -14,7 +14,7 @@
+ import net.minecraft.world.phys.shapes.CollisionContext;
+ import net.minecraft.world.phys.shapes.VoxelShape;
+ 
+-public class SporeBlossomBlock extends Block {
++public class SporeBlossomBlock extends Block implements BonemealableBlock {
+     private static final VoxelShape SHAPE = Block.column(12.0, 13.0, 16.0);
+     private static final int ADD_PARTICLE_ATTEMPTS = 14;
+     private static final int PARTICLE_XZ_RADIUS = 10;
+@@ -77,4 +77,24 @@
+     protected VoxelShape getShape(final BlockState state, final BlockGetter level, final BlockPos pos, final CollisionContext context) {
+         return SHAPE;
+     }
++
++    @Override
++    public boolean isValidBonemealTarget(final net.minecraft.world.level.LevelReader level, final BlockPos pos, final BlockState state, final BonemealSource source) {
++        return fun.bm.mili.carpet.config.modules.WorldGameplayConfig.fertilizableSmallFlower
++            && (!(level instanceof net.minecraft.server.level.ServerLevel world) || fun.bm.mili.carpet.GameplayCompatRules.ownsLoaded(world, pos));
++    }
++
++    @Override
++    public boolean isBonemealSuccess(final net.minecraft.world.level.Level level, final net.minecraft.util.RandomSource random,
++                                     final BlockPos pos, final BlockState state, final BonemealSource source) {
++        return this.isValidBonemealTarget(level, pos, state, source);
++    }
++
++    @Override
++    public void performBonemeal(final net.minecraft.server.level.ServerLevel level, final net.minecraft.util.RandomSource random,
++                                 final BlockPos pos, final BlockState state, final BonemealSource source) {
++        if (this.isValidBonemealTarget(level, pos, state, source)) {
++            Block.popResource(level, pos, new net.minecraft.world.item.ItemStack(this));
++        }
++    }
+ }

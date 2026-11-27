@@ -1,0 +1,142 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Carpet: native vehicle placement and leash rules
+
+Adapted from Lophine 7a51f49a512f1b5465f15a905d3704754e4bed02, Minecraft patches 0131-0134.
+Retain original permissions and region ownership for entity placements.
+See META-INF/licenses/carpet-26.3.txt for source and license notices.
+
+diff --git a/net/minecraft/world/entity/Mob.java b/net/minecraft/world/entity/Mob.java
+index ca1b29d..e27e95d 100644
+--- a/net/minecraft/world/entity/Mob.java
++++ b/net/minecraft/world/entity/Mob.java
+@@ -1578,6 +1578,7 @@ public abstract class Mob extends LivingEntity implements Targeting, EquipmentUs
+ 
+     @Override
+     public boolean canBeLeashed() {
++        if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.superLeash) return true;
+         return !(this instanceof Enemy);
+     }
+ 
+diff --git a/net/minecraft/world/entity/npc/villager/AbstractVillager.java b/net/minecraft/world/entity/npc/villager/AbstractVillager.java
+index 2245b9d..e04d697 100644
+--- a/net/minecraft/world/entity/npc/villager/AbstractVillager.java
++++ b/net/minecraft/world/entity/npc/villager/AbstractVillager.java
+@@ -248,6 +248,7 @@ public abstract class AbstractVillager extends AgeableMob implements Npc, Mercha
+ 
+     @Override
+     public boolean canBeLeashed() {
++        if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.superLeash) return true;
+         return false;
+     }
+ 
+diff --git a/net/minecraft/world/entity/vehicle/minecart/NewMinecartBehavior.java b/net/minecraft/world/entity/vehicle/minecart/NewMinecartBehavior.java
+index eacf235..58a9521 100644
+--- a/net/minecraft/world/entity/vehicle/minecart/NewMinecartBehavior.java
++++ b/net/minecraft/world/entity/vehicle/minecart/NewMinecartBehavior.java
+@@ -490,7 +490,9 @@ public class NewMinecartBehavior extends MinecartBehavior {
+             return this.minecart.isInWater() ? maxSpeed / 2.0 : maxSpeed;
+         }
+         // CraftBukkit end
+-        return level.getGameRules().get(GameRules.MAX_MINECART_SPEED).intValue() * (this.minecart.isInWater() ? 0.5 : 1.0) / 20.0;
++        final int configured = fun.bm.mili.carpet.config.modules.EntityGameplayConfig.experimentalMinecartSpeed();
++        final int speed = configured > 0 ? configured : level.getGameRules().get(GameRules.MAX_MINECART_SPEED).intValue();
++        return speed * (this.minecart.isInWater() ? 0.5 : 1.0) / 20.0;
+     }
+ 
+     private boolean isDecending(final Vec3 movement, final RailShape shape) {
+diff --git a/net/minecraft/world/item/ArmorStandItem.java b/net/minecraft/world/item/ArmorStandItem.java
+index 9ed039c..e2761c0 100644
+--- a/net/minecraft/world/item/ArmorStandItem.java
++++ b/net/minecraft/world/item/ArmorStandItem.java
+@@ -37,8 +37,9 @@ public class ArmorStandItem extends Item {
+         ItemStack itemStack = context.getItemInHand();
+         Vec3 pos = Vec3.atBottomCenterOf(blockPos);
+         AABB box = EntityTypes.ARMOR_STAND.getDimensions().makeBoundingBox(pos.x(), pos.y(), pos.z());
+-        if (level.noCollision(null, box) && level.getEntities(null, box).isEmpty()) {
++        if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.entityPlacementIgnoreCollision || level.noCollision(null, box) && level.getEntities(null, box).isEmpty()) {
+             if (level instanceof ServerLevel serverLevel) {
++                if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.entityPlacementIgnoreCollision && !fun.bm.mili.carpet.EntityGameplayRules.ownsLoaded(serverLevel, blockPos, 2)) return InteractionResult.FAIL;
+                 PostSpawnProcessor<ArmorStand> entityConfig = EntityType.createDefaultStackConfig(serverLevel, itemStack, context.getPlayer());
+                 ArmorStand entity = EntityTypes.ARMOR_STAND.create(serverLevel, entityConfig, blockPos, EntitySpawnReason.SPAWN_ITEM_USE, true, true);
+                 if (entity == null) {
+diff --git a/net/minecraft/world/item/BoatItem.java b/net/minecraft/world/item/BoatItem.java
+index 416feeb..aacb888 100644
+--- a/net/minecraft/world/item/BoatItem.java
++++ b/net/minecraft/world/item/BoatItem.java
+@@ -40,7 +40,7 @@ public class BoatItem extends Item {
+         List<Entity> entities = level.getEntities(
+             player, player.getBoundingBox().expandTowards(viewVector.scale(5.0)).inflate(1.0), EntitySelector.CAN_BE_PICKED
+         );
+-        if (!entities.isEmpty()) {
++        if (!fun.bm.mili.carpet.config.modules.EntityGameplayConfig.entityPlacementIgnoreCollision && !entities.isEmpty()) {
+             Vec3 from = player.getEyePosition();
+ 
+             for (Entity entity : entities) {
+@@ -65,7 +65,9 @@ public class BoatItem extends Item {
+             }
+ 
+             boat.setYRot(player.getYRot());
+-            if (!level.noCollision(boat, boat.getBoundingBox())) {
++            if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.entityPlacementIgnoreCollision && level instanceof ServerLevel world
++                && !fun.bm.mili.carpet.EntityGameplayRules.ownsLoaded(world, hitResult.getBlockPos(), 2)) return InteractionResult.FAIL;
++            if (!fun.bm.mili.carpet.config.modules.EntityGameplayConfig.entityPlacementIgnoreCollision && !level.noCollision(boat, boat.getBoundingBox())) {
+                 return InteractionResult.FAIL;
+             }
+ 
+diff --git a/net/minecraft/world/item/EndCrystalItem.java b/net/minecraft/world/item/EndCrystalItem.java
+index 4c9216d..3a748c8 100644
+--- a/net/minecraft/world/item/EndCrystalItem.java
++++ b/net/minecraft/world/item/EndCrystalItem.java
+@@ -29,7 +29,7 @@ public class EndCrystalItem extends Item {
+         }
+ 
+         BlockPos above = pos.above();
+-        if (!level.isEmptyBlock(above)) {
++        if (!fun.bm.mili.carpet.config.modules.EntityGameplayConfig.entityPlacementIgnoreCollision && !level.isEmptyBlock(above)) {
+             return InteractionResult.FAIL;
+         }
+ 
+@@ -37,11 +37,12 @@ public class EndCrystalItem extends Item {
+         double y = above.getY();
+         double z = above.getZ();
+         List<Entity> entities = level.getEntities(null, new AABB(x, y, z, x + 1.0, y + 2.0, z + 1.0));
+-        if (!entities.isEmpty()) {
++        if (!fun.bm.mili.carpet.config.modules.EntityGameplayConfig.entityPlacementIgnoreCollision && !entities.isEmpty()) {
+             return InteractionResult.FAIL;
+         }
+ 
+         if (level instanceof ServerLevel serverLevel) {
++            if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.entityPlacementIgnoreCollision && !fun.bm.mili.carpet.EntityGameplayRules.ownsLoaded(serverLevel, above, 2)) return InteractionResult.FAIL;
+             EndCrystal crystal = new EndCrystal(level, x + 0.5, y, z + 0.5);
+             crystal.setShowBottom(false);
+             // CraftBukkit start
+diff --git a/net/minecraft/world/item/MinecartItem.java b/net/minecraft/world/item/MinecartItem.java
+index 2ce6aec..03402e7 100644
+--- a/net/minecraft/world/item/MinecartItem.java
++++ b/net/minecraft/world/item/MinecartItem.java
+@@ -29,8 +29,11 @@ public class MinecartItem extends Item {
+         Level level = context.getLevel();
+         BlockPos pos = context.getClickedPos();
+         BlockState blockState = level.getBlockState(pos);
+-        if (!blockState.is(BlockTags.RAILS)) {
+-            return InteractionResult.FAIL;
++        boolean ground = !blockState.is(BlockTags.RAILS);
++        if (ground) {
++            if (!fun.bm.mili.carpet.config.modules.EntityGameplayConfig.minecartPlaceableOnGround || context.getClickedFace() != net.minecraft.core.Direction.UP) return InteractionResult.FAIL;
++            pos = pos.above();
++            if (!(level instanceof ServerLevel world) || !fun.bm.mili.carpet.EntityGameplayRules.ownsLoaded(world, pos) || !level.isEmptyBlock(pos)) return InteractionResult.FAIL;
+         }
+ 
+         ItemStack itemStack = context.getItemInHand();
+@@ -50,7 +53,8 @@ public class MinecartItem extends Item {
+             return InteractionResult.FAIL;
+         }
+ 
+-        if (AbstractMinecart.useExperimentalMovement(level)) {
++        if (ground && !level.noCollision(cart, cart.getBoundingBox()) && !fun.bm.mili.carpet.config.modules.EntityGameplayConfig.entityPlacementIgnoreCollision) return InteractionResult.FAIL;
++        if (AbstractMinecart.useExperimentalMovement(level) && !fun.bm.mili.carpet.config.modules.EntityGameplayConfig.entityPlacementIgnoreCollision) {
+             for (Entity entity : level.getEntities(null, cart.getBoundingBox())) {
+                 if (entity instanceof AbstractMinecart) {
+                     return InteractionResult.FAIL;

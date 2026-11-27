@@ -1,0 +1,277 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Carpet local redstone update and interaction rules
+
+From Lophine 7a51f49a, Minecraft 0131, 0132, 0133, 0134. See META-INF/licenses/carpet-26.3.txt.
+Apply interaction sounds after success, keep redstone event cancellation, and bound suppression to the existing regional collecting backend. Preserve support across the Alternate Current wire discovery as well as native shape updates. Never inject a crashing exception or switch redstone engines.
+
+Additional source:
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Carpet AMS features
+
+Additional source:
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Carpet ORG features
+
+Additional source:
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Carpet TIS features
+
+diff --git a/net/minecraft/world/level/block/DaylightDetectorBlock.java b/net/minecraft/world/level/block/DaylightDetectorBlock.java
+--- a/net/minecraft/world/level/block/DaylightDetectorBlock.java
++++ b/net/minecraft/world/level/block/DaylightDetectorBlock.java
+@@ -73,6 +73,7 @@
+ 
+         if (!level.isClientSide()) {
+             BlockState newState = state.cycle(INVERTED);
++            if (fun.bm.mili.carpet.config.modules.WorldGameplayConfig.redstoneComponentSound && !level.isClientSide()) level.playSound(null, pos, net.minecraft.sounds.SoundEvents.LEVER_CLICK, net.minecraft.sounds.SoundSource.BLOCKS, 1.0F, 0.95F);
+             level.setBlock(pos, newState, Block.UPDATE_CLIENTS);
+             level.gameEvent(GameEvent.BLOCK_CHANGE, pos, GameEvent.Context.of(player, newState));
+             updateSignalStrength(newState, level, pos);
+diff --git a/net/minecraft/world/level/block/RedstoneWireBlock.java b/net/minecraft/world/level/block/RedstoneWireBlock.java
+--- a/net/minecraft/world/level/block/RedstoneWireBlock.java
++++ b/net/minecraft/world/level/block/RedstoneWireBlock.java
+@@ -175,8 +175,8 @@
+         if (directionToNeighbour == Direction.DOWN) {
+             // Lophine start - redstone ignore upwards update
+             return fun.bm.mili.carpet.config.modules.GeneralCompatConfig.dustTrapdoorReintroduced
+-                ? state
+-                : !this.canSurviveOn(level, neighbourPos, neighbourState) ? Blocks.AIR.defaultBlockState() : state;
++                || fun.bm.mili.carpet.config.modules.WorldGameplayConfig.simpleUpdateSkipper || fun.bm.mili.carpet.config.modules.WorldGameplayConfig.redstoneDustRepeaterComparatorIgnoreUpwardsStateUpdate
++                ? state : !this.canSurviveOn(level, neighbourPos, neighbourState) ? Blocks.AIR.defaultBlockState() : state;
+             // Lophine end - redstone ignore upwards update
+         }
+ 
+@@ -242,7 +242,7 @@
+         BlockState relativeState = level.getBlockState(relativePos);
+         if (canConnectUp) {
+             // Lophine start - redstone ignore upwards update
+-            boolean isPlaceableAbove = (!fun.bm.mili.carpet.config.modules.GeneralCompatConfig.dustTrapdoorReintroduced && relativeState.getBlock() instanceof TrapDoorBlock)
++            boolean isPlaceableAbove = (!fun.bm.mili.carpet.config.modules.GeneralCompatConfig.dustTrapdoorReintroduced && !fun.bm.mili.carpet.config.modules.WorldGameplayConfig.simpleUpdateSkipper && relativeState.getBlock() instanceof TrapDoorBlock)
+                 || this.canSurviveOn(level, relativePos, relativeState);
+             // Lophine end - redstone ignore upwards update
+             if (isPlaceableAbove && shouldConnectTo(level, relativePos.above())) {
+@@ -628,6 +628,7 @@
+             if (newState != state) {
+                 level.setBlockAndUpdate(pos, newState);
+                 this.updatesOnShapeChange(level, pos, state, newState);
++                if (fun.bm.mili.carpet.config.modules.WorldGameplayConfig.redstoneComponentSound && !level.isClientSide()) level.playSound(null, pos, net.minecraft.sounds.SoundEvents.SAND_STEP, net.minecraft.sounds.SoundSource.BLOCKS, 0.8F, 2.5F);
+                 return InteractionResult.SUCCESS;
+             }
+         }
+diff --git a/net/minecraft/world/level/block/RepeaterBlock.java b/net/minecraft/world/level/block/RepeaterBlock.java
+--- a/net/minecraft/world/level/block/RepeaterBlock.java
++++ b/net/minecraft/world/level/block/RepeaterBlock.java
+@@ -40,6 +40,7 @@
+         }
+ 
+         level.setBlockAndUpdate(pos, state.cycle(DELAY));
++        if (fun.bm.mili.carpet.config.modules.WorldGameplayConfig.redstoneComponentSound && !level.isClientSide()) level.playSound(null, pos, net.minecraft.sounds.SoundEvents.LEVER_CLICK, net.minecraft.sounds.SoundSource.BLOCKS, 1.0F, 0.75F);
+         return InteractionResult.SUCCESS;
+     }
+ 
+@@ -66,7 +67,7 @@
+         final RandomSource random
+     ) {
+         // Lophine start - redstone ignore upwards update
+-        if (fun.bm.mili.carpet.config.modules.GeneralCompatConfig.dustTrapdoorReintroduced && directionToNeighbour == Direction.DOWN) {
++        if (directionToNeighbour == Direction.DOWN && fun.bm.mili.carpet.WorldGameplayRules.skipRedstoneUpwardShapeUpdate()) {
+             return state;
+         }
+         // Lophine end - redstone ignore upwards update
+diff --git a/net/minecraft/world/level/block/ComparatorBlock.java b/net/minecraft/world/level/block/ComparatorBlock.java
+--- a/net/minecraft/world/level/block/ComparatorBlock.java
++++ b/net/minecraft/world/level/block/ComparatorBlock.java
+@@ -53,7 +53,7 @@
+         final RandomSource random
+     ) {
+         // Lophine start - redstone ignore upwards update
+-        if (fun.bm.mili.carpet.config.modules.GeneralCompatConfig.dustTrapdoorReintroduced && directionToNeighbour == Direction.DOWN) {
++        if (directionToNeighbour == Direction.DOWN && fun.bm.mili.carpet.WorldGameplayRules.skipRedstoneUpwardShapeUpdate()) {
+             return state;
+         }
+         // Lophine end - redstone ignore upwards update
+diff --git a/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java b/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
+--- a/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
++++ b/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
+@@ -38,7 +38,7 @@
+                 toUpdate.add(pos.relative(direction));
+             }
+ 
+-            for (BlockPos blockPos : toUpdate) {
++            for (BlockPos blockPos : fun.bm.mili.carpet.WorldGameplayRules.wireUpdateOrder(toUpdate, level, pos)) {
+                 level.updateNeighborsAt(blockPos, this.wireBlock);
+             }
+         }
+diff --git a/net/minecraft/world/level/block/entity/SculkSensorBlockEntity.java b/net/minecraft/world/level/block/entity/SculkSensorBlockEntity.java
+--- a/net/minecraft/world/level/block/entity/SculkSensorBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/SculkSensorBlockEntity.java
+@@ -116,6 +116,7 @@
+         ) {
+             return (!pos.equals(this.blockPos) || !event.is(GameEvent.BLOCK_DESTROY) && !event.is(GameEvent.BLOCK_PLACE))
+                 && VibrationSystem.getGameEventFrequency(event) != 0
++                && !fun.bm.mili.carpet.WorldGameplayRules.suppressSculkVibration(level, this.blockPos)
+                 && SculkSensorBlock.canActivate(SculkSensorBlockEntity.this.getBlockState());
+         }
+ 
+@@ -129,7 +130,7 @@
+             final float receivingDistance
+         ) {
+             BlockState state = SculkSensorBlockEntity.this.getBlockState();
+-            if (SculkSensorBlock.canActivate(state)) {
++            if (SculkSensorBlock.canActivate(state) && !fun.bm.mili.carpet.WorldGameplayRules.suppressSculkVibration(level, this.blockPos)) {
+                 int eventFrequency = VibrationSystem.getGameEventFrequency(event);
+                 SculkSensorBlockEntity.this.setLastVibrationFrequency(eventFrequency);
+                 int calculatedPower = VibrationSystem.getRedstoneStrengthForDistance(receivingDistance, this.getListenerRadius());
+diff --git a/net/minecraft/world/level/block/PoweredRailBlock.java b/net/minecraft/world/level/block/PoweredRailBlock.java
+--- a/net/minecraft/world/level/block/PoweredRailBlock.java
++++ b/net/minecraft/world/level/block/PoweredRailBlock.java
+@@ -119,6 +119,10 @@
+                 return;
+             }
+             // Paper end - Call BlockRedstoneEvent
++            if (!shouldPower && fun.bm.mili.carpet.config.modules.WorldGameplayConfig.updateSkippingSimulator
++                && level instanceof net.minecraft.server.level.ServerLevel world
++                && fun.bm.mili.carpet.GameplayCompatRules.ownsLoaded(world, pos)
++                && world.getBlockState(pos.below()).is(Blocks.DEEPSLATE_LAPIS_ORE)) return;
+             level.setBlockAndUpdate(pos, state.setValue(POWERED, shouldPower));
+             level.updateNeighborsAt(pos.below(), this);
+             if (state.getValue(SHAPE).isSlope()) {
+diff --git a/net/minecraft/world/level/block/ObserverBlock.java b/net/minecraft/world/level/block/ObserverBlock.java
+--- a/net/minecraft/world/level/block/ObserverBlock.java
++++ b/net/minecraft/world/level/block/ObserverBlock.java
+@@ -25,6 +25,33 @@
+     public ObserverBlock(final BlockBehaviour.Properties properties) {
+         super(properties);
+         this.registerDefaultState(this.stateDefinition.any().setValue(FACING, Direction.SOUTH).setValue(POWERED, false));
++    }
++
++    @Override
++    protected net.minecraft.world.InteractionResult useItemOn(final net.minecraft.world.item.ItemStack item, final BlockState state,
++        final Level level, final BlockPos pos, final net.minecraft.world.entity.player.Player player,
++        final net.minecraft.world.InteractionHand hand, final net.minecraft.world.phys.BlockHitResult hit) {
++        if (!fun.bm.mili.carpet.config.modules.WorldGameplayConfig.canActivatesObserver || !player.mayBuild() || player.isShiftKeyDown()
++            || state.getValue(POWERED) || level.getBlockTicks().hasScheduledTick(pos, this)
++            || !(level instanceof net.minecraft.server.level.ServerLevel world)
++            || !fun.bm.mili.carpet.GameplayCompatRules.ownsLoaded(world, pos)) {
++            return super.useItemOn(item, state, level, pos, player, hand, hit);
++        }
++        final var type = item.getItem();
++        final net.minecraft.sounds.SoundEvent sound;
++        if (item.is(net.minecraft.world.item.Items.FLINT_AND_STEEL)) {
++            item.hurtAndBreak(1, player, hand);
++            sound = net.minecraft.sounds.SoundEvents.FLINTANDSTEEL_USE;
++        } else if (item.is(net.minecraft.world.item.Items.FIRE_CHARGE)) {
++            item.consume(1, player);
++            sound = net.minecraft.sounds.SoundEvents.FIRECHARGE_USE;
++        } else {
++            return super.useItemOn(item, state, level, pos, player, hand, hit);
++        }
++        if (level.getBlockState(pos) == state) this.startSignal(world, world, pos);
++        world.playSound(null, pos, sound, net.minecraft.sounds.SoundSource.BLOCKS, 1.0F, 1.0F);
++        player.awardStat(net.minecraft.stats.Stats.ITEM_USED.get(type));
++        return net.minecraft.world.InteractionResult.SUCCESS;
+     }
+ 
+     @Override
+diff --git a/net/minecraft/world/level/block/BarrierBlock.java b/net/minecraft/world/level/block/BarrierBlock.java
+--- a/net/minecraft/world/level/block/BarrierBlock.java
++++ b/net/minecraft/world/level/block/BarrierBlock.java
+@@ -23,6 +23,34 @@
+ 
+ public class BarrierBlock extends Block implements SimpleWaterloggedBlock {
+     public static final BooleanProperty WATERLOGGED = BlockStateProperties.WATERLOGGED;
++
++    @Override
++    protected void neighborChanged(final BlockState state, final net.minecraft.world.level.Level level, final BlockPos pos,
++        final Block block, final net.minecraft.world.level.redstone.@Nullable Orientation orientation, final boolean movedByPiston) {
++        final int remaining = fun.bm.mili.carpet.config.modules.WorldGameplayConfig.updateSuppressionBlock();
++        if (remaining >= 0 && level instanceof net.minecraft.server.level.ServerLevel world
++            && fun.bm.mili.carpet.GameplayCompatRules.ownsLoaded(world, pos)
++            && world.getCurrentWorldData().neighborUpdater instanceof net.minecraft.world.level.redstone.CollectingNeighborUpdater updater) {
++            final BlockState above = world.getBlockState(pos.above());
++            if (above.is(Blocks.ACTIVATOR_RAIL) && !above.getValue(PoweredRailBlock.POWERED)) {
++                world.scheduleTick(pos, this, 1);
++                updater.mili$limitRemainingUpdates(remaining);
++            }
++        }
++        super.neighborChanged(state, level, pos, block, orientation, movedByPiston);
++    }
++
++    @Override
++    protected void tick(final BlockState state, final net.minecraft.server.level.ServerLevel level, final BlockPos pos, final RandomSource random) {
++        if (fun.bm.mili.carpet.config.modules.WorldGameplayConfig.updateSuppressionBlock() < 0 || !fun.bm.mili.carpet.GameplayCompatRules.ownsLoaded(level, pos)) return;
++        final BlockPos abovePos = pos.above();
++        final BlockState rail = level.getBlockState(abovePos);
++        if (rail.is(Blocks.ACTIVATOR_RAIL) && !rail.getValue(PoweredRailBlock.POWERED)
++            && org.bukkit.craftbukkit.event.CraftEventFactory.callBinaryRedstoneChange(level, abovePos, true)
++            && level.getBlockState(abovePos) == rail) {
++            level.setBlock(abovePos, rail.setValue(PoweredRailBlock.POWERED, true), Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
++        }
++    }
+ 
+     protected BarrierBlock(final BlockBehaviour.Properties properties) {
+         super(properties);
+diff --git a/net/minecraft/world/level/redstone/CollectingNeighborUpdater.java b/net/minecraft/world/level/redstone/CollectingNeighborUpdater.java
+--- a/net/minecraft/world/level/redstone/CollectingNeighborUpdater.java
++++ b/net/minecraft/world/level/redstone/CollectingNeighborUpdater.java
+@@ -21,6 +21,13 @@
+     private final ArrayDeque<CollectingNeighborUpdater.NeighborUpdates> stack = new ArrayDeque<>();
+     private final List<CollectingNeighborUpdater.NeighborUpdates> addedThisLayer = new ArrayList<>();
+     private int count = 0;
++    private int mili$remainingUpdates = -1;
++
++    public void mili$limitRemainingUpdates(final int remaining) {
++        if (this.count > 0) {
++            this.mili$remainingUpdates = this.mili$remainingUpdates < 0 ? remaining : Math.min(remaining, this.mili$remainingUpdates);
++        }
++    }
+     private @Nullable Consumer<BlockPos> debugListener;
+ 
+     public CollectingNeighborUpdater(final Level level, final int maxChainedNeighborUpdates) {
+@@ -101,6 +108,8 @@
+                 }
+ 
+                 while (this.addedThisLayer.isEmpty()) {
++                    if (this.mili$remainingUpdates == 0) return;
++                    if (this.mili$remainingUpdates > 0) --this.mili$remainingUpdates;
+                     if (!nextUpdates.runNext(this.level)) {
+                         this.stack.pop();
+                         break;
+@@ -111,6 +120,7 @@
+             this.stack.clear();
+             this.addedThisLayer.clear();
+             this.count = 0;
++            this.mili$remainingUpdates = -1;
+         }
+     }
+ 
+diff --git a/alternate/current/wire/WireHandler.java b/alternate/current/wire/WireHandler.java
+--- a/alternate/current/wire/WireHandler.java
++++ b/alternate/current/wire/WireHandler.java
+@@ -610,7 +610,8 @@
+         wire.discovered = true;
+         wire.searched = false;
+ 
+-        if (!wire.removed && !wire.shouldBreak && !wire.state.canSurvive(level, wire.pos)) {
++        if (!wire.removed && !wire.shouldBreak && !fun.bm.mili.carpet.WorldGameplayRules.skipConfiguredUpwardBreak(level, wire.pos)
++            && !wire.state.canSurvive(level, wire.pos)) {
+             wire.shouldBreak = true;
+         }
+ 
+diff --git a/net/minecraft/world/level/block/DiodeBlock.java b/net/minecraft/world/level/block/DiodeBlock.java
+--- a/net/minecraft/world/level/block/DiodeBlock.java
++++ b/net/minecraft/world/level/block/DiodeBlock.java
+@@ -78,7 +78,7 @@
+         final BlockState state, final Level level, final BlockPos pos, final Block block, final @Nullable Orientation orientation, final boolean movedByPiston
+     ) {
+         if (level.getBlockState(pos).is(this)) {
+-            if (state.canSurvive(level, pos)) {
++            if (state.canSurvive(level, pos) || fun.bm.mili.carpet.WorldGameplayRules.skipConfiguredUpwardBreak(level, pos)) {
+                 this.checkTickOnNeighbor(level, pos, state);
+             } else {
+                 BlockEntity blockEntity = state.hasBlockEntity() ? level.getBlockEntity(pos) : null;

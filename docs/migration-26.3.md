@@ -48,7 +48,7 @@ python scripts/download_launcher.py
 
 Bundler 与 Paperclip 打包任务写入一致的 UTF-8 `META-INF/riceear-version`，不带换行。最终 Paperclip 还补充 `META-INF/download-context-cn`，内容取自标准下载上下文。这修复发布启动器中两项资源缺失；CN 资源**不代表新增国内镜像**。
 
-从没有版本标记的旧启动器迁移时，应直接替换实际启动的完整 JAR。仅更新 `core.path` 目标，不能通过旧启动器的版本检查。后续更新目标也必须包含兼容的版本标记。原有更新器仍指向 Luminol 发布源，这不是本次新增的 Mili 发布更新器。
+从没有版本标记的旧启动器迁移时，应直接替换实际启动的完整 JAR。仅更新 `core.path` 目标，不能通过旧启动器的版本检查。后续更新目标也必须包含兼容的版本标记。旧预发布中的更新器指向 Luminol。正式版改用本 fork 同一版本线的发布资产，默认关闭；旧的 Luminol 开关不会授权覆盖 Mili 的启动 JAR。
 
 ### Riceear 补丁读取修复（2026-11-14）
 

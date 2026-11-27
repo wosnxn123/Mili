@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mili contributors <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Native mining-drop collection and per-world wool XP counters
+
+Adapt Carpet Org and Carpet TIS collection rules from Lophine 7a51f49a.
+Use the native mining-drop event and the existing hopper's region tick.
+See META-INF/licenses/carpet-26.3.txt for the donor notices.
+
+diff --git a/net/minecraft/commands/Commands.java b/net/minecraft/commands/Commands.java
+index 3283ac4e7b5b77534ec4c155116860ce5cfab3c0..ec3085804636bcb91de2d27705e8f92ebae5e961 100644
+--- a/net/minecraft/commands/Commands.java
++++ b/net/minecraft/commands/Commands.java
+@@ -223,6 +223,7 @@ public class Commands {
+         EmoteCommands.register(this.dispatcher);
+         EnchantCommand.register(this.dispatcher, context);
+         ExperienceCommand.register(this.dispatcher);
++        fun.bm.mili.carpet.CollectionGameplayRules.register(this.dispatcher);
+         FillCommand.register(this.dispatcher, context);
+         FillBiomeCommand.register(this.dispatcher, context);
+         ForceLoadCommand.register(this.dispatcher);
+diff --git a/net/minecraft/server/level/ServerPlayerGameMode.java b/net/minecraft/server/level/ServerPlayerGameMode.java
+index 432aa01d267b5b9f3dfb918b8687b70f380096d8..bdd89ee74f3acc21297d3f4d591daeca07d2c9cd 100644
+--- a/net/minecraft/server/level/ServerPlayerGameMode.java
++++ b/net/minecraft/server/level/ServerPlayerGameMode.java
+@@ -462,7 +462,7 @@ public class ServerPlayerGameMode {
+         List<net.minecraft.world.entity.item.ItemEntity> itemsToDrop = this.level.getCurrentWorldData().captureDrops; // Paper - capture all item additions to the world // Folia - region threading
+         this.level.getCurrentWorldData().captureDrops = null; // Paper - capture all item additions to the world; Remove this earlier so that we can actually drop stuff // Folia - region threading
+         if (event.isDropItems()) {
+-            org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockDropItemEvent(bblock, bState, this.player, itemsToDrop); // Paper - capture all item additions to the world
++            org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockDropItemEvent(bblock, bState, this.player, itemsToDrop, fun.bm.mili.carpet.config.modules.GameplayCompatConfig.blockDropsDirectlyEnterInventory); // Paper - capture all item additions to the world
+         }
+                 // Lophine start - preserve drops before update suppression
+                 if (updateSuppressionException != null) {
+diff --git a/net/minecraft/world/level/block/entity/HopperBlockEntity.java b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+index c968da04036dde4f61a20b36b049f55bf6558b15..a7ac8e188acd83a2ae00a17719b0d5ad87a4e4e4 100644
+--- a/net/minecraft/world/level/block/entity/HopperBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+@@ -178,6 +178,7 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+         if (!entity.isOnCooldown()) {
+             entity.setCooldown(0);
+             // Spigot start
++            if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.hopperXpCounters) fun.bm.mili.carpet.CollectionGameplayRules.collectXp(entity);
+             boolean result = tryMoveItems(level, pos, state, entity, () -> suckInItems(level, entity));
+             if (me.earthme.luminol.config.modules.optimizations.LeavesSleepingBlockEntityConfig.enabled) entity.checkSleepingConditions(); // Leaves - Lithium Sleeping Block Entity
+             if (!result && entity.level.spigotConfig.hopperCheck > 1) {
+@@ -1063,6 +1064,7 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+     }
+ 
+     private void checkSleepingConditions() {
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.hopperXpCounters && fun.bm.mili.carpet.CollectionGameplayRules.needsXpTicks(this)) return;
+         if (this.cooldownTime > 0 || this.getLevel() == null || skipNextSleepCheckAfterCooldown) {
+             return;
+         }

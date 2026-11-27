@@ -1,0 +1,73 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Carpet: preserve experience during mixed-value merges
+
+Adapted from Lophine 7a51f49a512f1b5465f15a905d3704754e4bed02, Minecraft patches 0131-0134.
+Reuse the native award path and revalidate the total after the cancellable merge event.
+See META-INF/licenses/carpet-26.3.txt for source and license notices.
+
+diff --git a/net/minecraft/world/entity/ExperienceOrb.java b/net/minecraft/world/entity/ExperienceOrb.java
+index 29421b1..b4be7c5 100644
+--- a/net/minecraft/world/entity/ExperienceOrb.java
++++ b/net/minecraft/world/entity/ExperienceOrb.java
+@@ -276,10 +276,20 @@ public class ExperienceOrb extends Entity {
+         // Paper - TODO some other event for this kind of merge
+         AABB box = AABB.ofSize(pos, 1.0, 1.0, 1.0);
+         int id = level.getRandom().nextInt(io.papermc.paper.configuration.GlobalConfiguration.get().misc.xpOrbGroupsPerArea.or(ORB_GROUPS_PER_AREA)); // Paper - Configure how many orb groups per area
+-        List<ExperienceOrb> orbs = level.getEntities(EntityTypeTest.forClass(ExperienceOrb.class), box, orbx -> canMerge(orbx, id, value));
++        List<ExperienceOrb> orbs = level.getEntities(EntityTypeTest.forClass(ExperienceOrb.class), box, orbx -> fun.bm.mili.carpet.config.modules.EntityGameplayConfig.experienceOrbMerge
++            ? ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(orbx) && !orbx.isRemoved()
++                && fun.bm.mili.carpet.EntityGameplayRules.mergedExperienceValue(orbx.getValue(), orbx.count, value, 1) > 0
++            : canMerge(orbx, id, value));
+         if (!orbs.isEmpty()) {
+             ExperienceOrb orb = orbs.get(0);
+-            orb.count++;
++            if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.experienceOrbMerge) {
++                int total = fun.bm.mili.carpet.EntityGameplayRules.mergedExperienceValue(orb.getValue(), orb.count, value, 1);
++                if (total <= 0) return false;
++                orb.setValue(total);
++                orb.count = 1;
++            } else {
++                orb.count++;
++            }
+             orb.age = 0;
+             return true;
+         } else {
+@@ -288,7 +298,10 @@ public class ExperienceOrb extends Entity {
+     }
+ 
+     private boolean canMerge(final ExperienceOrb orb) {
+-        return orb != this && canMerge(orb, this.getId(), this.getValue());
++        return orb != this && (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.experienceOrbMerge
++            ? ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(orb) && !orb.isRemoved()
++                && fun.bm.mili.carpet.EntityGameplayRules.mergedExperienceValue(this.getValue(), this.count, orb.getValue(), orb.count) > 0
++            : canMerge(orb, this.getId(), this.getValue()));
+     }
+ 
+     private static boolean canMerge(final ExperienceOrb orb, final int id, final int value) {
+@@ -296,12 +309,23 @@ public class ExperienceOrb extends Entity {
+     }
+ 
+     private void merge(final ExperienceOrb orb) {
++        final boolean mixedValues = fun.bm.mili.carpet.config.modules.EntityGameplayConfig.experienceOrbMerge;
++        if (!mixedValues && this.getValue() != orb.getValue()) return;
+         // Paper start - call orb merge event
+         if (!new com.destroystokyo.paper.event.entity.ExperienceOrbMergeEvent((org.bukkit.entity.ExperienceOrb) this.getBukkitEntity(), (org.bukkit.entity.ExperienceOrb) orb.getBukkitEntity()).callEvent()) {
+             return;
+         }
+         // Paper end - call orb merge event
+-        this.count = this.count + orb.count;
++        if (mixedValues) {
++            if (this.isRemoved() || orb.isRemoved() || this.level() != orb.level()
++                || !ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(orb)) return;
++            int total = fun.bm.mili.carpet.EntityGameplayRules.mergedExperienceValue(this.getValue(), this.count, orb.getValue(), orb.count);
++            if (total <= 0) return;
++            this.setValue(total);
++            this.count = 1;
++        } else {
++            this.count = this.count + orb.count;
++        }
+         this.age = Math.min(this.age, orb.age);
+         orb.discard(org.bukkit.event.entity.EntityRemoveEvent.Cause.MERGE); // CraftBukkit - add Bukkit remove cause
+     }

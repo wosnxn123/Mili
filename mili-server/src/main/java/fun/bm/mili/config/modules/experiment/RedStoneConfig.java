@@ -22,7 +22,7 @@ public class RedStoneConfig implements IConfigModule {
 
     @TransformedConfig(name = "enabled", directory = {"experiment", "cce-update-suppression"})
     @ConfigInfo(name = "cce-update-suppression", comments = """
-            是否允许使用 ClassCastException 进行更新抑制？""")
+            旧配置兼容项，不再生效。26.3 始终使用原生类型安全的比较器读数。""")
     public static boolean cce = false;
 
     @HotReloadUnsupported

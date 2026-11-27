@@ -1,0 +1,237 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Carpet scope world command rules to native context
+
+From Lophine 7a51f49a, Minecraft 0131, 0134. See META-INF/licenses/carpet-26.3.txt.
+Retain the existing Brigadier permissions and Folia work, scope soft parsing to block placement arguments and require per-session confirmation.
+
+Additional source:
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Carpet TIS features
+
+diff --git a/net/minecraft/commands/arguments/blocks/BlockStateArgument.java b/net/minecraft/commands/arguments/blocks/BlockStateArgument.java
+--- a/net/minecraft/commands/arguments/blocks/BlockStateArgument.java
++++ b/net/minecraft/commands/arguments/blocks/BlockStateArgument.java
+@@ -29,7 +29,7 @@
+ 
+     @Override
+     public BlockInput parse(final StringReader reader) throws CommandSyntaxException {
+-        BlockStateParser.BlockResult result = BlockStateParser.parseForBlock(this.blocks, reader, true);
++        BlockStateParser.BlockResult result = BlockStateParser.parseForBlock(this.blocks, reader, true, fun.bm.mili.carpet.config.modules.WorldGameplayConfig.failSoftBlockStateParsing);
+         return new BlockInput(result.blockState(), result.properties().keySet(), result.nbt());
+     }
+ 
+diff --git a/net/minecraft/commands/arguments/blocks/BlockStateParser.java b/net/minecraft/commands/arguments/blocks/BlockStateParser.java
+--- a/net/minecraft/commands/arguments/blocks/BlockStateParser.java
++++ b/net/minecraft/commands/arguments/blocks/BlockStateParser.java
+@@ -69,6 +69,7 @@
+     private final StringReader reader;
+     private final boolean forTesting;
+     private final boolean allowNbt;
++    private boolean softPlacementProperties;
+     private final Map<Property<?>, Comparable<?>> properties = Maps.newLinkedHashMap(); // CraftBukkit - stable
+     private final Map<String, String> vagueProperties = Maps.newHashMap();
+     private Identifier id = Identifier.withDefaultNamespace("");
+@@ -90,10 +91,16 @@
+     }
+ 
+     public static BlockStateParser.BlockResult parseForBlock(final HolderLookup<Block> blocks, final StringReader reader, final boolean allowNbt) throws CommandSyntaxException {
++        return parseForBlock(blocks, reader, allowNbt, false);
++    }
++
++    static BlockStateParser.BlockResult parseForBlock(final HolderLookup<Block> blocks, final StringReader reader,
++                                                       final boolean allowNbt, final boolean softPlacementProperties) throws CommandSyntaxException {
+         int cursor = reader.getCursor();
+ 
+         try {
+             BlockStateParser parser = new BlockStateParser(blocks, reader, false, allowNbt);
++            parser.softPlacementProperties = softPlacementProperties;
+             parser.parse();
+             return new BlockStateParser.BlockResult(parser.state, parser.properties, parser.nbt);
+         } catch (CommandSyntaxException e) {
+@@ -387,7 +394,7 @@
+             int keyStart = this.reader.getCursor();
+             String key = this.reader.readString();
+             Property<?> property = this.definition.getProperty(key);
+-            if (property == null) {
++            if (property == null && (!this.softPlacementProperties || key.isEmpty())) {
+                 this.reader.setCursor(keyStart);
+                 throw ERROR_UNKNOWN_PROPERTY.createWithContext(this.reader, this.id.toString(), key);
+             }
+@@ -405,9 +412,14 @@
+ 
+             this.reader.skip();
+             this.reader.skipWhitespace();
+-            this.suggestions = builder -> addSuggestions(builder, property).buildFuture();
++            this.suggestions = property == null ? SUGGEST_NOTHING : builder -> addSuggestions(builder, property).buildFuture();
+             int start = this.reader.getCursor();
+-            this.setValue(property, this.reader.readString(), start);
++            String raw = this.reader.readString();
++            if (property != null) {
++                this.setValue(property, raw, start);
++            } else if (raw.isEmpty()) {
++                throw ERROR_EXPECTED_VALUE.createWithContext(this.reader, this.id.toString(), key);
++            }
+             this.suggestions = this::suggestNextPropertyOrEnd;
+             this.reader.skipWhitespace();
+             if (this.reader.canRead()) {
+@@ -493,6 +505,7 @@
+             this.state = this.state.setValue(property, value.get());
+             this.properties.put(property, value.get());
+         } else {
++            if (this.softPlacementProperties && !raw.isEmpty()) return;
+             this.reader.setCursor(start);
+             throw ERROR_INVALID_VALUE.createWithContext(this.reader, this.id.toString(), property.getName(), raw);
+         }
+diff --git a/net/minecraft/server/commands/FillCommand.java b/net/minecraft/server/commands/FillCommand.java
+--- a/net/minecraft/server/commands/FillCommand.java
++++ b/net/minecraft/server/commands/FillCommand.java
+@@ -152,7 +152,16 @@
+                             c.getSource(), BoundingBox.fromCorners(from.apply(c), to.apply(c)), block.apply(c), FillCommand.Mode.REPLACE, filter.apply(c), true
+                         )
+                     )
+-            );
++            ).then(Commands.literal("softreplace").requires(source -> "true".equals(fun.bm.mili.carpet.config.modules.WorldGameplayConfig.fillCommandModeEnhance()))
++                .executes(c -> fillBlocks(c.getSource(), BoundingBox.fromCorners(from.apply(c), to.apply(c)),
++                    block.apply(c), Mode.SOFT_REPLACE, filter.apply(c), false))
++                .then(Commands.argument("softreplace_filter", BlockPredicateArgument.blockPredicate(context))
++                    .executes(c -> {
++                        final var inherited = filter.apply(c);
++                        final var provided = BlockPredicateArgument.getBlockPredicate(c, "softreplace_filter");
++                        return fillBlocks(c.getSource(), BoundingBox.fromCorners(from.apply(c), to.apply(c)), block.apply(c),
++                            Mode.SOFT_REPLACE, inherited == null ? provided : inherited.and(provided), false);
++                    })));
+     }
+ 
+     // Folia start - region threading
+@@ -195,6 +204,12 @@
+                 ca.spottedleaf.concurrentutil.util.Priority.NORMAL,
+                 (chunks) -> {
+                     try { // Folia end - region threading
++        final boolean fillUpdates = fun.bm.mili.carpet.config.modules.WorldGameplayConfig.fillUpdates;
++        if ((mode == Mode.SOFT_REPLACE || !fillUpdates)
++            && !fun.bm.mili.carpet.WorldGameplayRules.ownsLoadedBox(level, region.minX() - buffer, region.minZ() - buffer,
++                region.maxX() + buffer, region.maxZ() + buffer)) {
++            throw ERROR_FAILED.create();
++        }
+ 
+         int count = 0;
+ 
+@@ -212,13 +227,13 @@
+                         count++;
+                     }
+                 } else if (!block.place(
+-                    level, pos, Block.UPDATE_CLIENTS | (strict ? Block.UPDATE_SKIP_ALL_SIDEEFFECTS : Block.UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS)
++                    level, pos, Block.UPDATE_CLIENTS | (strict ? Block.UPDATE_SKIP_ALL_SIDEEFFECTS : Block.UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS | (fillUpdates ? 0 : Block.UPDATE_KNOWN_SHAPE))
+                 )) {
+                     if (affected) {
+                         count++;
+                     }
+                 } else {
+-                    if (!strict) {
++                    if (!strict && fillUpdates) {
+                         updatePositions.add(new UpdatedPosition(pos.immutable(), oldState));
+                     }
+ 
+@@ -261,6 +276,7 @@
+ 
+     private enum Mode {
+         REPLACE(FillCommand.Affector.NOOP, FillCommand.Filter.NOOP),
++        SOFT_REPLACE(FillCommand.Affector.NOOP, (region, pos, input, level) -> fun.bm.mili.carpet.WorldGameplayRules.softReplace(input, level.getBlockState(pos))),
+         OUTLINE(
+             FillCommand.Affector.NOOP,
+             (r, p, b, l) -> p.getX() != r.minX()
+diff --git a/net/minecraft/server/commands/SetBlockCommand.java b/net/minecraft/server/commands/SetBlockCommand.java
+--- a/net/minecraft/server/commands/SetBlockCommand.java
++++ b/net/minecraft/server/commands/SetBlockCommand.java
+@@ -126,6 +126,10 @@
+             throw ERROR_FAILED.create();
+         }
+ 
++        final boolean fillUpdates = fun.bm.mili.carpet.config.modules.WorldGameplayConfig.fillUpdates;
++        if (!fillUpdates && !fun.bm.mili.carpet.WorldGameplayRules.ownsLoadedBox(level, pos.getX() - 1, pos.getZ() - 1, pos.getX() + 1, pos.getZ() + 1)) {
++            throw ERROR_FAILED.create();
++        }
+         boolean placeNeeded;
+         if (mode == SetBlockCommand.Mode.DESTROY) {
+             level.destroyBlock(pos, true);
+@@ -136,11 +140,11 @@
+ 
+         BlockState oldState = level.getBlockState(pos);
+         if (placeNeeded
+-            && !block.place(level, pos, Block.UPDATE_CLIENTS | (strict ? Block.UPDATE_SKIP_ALL_SIDEEFFECTS : Block.UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS))) {
++            && !block.place(level, pos, Block.UPDATE_CLIENTS | (strict ? Block.UPDATE_SKIP_ALL_SIDEEFFECTS : Block.UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS | (fillUpdates ? 0 : Block.UPDATE_KNOWN_SHAPE)))) {
+             throw ERROR_FAILED.create();
+         }
+ 
+-        if (!strict) {
++        if (!strict && fillUpdates) {
+             level.updateNeighboursOnBlockSet(pos, oldState);
+         }
+ 
+diff --git a/net/minecraft/world/level/block/entity/StructureBlockEntity.java b/net/minecraft/world/level/block/entity/StructureBlockEntity.java
+--- a/net/minecraft/world/level/block/entity/StructureBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/StructureBlockEntity.java
+@@ -410,11 +410,12 @@
+ 
+     private void placeStructure(final ServerLevel level, final StructureTemplate template) {
+         this.loadStructureInfo(template);
++        final boolean fillUpdates = fun.bm.mili.carpet.config.modules.WorldGameplayConfig.fillUpdates;
+         StructurePlaceSettings placeSettings = new StructurePlaceSettings()
+             .setMirror(this.mirror)
+             .setRotation(this.rotation)
+             .setIgnoreEntities(this.ignoreEntities)
+-            .setKnownShape(this.strict);
++            .setKnownShape(this.strict || !fillUpdates);
+         if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.structureBlockDoNotPreserveFluid) {
+             placeSettings.setLiquidSettings(net.minecraft.world.level.levelgen.structure.templatesystem.LiquidSettings.IGNORE_WATERLOGGING);
+         }
+@@ -423,6 +424,12 @@
+         }
+ 
+         BlockPos pos = this.getBlockPos().offset(this.structurePos);
++        if (!fillUpdates) {
++            final var bounds = template.getBoundingBox(placeSettings, pos);
++            final var far = pos.offset(this.structureSize);
++            if (!fun.bm.mili.carpet.WorldGameplayRules.ownsLoadedBox(level, Math.min(bounds.minX(), pos.getX()) - 1, Math.min(bounds.minZ(), pos.getZ()) - 1,
++                Math.max(bounds.maxX(), far.getX()) + 1, Math.max(bounds.maxZ(), far.getZ()) + 1)) return;
++        }
+         if (SharedConstants.DEBUG_STRUCTURE_EDIT_MODE) {
+             BlockPos.betweenClosed(pos, pos.offset(this.structureSize))
+                 .forEach(p -> level.setBlock(p, Blocks.STRUCTURE_VOID.defaultBlockState(), Block.UPDATE_CLIENTS));
+diff --git a/net/minecraft/server/commands/SummonCommand.java b/net/minecraft/server/commands/SummonCommand.java
+--- a/net/minecraft/server/commands/SummonCommand.java
++++ b/net/minecraft/server/commands/SummonCommand.java
+@@ -105,7 +105,13 @@
+         if (finalize && entity instanceof Mob mob) {
+             mob.finalizeSpawn(source.getLevel(), source.getLevel().getCurrentDifficultyAt(entity.blockPosition()), EntitySpawnReason.COMMAND, null);
+         }
+-        level.tryAddFreshEntityWithPassengers(entity, org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.COMMAND); // Folia - region threading
++        if (fun.bm.mili.carpet.config.modules.WorldGameplayConfig.summonNaturalLightning && entity instanceof net.minecraft.world.entity.LightningBolt bolt) {
++            if (level.strikeLightning(bolt, org.bukkit.event.weather.LightningStrikeEvent.Cause.COMMAND)) {
++                fun.bm.mili.carpet.WorldGameplayRules.summonLightningTrap(level, bolt.blockPosition());
++            }
++        } else {
++            level.tryAddFreshEntityWithPassengers(entity, org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.COMMAND); // Folia - region threading
++        }
+         }); // Folia - region threading
+ 
+         if (false) { // CraftBukkit - pass a spawn reason of "COMMAND" // Folia - region threading
+diff --git a/net/minecraft/server/commands/StopCommand.java b/net/minecraft/server/commands/StopCommand.java
+--- a/net/minecraft/server/commands/StopCommand.java
++++ b/net/minecraft/server/commands/StopCommand.java
+@@ -9,10 +9,12 @@
+ public class StopCommand {
+     public static void register(final CommandDispatcher<CommandSourceStack> dispatcher) {
+         dispatcher.register(Commands.literal("stop").requires(Commands.hasPermission(Commands.LEVEL_OWNERS)).executes(c -> {
++            if (!fun.bm.mili.carpet.WorldGameplayRules.confirmStop(c.getSource())) return 0;
+             c.getSource().sendSuccess(() -> Component.translatable("commands.stop.stopping"), true);
+             c.getSource().getServer().halt(false);
+             return Command.SINGLE_SUCCESS;
+         }).then(Commands.literal("force").requires(Commands.hasPermission(Commands.LEVEL_OWNERS)).executes(c -> {
++            if (!fun.bm.mili.carpet.WorldGameplayRules.confirmStop(c.getSource())) return 0;
+             c.getSource().sendSuccess(() -> Component.translatable("commands.stop.stopping"), true);
+             c.getSource().getServer().halt(false, false, true);
+             return 1;

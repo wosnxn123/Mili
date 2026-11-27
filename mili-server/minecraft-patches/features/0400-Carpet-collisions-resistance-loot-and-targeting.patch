@@ -1,0 +1,128 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Carpet compatibility for collisions, resistance, drops and targeting
+
+Ported from LophineLabs/Lophine 7a51f49a512f1b5465f15a905d3704754e4bed02,
+Minecraft patches 0131-0134. Preserve Paper events and Folia region ownership.
+See META-INF/licenses/carpet-26.3.txt for upstream notices.
+
+diff --git a/net/minecraft/util/RandomSource.java b/net/minecraft/util/RandomSource.java
+index 664c1b3008b62c533b8e3302baa994ed0c135c42..8829f2257cd3accb6711ba66245f99aa9a831cda 100644
+--- a/net/minecraft/util/RandomSource.java
++++ b/net/minecraft/util/RandomSource.java
+@@ -57,10 +57,18 @@ public interface RandomSource {
+     double nextGaussian();
+ 
+     default double triangle(final double mean, final double spread) {
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.useFlatDistribution()) {
++            this.nextDouble(); // 与原版消耗相同数量的随机值。
++            return mean + spread * (-1.0D + this.nextDouble() * 2.0D);
++        }
+         return mean + spread * (this.nextDouble() - this.nextDouble());
+     }
+ 
+     default float triangle(final float mean, final float spread) {
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.useFlatDistribution()) {
++            this.nextFloat(); // 与原版消耗相同数量的随机值。
++            return mean + spread * (-1.0F + this.nextFloat() * 2.0F);
++        }
+         return mean + spread * (this.nextFloat() - this.nextFloat());
+     }
+ 
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 122985511cb4cbd5a47f04992d6138631a4cf539..95401f398c6fa62a091fd34b0f71cc2b6788bc54 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -2029,6 +2029,12 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+         if (!lootTable.isEmpty()) {
+             this.dropFromLootTable(level, source, playerKilled, lootTable.get());
+         }
++        if (this instanceof net.minecraft.world.entity.monster.Witch) {
++            int redstone = Math.clamp(fun.bm.mili.carpet.config.modules.GameplayCompatConfig.witchRedstoneDustDropController, -1, 64);
++            int glowstone = Math.clamp(fun.bm.mili.carpet.config.modules.GameplayCompatConfig.witchGlowstoneDustDropController, -1, 64);
++            if (redstone > 0) this.spawnAtLocation(level, new ItemStack(Items.REDSTONE, redstone));
++            if (glowstone > 0) this.spawnAtLocation(level, new ItemStack(Items.GLOWSTONE_DUST, glowstone));
++        }
+     }
+ 
+     public void dropFromLootTable(final ServerLevel level, final DamageSource source, final boolean playerKilled, final ResourceKey<LootTable> lootTable) {
+@@ -3963,11 +3969,21 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+         }
+ 
+         int maxCramming = ((ServerLevel) this.level()).getGameRules().get(GameRules.MAX_ENTITY_CRAMMING);
+-        if (maxCramming <= 0 && this.level().paperConfig().collisions.maxEntityCollisions <= 0) {
++        final int requested = fun.bm.mili.carpet.config.modules.GameplayCompatConfig.maxEntityCollisions;
++        final int localLimit = requested > 0 && ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(this.level(), this.getBoundingBox()) ? requested : 0;
++        if (localLimit == 0 && maxCramming <= 0 && this.level().paperConfig().collisions.maxEntityCollisions <= 0) {
+             return;
+         }
+         // Paper end - don't run getEntities if we're not going to use its result
+-        List<Entity> pushableEntities = this.level().getPushableEntities(this, this.getBoundingBox());
++        List<Entity> pushableEntities;
++        if (localLimit > 0) {
++            pushableEntities = new java.util.ArrayList<>();
++            var predicate = EntitySelector.pushableBy(this);
++            this.level().getEntities(net.minecraft.world.level.entity.EntityTypeTest.forClass(Entity.class), this.getBoundingBox(),
++                target -> target != this && ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(target) && predicate.test(target), pushableEntities, Math.max(localLimit, maxCramming));
++        } else {
++            pushableEntities = this.level().getPushableEntities(this, this.getBoundingBox());
++        }
+         if (!pushableEntities.isEmpty()) {
+             if (this.level() instanceof ServerLevel serverLevel) {
+                 // Paper - don't run getEntities if we're not going to use its result; moved up
+@@ -3986,6 +4002,14 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+                 }
+             }
+ 
++            if (localLimit > 0) {
++                for (int i = 0; i < Math.min(localLimit, pushableEntities.size()); i++) {
++                    Entity other = pushableEntities.get(i);
++                    if (this.isRemoved() || !ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(this)) break;
++                    if (ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(other) && !other.isRemoved() && other.level() == this.level()) this.doPush(other);
++                }
++                return;
++            }
+             // Paper start - Cap entity collisions
+             this.numCollisions = Math.max(0, this.numCollisions - this.level().paperConfig().collisions.maxEntityCollisions);
+             for (Entity entity : pushableEntities) {
+diff --git a/net/minecraft/world/entity/Mob.java b/net/minecraft/world/entity/Mob.java
+index e27e95d34195ec2139bdff86e32a8e7addf74228..67f666f936650a370b889bc47e32de27333a61bd 100644
+--- a/net/minecraft/world/entity/Mob.java
++++ b/net/minecraft/world/entity/Mob.java
+@@ -284,7 +284,7 @@ public abstract class Mob extends LivingEntity implements Targeting, EquipmentUs
+             return null;
+         }
+         // Folia end - region threading
+-        if (target instanceof Player player && (player.isCreative() || player.isSpectator())) {
++        if (target instanceof Player player && (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.truePeacefulMode || player.isCreative() || player.isSpectator())) {
+             return null;
+         } else {
+             return target != null && !this.canAttack(target) ? null : target;
+diff --git a/net/minecraft/world/level/block/Block.java b/net/minecraft/world/level/block/Block.java
+index 38980602096e79ec893efbe6033e2ee8915e30fb..92e4007b1af4a3e9f8f4785fa0c911f9cc2853d8 100644
+--- a/net/minecraft/world/level/block/Block.java
++++ b/net/minecraft/world/level/block/Block.java
+@@ -517,7 +517,7 @@ public class Block extends BlockBehaviour implements ItemLike {
+     }
+ 
+     public float getExplosionResistance() {
+-        return this.explosionResistance;
++        return fun.bm.mili.carpet.GameplayCompatRules.explosionResistance(this, this.explosionResistance);
+     }
+ 
+     public void wasExploded(final ServerLevel level, final BlockPos pos, final Explosion explosion) {
+diff --git a/net/minecraft/world/level/levelgen/PhantomSpawner.java b/net/minecraft/world/level/levelgen/PhantomSpawner.java
+index 1f20ce7bb72f274f7b3f5efbba3288fabb347bef..e9fd53e6674e43e20cb88a7cf1f5a7d39cb50930 100644
+--- a/net/minecraft/world/level/levelgen/PhantomSpawner.java
++++ b/net/minecraft/world/level/levelgen/PhantomSpawner.java
+@@ -81,6 +81,9 @@ public class PhantomSpawner implements CustomSpawner {
+                                                         phantom.snapTo(spawnPos, 0.0F, 0.0F);
+                                                         groupData = phantom.finalizeSpawn(level, difficulty, EntitySpawnReason.NATURAL, groupData);
+                                                         level.addFreshEntityWithPassengers(phantom, org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.NATURAL); // CraftBukkit
++                                                        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.phantomSpawnAlert && !phantom.isRemoved() && level.getEntity(phantom.getId()) == phantom) {
++                                                            fun.bm.mili.carpet.GameplayCompatRules.announcePhantom(level, player, phantom.blockPosition());
++                                                        }
+                                                         if (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.limitPhantomSpawn && !phantom.isRemoved()) {
+                                                             var state = level.getChunkSource().getLastSpawnState();
+                                                             var chunk = level.getChunkIfLoaded(spawnPos.getX() >> 4, spawnPos.getZ() >> 4);

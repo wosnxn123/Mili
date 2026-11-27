@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mili contributors <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Use the native type-safe shulker comparator query
+
+Read through the vanilla container guard even with legacy TOML settings.
+A comparator read must not interrupt unrelated block updates.
+
+diff --git a/net/minecraft/world/level/block/ShulkerBoxBlock.java b/net/minecraft/world/level/block/ShulkerBoxBlock.java
+index a39aef384a55aba2651bf38dfb29f11fc2344ad3..5ee200668e27d69864182e5b257f8d14c887c1bd 100644
+--- a/net/minecraft/world/level/block/ShulkerBoxBlock.java
++++ b/net/minecraft/world/level/block/ShulkerBoxBlock.java
+@@ -187,18 +187,7 @@ public class ShulkerBoxBlock extends BaseEntityBlock {
+ 
+     @Override
+     protected int getAnalogOutputSignal(final BlockState state, final Level level, final BlockPos pos, final Direction direction) {
+-        // Lophine start - catch update suppression crash
+-        try {
+-            return fun.bm.mili.config.modules.experiment.RedStoneConfig.cce ?
+-                    AbstractContainerMenu.getRedstoneSignalFromContainer((net.minecraft.world.Container) level.getBlockEntity(pos)) : // Leaves - make cce happy(?)
+-                    AbstractContainerMenu.getRedstoneSignalFromBlockEntity(level.getBlockEntity(pos));
+-        } catch (ClassCastException ex) {
+-            if (fun.bm.mili.carpet.config.modules.GeneralCompatConfig.mergedUpdateSuppressionCrashEnabled()) {
+-                throw new org.leavesmc.leaves.util.UpdateSuppressionException(pos, null, this, null, ex);
+-            }
+-            throw ex;
+-        }
+-        // Lophine end - catch update suppression crash
++        return AbstractContainerMenu.getRedstoneSignalFromBlockEntity(level.getBlockEntity(pos));
+     }
+ 
+     public @Nullable DyeColor getColor() {

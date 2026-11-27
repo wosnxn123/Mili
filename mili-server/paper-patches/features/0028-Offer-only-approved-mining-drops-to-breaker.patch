@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mili contributors <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Offer only event-approved mining drops to the breaker
+
+Adapt Carpet Org and Carpet TIS collection rules from Lophine 7a51f49a.
+Use the native mining-drop event and the existing hopper's region tick.
+See META-INF/licenses/carpet-26.3.txt for the donor notices.
+
+diff --git a/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java b/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java
+index dc04d9894cb4335bafd8ea771fd0e82bd3a7359b..bc29c5ce7b66eb8da235b941cef28bbe07d8f38b 100644
+--- a/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java
++++ b/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java
+@@ -544,6 +544,10 @@ public class CraftEventFactory {
+     }
+ 
+     public static void handleBlockDropItemEvent(Block block, BlockState state, ServerPlayer player, List<ItemEntity> items) {
++        handleBlockDropItemEvent(block, state, player, items, false);
++    }
++
++    public static void handleBlockDropItemEvent(Block block, BlockState state, ServerPlayer player, List<ItemEntity> items, boolean offerToBreaker) {
+         List<Item> list = new ArrayList<>();
+         for (ItemEntity item : items) {
+             list.add((Item) item.getBukkitEntity());
+@@ -553,12 +557,14 @@ public class CraftEventFactory {
+         Bukkit.getPluginManager().callEvent(event);
+ 
+         if (!event.isCancelled()) {
++            List<ItemEntity> spawned = offerToBreaker ? new ArrayList<>() : null;
+             for (Item bukkit : list) {
+                 if (!bukkit.isValid()) {
+                     Entity item = ((org.bukkit.craftbukkit.entity.CraftItem) bukkit).getHandle();
+-                    item.level().addFreshEntity(item);
++                    if (item.level().addFreshEntity(item) && spawned != null && spawned.size() < 64 && item instanceof ItemEntity drop) spawned.add(drop);
+                 }
+             }
++            if (spawned != null && !spawned.isEmpty()) fun.bm.mili.carpet.CollectionGameplayRules.offerMiningDrops(player, spawned);
+         } else {
+             for (Item bukkit : list) {
+                 if (bukkit.isValid()) {

@@ -61,7 +61,6 @@ public final class CarpetCompatSync {
         LanguageConfig.lang = GeneralCompatConfig.language;
         UpdateSuppressionCrashFixConfig.enabled = GeneralCompatConfig.amsUpdateSuppressionCrashFix || GeneralCompatConfig.yeetUpdateSuppressionCrash;
         RedStoneConfig.redstoneIgnoreUpwardsUpdate = GeneralCompatConfig.dustTrapdoorReintroduced;
-        RedStoneConfig.cce = GeneralCompatConfig.shulkerBoxCCEReintroduced;
         RedStoneConfig.instantBlockUpdater = GeneralCompatConfig.instantBlockUpdaterReintroduced;
         CommandConfig.tick = GeneralCompatConfig.commandTick;
         CreativeFlyNoClipConfig.enabled = GeneralCompatConfig.creativeNoClip;
@@ -93,7 +92,6 @@ public final class CarpetCompatSync {
         rules.add(CarpetServerProtocol.CarpetRule.of("carpetamsaddition", "amsUpdateSuppressionCrashFix", GeneralCompatConfig.amsUpdateSuppressionCrashFix));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpettisaddition", "yeetUpdateSuppressionCrash", GeneralCompatConfig.yeetUpdateSuppressionCrash));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpettisaddition", "dustTrapdoorReintroduced", GeneralCompatConfig.dustTrapdoorReintroduced));
-        rules.add(CarpetServerProtocol.CarpetRule.of("carpettisaddition", "shulkerBoxCCEReintroduced", GeneralCompatConfig.shulkerBoxCCEReintroduced));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpettisaddition", "instantBlockUpdaterReintroduced", GeneralCompatConfig.instantBlockUpdaterReintroduced));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpet", "commandTick", GeneralCompatConfig.commandTick));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpet", "creativeNoClip", GeneralCompatConfig.creativeNoClip));
@@ -193,6 +191,8 @@ public final class CarpetCompatSync {
         rules.add(CarpetServerProtocol.CarpetRule.of("carpet", "disableBlazeFire", GeneralCompatConfig.disableBlazeFire));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpettisaddition", "largeBarrel", GeneralCompatConfig.largeBarrel));
         GameplayCompatRules.registerProtocolRules(rules);
+        WorldGameplayRules.registerProtocolRules(rules);
+        EntityGameplayRules.registerProtocolRules(rules);
         CarpetServerProtocol.CarpetRules.replace(rules);
     }
 }

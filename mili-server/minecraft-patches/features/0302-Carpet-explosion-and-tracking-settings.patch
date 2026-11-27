@@ -1,0 +1,181 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Carpet explosion and tracking settings
+
+From Lophine 7a51f49a, Minecraft 0131, 0132, 0133, 0134. See META-INF/licenses/carpet-26.3.txt.
+Integrate the Carpet ray order into the existing Moonrise cache and preserve Paper destroyability and world configuration. Keep Folia player broadcasts local.
+
+Additional source:
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Carpet AMS features
+
+Additional source:
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Carpet ORG features
+
+Additional source:
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Carpet TIS features
+
+diff --git a/net/minecraft/world/level/ServerExplosion.java b/net/minecraft/world/level/ServerExplosion.java
+--- a/net/minecraft/world/level/ServerExplosion.java
++++ b/net/minecraft/world/level/ServerExplosion.java
+@@ -82,6 +82,45 @@
+         CACHED_RAYS = rayCoords.toDoubleArray();
+     }
+ 
++    // Fabric Carpet's face traversal uses double precision and a distinct RNG order.
++    private static final double[] CARPET_CACHED_RAYS = createCarpetRays();
++
++    private static double[] createCarpetRays() {
++        it.unimi.dsi.fastutil.doubles.DoubleArrayList rays = new it.unimi.dsi.fastutil.doubles.DoubleArrayList();
++        for (int plane = 0; plane <= 15; plane += 15) {
++            for (int z = 0; z <= 15; z++) {
++                for (int x = 0; x <= 15; x++) {
++                    addCarpetRay(rays, x, plane, z);
++                }
++            }
++        }
++        for (int plane = 0; plane <= 15; plane += 15) {
++            for (int z = 0; z <= 15; z++) {
++                for (int y = 1; y <= 14; y++) {
++                    addCarpetRay(rays, plane, y, z);
++                }
++            }
++        }
++        for (int plane = 0; plane <= 15; plane += 15) {
++            for (int x = 1; x <= 14; x++) {
++                for (int y = 1; y <= 14; y++) {
++                    addCarpetRay(rays, x, y, plane);
++                }
++            }
++        }
++        return rays.toDoubleArray();
++    }
++
++    private static void addCarpetRay(final it.unimi.dsi.fastutil.doubles.DoubleArrayList rays, final int x, final int y, final int z) {
++        double dx = x / 15.0D * 2.0D - 1.0D;
++        double dy = y / 15.0D * 2.0D - 1.0D;
++        double dz = z / 15.0D * 2.0D - 1.0D;
++        double length = Math.sqrt(dx * dx + dy * dy + dz * dz);
++        rays.add(dx / length * 0.3D);
++        rays.add(dy / length * 0.3D);
++        rays.add(dz / length * 0.3D);
++    }
++
+     private static final int CHUNK_CACHE_SHIFT = 2;
+     private static final int CHUNK_CACHE_MASK = (1 << CHUNK_CACHE_SHIFT) - 1;
+     private static final int CHUNK_CACHE_WIDTH = 1 << CHUNK_CACHE_SHIFT;
+@@ -371,6 +410,11 @@
+     }
+ 
+     private List<BlockPos> calculateExplodedPositions() {
++        final boolean carpetRays = fun.bm.mili.carpet.config.modules.WorldGameplayConfig.optimizedTNT
++            && (this.damageCalculator.getClass() == ExplosionDamageCalculator.class
++                || this.damageCalculator.getClass() == EntityBasedExplosionDamageCalculator.class);
++        final double[] rays = carpetRays ? CARPET_CACHED_RAYS : CACHED_RAYS;
++        final double fixedRandom = carpetRays ? fun.bm.mili.carpet.config.modules.WorldGameplayConfig.tntRandomRange() : -1.0;
+         if (fun.bm.mili.carpet.config.modules.GeneralCompatConfig.explosionNoBlockDamage) {
+             return List.of();
+         }
+@@ -400,20 +444,22 @@
+         // calculations in one go
+         // additional aggressive caching of block retrieval is very significant, as at low power (i.e tnt) most
+         // block retrievals are not unique
+-        for (int ray = 0, len = CACHED_RAYS.length; ray < len;) {
++        for (int ray = 0, len = rays.length; ray < len;) {
+             ca.spottedleaf.moonrise.patches.collisions.ExplosionBlockCache cachedBlock = initialCache;
+ 
+             double currX = center.x;
+             double currY = center.y;
+             double currZ = center.z;
+ 
+-            final double incX = CACHED_RAYS[ray];
+-            final double incY = CACHED_RAYS[ray + 1];
+-            final double incZ = CACHED_RAYS[ray + 2];
++            final double incX = rays[ray];
++            final double incY = rays[ray + 1];
++            final double incZ = rays[ray + 2];
+ 
+             ray += 3;
+ 
+-            float power = this.radius * (0.7F + this.level.getRandom().nextFloat() * 0.6F);
++            final float sample = this.level.getRandom().nextFloat();
++            float power = this.radius * (0.7F + (fixedRandom < 0.0 ? sample : (float)fixedRandom) * 0.6F);
++            if (carpetRays && power <= initialCache.resistance) continue;
+ 
+             do {
+                 final int blockX = Mth.floor(currX);
+@@ -484,7 +530,13 @@
+             int z1 = Mth.floor(this.center.z + doubleRadius + 1.0);
+             List<Entity> list = fun.bm.mili.carpet.config.modules.GameplayCompatConfig.explosionNoEntityInfluence ? List.of() : this.level.getEntities(this.excludeSourceFromDamage ? this.source : null, new AABB(x0, y0, z0, x1, y1, z1), entity -> entity.isAlive() && !entity.isSpectator()); // Paper - Fix lag from explosions processing dead entities, Allow explosions to damage source
+ 
++            final boolean wetSource = fun.bm.mili.carpet.config.modules.WorldGameplayConfig.wetExplosionReintroduced && this.source != null
++                && ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(this.source) && this.source.isInWater();
+             for (Entity entity : list) { // Paper - used in loop
++                if (wetSource && (entity instanceof net.minecraft.world.entity.item.ItemEntity
++                    || entity instanceof net.minecraft.world.entity.decoration.ArmorStand
++                    || entity instanceof net.minecraft.world.entity.decoration.HangingEntity)) continue;
++                if (entity instanceof net.minecraft.world.entity.item.ItemEntity && "no_blast_wave".equals(fun.bm.mili.carpet.config.modules.WorldGameplayConfig.itemAntiExplosion())) continue;
+                 if (!entity.ignoreExplosion(this)) {
+                     double dist = Math.sqrt(entity.distanceToSqr(this.center)) / doubleRadius;
+                     if (!(dist > 1.0)) {
+@@ -704,6 +756,9 @@
+ 
+     @Override
+     public boolean canTriggerBlocks() {
++        if (fun.bm.mili.carpet.config.modules.WorldGameplayConfig.disableWindChargeEffect
++            && this.source instanceof net.minecraft.world.entity.projectile.hurtingprojectile.windcharge.WindCharge
++            && this.getIndirectSourceEntity() instanceof Player) return false;
+         return this.blockInteraction == Explosion.BlockInteraction.TRIGGER_BLOCK
+             && (this.source == null || !this.source.is(EntityTypes.BREEZE_WIND_CHARGE) || this.level.getGameRules().get(GameRules.MOB_GRIEFING));
+     }
+diff --git a/net/minecraft/world/entity/item/ItemEntity.java b/net/minecraft/world/entity/item/ItemEntity.java
+--- a/net/minecraft/world/entity/item/ItemEntity.java
++++ b/net/minecraft/world/entity/item/ItemEntity.java
+@@ -346,6 +346,7 @@
+ 
+     @Override
+     public final boolean hurtServer(final ServerLevel level, final DamageSource source, final float damage) {
++        if (source.is(net.minecraft.tags.DamageTypeTags.IS_EXPLOSION) && !"false".equals(fun.bm.mili.carpet.config.modules.WorldGameplayConfig.itemAntiExplosion())) return false;
+         if (this.isInvulnerableToBase(source)) {
+             return false;
+         }
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -2265,8 +2265,10 @@
+         // CraftBukkit end
+         ParticleOptions explosionParticle = explosion.isSmall() ? smallExplosionParticles : largeExplosionParticles;
+ 
++        final double packetRange = fun.bm.mili.carpet.config.modules.WorldGameplayConfig.explosionPacketRange();
++        final double packetRangeSquared = packetRange * packetRange;
+         for (ServerPlayer player : this.getLocalPlayers()) { // Folia - region thraeding
+-            if (player.distanceToSqr(center) < 4096.0) {
++            if (player.distanceToSqr(center) < packetRangeSquared) {
+                 Optional<Vec3> playerKnockback = Optional.ofNullable(explosion.getHitPlayers().get(player));
+                 player.connection
+                     .send(
+diff --git a/net/minecraft/world/entity/EntityType.java b/net/minecraft/world/entity/EntityType.java
+--- a/net/minecraft/world/entity/EntityType.java
++++ b/net/minecraft/world/entity/EntityType.java
+@@ -557,11 +557,13 @@
+     }
+ 
+     public int clientTrackingRange() {
+-        return this.clientTrackingRange;
++        final int configured = fun.bm.mili.carpet.config.modules.WorldGameplayConfig.entityTrackerDistance();
++        return this.clientTrackingRange > 0 && configured > 0 ? configured : this.clientTrackingRange;
+     }
+ 
+     public int updateInterval() {
+-        return this.updateInterval;
++        final int configured = fun.bm.mili.carpet.config.modules.WorldGameplayConfig.entityTrackerInterval();
++        return this.hasUpdateInterval() && configured > 0 ? configured : this.updateInterval;
+     }
+ 
+     public boolean hasUpdateInterval() {

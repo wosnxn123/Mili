@@ -1,0 +1,259 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Carpet owned nether portal shapes
+
+From Lophine 7a51f49a, Minecraft 0132, 0134. See META-INF/licenses/carpet-26.3.txt.
+Respect loaded frame ownership for new creation and keep Paper PortalCreateEvent. Match expanded rectangle searches to the existing portal-search tickets.
+
+Additional source:
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Carpet TIS features
+
+diff --git a/net/minecraft/world/level/portal/PortalShape.java b/net/minecraft/world/level/portal/PortalShape.java
+--- a/net/minecraft/world/level/portal/PortalShape.java
++++ b/net/minecraft/world/level/portal/PortalShape.java
+@@ -28,7 +28,8 @@
+     public static final int MAX_WIDTH = 21;
+     private static final int MIN_HEIGHT = 3;
+     public static final int MAX_HEIGHT = 21;
+-    public static final Predicate<BlockState> FRAME = state -> state.is(BlockTags.NETHER_PORTAL_FRAME);
++    public static final Predicate<BlockState> FRAME = state -> state.is(BlockTags.NETHER_PORTAL_FRAME)
++        || fun.bm.mili.carpet.config.modules.WorldGameplayConfig.cryingObsidianNetherPortal && state.is(Blocks.CRYING_OBSIDIAN);
+     private static final float SAFE_TRAVEL_MAX_ENTITY_XY = 4.0F;
+     private static final double SAFE_TRAVEL_MAX_VERTICAL_DELTA = 1.0;
+     private final Direction.Axis axis;
+@@ -37,11 +38,12 @@
+     private final BlockPos bottomLeft;
+     private final int height;
+     private final int width;
++    private final int limit;
+     // CraftBukkit start - add field
+     private final org.bukkit.craftbukkit.util.BlockStateListPopulator blocks;
+ 
+     private PortalShape(
+-        final Direction.Axis axis, final int portalBlockCount, final Direction rightDir, final BlockPos bottomLeft, final int width, final int height, final org.bukkit.craftbukkit.util.BlockStateListPopulator blocks
++        final Direction.Axis axis, final int portalBlockCount, final Direction rightDir, final BlockPos bottomLeft, final int width, final int height, final int limit, final org.bukkit.craftbukkit.util.BlockStateListPopulator blocks
+     ) {
+         this.blocks = blocks;
+         // CraftBukkit end
+@@ -51,6 +53,7 @@
+         this.bottomLeft = bottomLeft;
+         this.width = width;
+         this.height = height;
++        this.limit = limit;
+     }
+ 
+     public static Optional<PortalShape> findEmptyPortalShape(final LevelAccessor level, final BlockPos pos, final Direction.Axis preferredAxis) {
+@@ -72,45 +75,51 @@
+     public static PortalShape findAnyShape(final BlockGetter level, final BlockPos pos, final Direction.Axis axis) {
+         org.bukkit.craftbukkit.util.BlockStateListPopulator blocks = new org.bukkit.craftbukkit.util.BlockStateListPopulator(((LevelAccessor) level).getMinecraftWorld()); // CraftBukkit
+         Direction rightDir = axis == Direction.Axis.X ? Direction.WEST : Direction.SOUTH;
+-        BlockPos bottomLeft = calculateBottomLeft(level, rightDir, pos, blocks); // CraftBukkit
++        final int limit = fun.bm.mili.carpet.config.modules.WorldGameplayConfig.netherPortalMaxSize();
++        final boolean replaceable = "replaceable".equals(fun.bm.mili.carpet.config.modules.WorldGameplayConfig.violentNetherPortalCreation());
++        if ((limit != 21 || replaceable || fun.bm.mili.carpet.config.modules.WorldGameplayConfig.cryingObsidianNetherPortal) && level instanceof ServerLevel world
++            && !fun.bm.mili.carpet.WorldGameplayRules.ownsPortalPlane(world, pos, axis, limit + 1)) {
++            return new PortalShape(axis, 0, rightDir, pos, 0, 0, limit, blocks);
++        }
++        BlockPos bottomLeft = calculateBottomLeft(level, rightDir, pos, limit, replaceable, blocks); // CraftBukkit
+         if (bottomLeft == null) {
+-            return new PortalShape(axis, 0, rightDir, pos, 0, 0, blocks); // CraftBukkit
+-        }
+-
+-        int width = calculateWidth(level, bottomLeft, rightDir, blocks); // CraftBukkit
++            return new PortalShape(axis, 0, rightDir, pos, 0, 0, limit, blocks); // CraftBukkit
++        }
++
++        int width = calculateWidth(level, bottomLeft, rightDir, limit, replaceable, blocks); // CraftBukkit
+         if (width == 0) {
+-            return new PortalShape(axis, 0, rightDir, bottomLeft, 0, 0, blocks); // CraftBukkit
++            return new PortalShape(axis, 0, rightDir, bottomLeft, 0, 0, limit, blocks); // CraftBukkit
+         }
+ 
+         MutableInt portalBlockCountOutput = new MutableInt();
+-        int height = calculateHeight(level, bottomLeft, rightDir, width, portalBlockCountOutput, blocks); // CraftBukkit
+-        return new PortalShape(axis, portalBlockCountOutput.intValue(), rightDir, bottomLeft, width, height, blocks); // CraftBukkit
+-    }
+-
+-    private static @Nullable BlockPos calculateBottomLeft(final BlockGetter level, final Direction rightDir, BlockPos pos, final org.bukkit.craftbukkit.util.BlockStateListPopulator blocks) { // CraftBukkit
+-        int minY = Math.max(level.getMinY(), pos.getY() - 21);
+-
+-        while (pos.getY() > minY && isEmpty(level.getBlockState(pos.below()))) {
++        int height = calculateHeight(level, bottomLeft, rightDir, width, portalBlockCountOutput, limit, replaceable, blocks); // CraftBukkit
++        return new PortalShape(axis, portalBlockCountOutput.intValue(), rightDir, bottomLeft, width, height, limit, blocks); // CraftBukkit
++    }
++
++    private static @Nullable BlockPos calculateBottomLeft(final BlockGetter level, final Direction rightDir, BlockPos pos, final int limit, final boolean replaceable, final org.bukkit.craftbukkit.util.BlockStateListPopulator blocks) { // CraftBukkit
++        int minY = Math.max(level.getMinY(), pos.getY() - limit);
++
++        while (pos.getY() > minY && isEmpty(level.getBlockState(pos.below()), replaceable)) {
+             pos = pos.below();
+         }
+ 
+         Direction leftDir = rightDir.getOpposite();
+-        int edge = getDistanceUntilEdgeAboveFrame(level, pos, leftDir, blocks) - 1; // CraftBukkit
++        int edge = getDistanceUntilEdgeAboveFrame(level, pos, leftDir, limit, replaceable, blocks) - 1; // CraftBukkit
+         return edge < 0 ? null : pos.relative(leftDir, edge);
+     }
+ 
+-    private static int calculateWidth(final BlockGetter level, final BlockPos bottomLeft, final Direction rightDir, final org.bukkit.craftbukkit.util.BlockStateListPopulator blocks) { // CraftBukkit
+-        int width = getDistanceUntilEdgeAboveFrame(level, bottomLeft, rightDir, blocks); // CraftBukkit
+-        return width >= 2 && width <= 21 ? width : 0;
+-    }
+-
+-    private static int getDistanceUntilEdgeAboveFrame(final BlockGetter level, final BlockPos pos, final Direction direction, final org.bukkit.craftbukkit.util.BlockStateListPopulator blocks) { // CraftBukkit
++    private static int calculateWidth(final BlockGetter level, final BlockPos bottomLeft, final Direction rightDir, final int limit, final boolean replaceable, final org.bukkit.craftbukkit.util.BlockStateListPopulator blocks) { // CraftBukkit
++        int width = getDistanceUntilEdgeAboveFrame(level, bottomLeft, rightDir, limit, replaceable, blocks); // CraftBukkit
++        return width >= 2 && width <= limit ? width : 0;
++    }
++
++    private static int getDistanceUntilEdgeAboveFrame(final BlockGetter level, final BlockPos pos, final Direction direction, final int limit, final boolean replaceable, final org.bukkit.craftbukkit.util.BlockStateListPopulator blocks) { // CraftBukkit
+         BlockPos.MutableBlockPos blockPos = new BlockPos.MutableBlockPos();
+ 
+-        for (int width = 0; width <= 21; width++) {
++        for (int width = 0; width <= limit; width++) {
+             blockPos.set(pos).move(direction, width);
+             BlockState blockState = level.getBlockState(blockPos);
+-            if (!isEmpty(blockState)) {
++            if (!isEmpty(blockState, replaceable)) {
+                 if (FRAME.test(blockState)) {
+                     blocks.setBlock(blockPos, blockState, Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE); // CraftBukkit - lower left / right
+                     return width;
+@@ -129,11 +138,11 @@
+     }
+ 
+     private static int calculateHeight(
+-        final BlockGetter level, final BlockPos bottomLeft, final Direction rightDir, final int width, final MutableInt portalBlockCount, final org.bukkit.craftbukkit.util.BlockStateListPopulator blocks // CraftBukkit
++        final BlockGetter level, final BlockPos bottomLeft, final Direction rightDir, final int width, final MutableInt portalBlockCount, final int limit, final boolean replaceable, final org.bukkit.craftbukkit.util.BlockStateListPopulator blocks // CraftBukkit
+     ) {
+         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+-        int height = getDistanceUntilTop(level, bottomLeft, rightDir, pos, width, portalBlockCount, blocks); // CraftBukkit
+-        return height >= 3 && height <= 21 && hasTopFrame(level, bottomLeft, rightDir, pos, width, height, blocks) ? height : 0; // CraftBukkit
++        int height = getDistanceUntilTop(level, bottomLeft, rightDir, pos, width, portalBlockCount, limit, replaceable, blocks); // CraftBukkit
++        return height >= 3 && height <= limit && hasTopFrame(level, bottomLeft, rightDir, pos, width, height, blocks) ? height : 0; // CraftBukkit
+     }
+ 
+     private static boolean hasTopFrame(
+@@ -156,9 +165,9 @@
+         final Direction rightDir,
+         final BlockPos.MutableBlockPos pos,
+         final int width,
+-        final MutableInt portalBlockCount, final org.bukkit.craftbukkit.util.BlockStateListPopulator blocks // CraftBukkit
+-    ) {
+-        for (int height = 0; height < 21; height++) {
++        final MutableInt portalBlockCount, final int limit, final boolean replaceable, final org.bukkit.craftbukkit.util.BlockStateListPopulator blocks // CraftBukkit
++    ) {
++        for (int height = 0; height < limit; height++) {
+             pos.set(bottomLeft).move(Direction.UP, height).move(rightDir, -1);
+             if (!FRAME.test(level.getBlockState(pos))) {
+                 return height;
+@@ -172,7 +181,7 @@
+             for (int i = 0; i < width; i++) {
+                 pos.set(bottomLeft).move(Direction.UP, height).move(rightDir, i);
+                 BlockState state = level.getBlockState(pos);
+-                if (!isEmpty(state)) {
++                if (!isEmpty(state, replaceable)) {
+                     return height;
+                 }
+ 
+@@ -186,15 +195,16 @@
+             // CraftBukkit end
+         }
+ 
+-        return 21;
+-    }
+-
+-    private static boolean isEmpty(final BlockState state) {
+-        return state.isAir() || state.is(BlockTags.FIRE) || state.is(Blocks.NETHER_PORTAL);
++        return limit;
++    }
++
++    private static boolean isEmpty(final BlockState state, final boolean replaceable) {
++        return state.isAir() || state.is(BlockTags.FIRE) || state.is(Blocks.NETHER_PORTAL)
++            || replaceable && !FRAME.test(state) && state.canBeReplaced() && state.getFluidState().isEmpty() && !state.hasBlockEntity();
+     }
+ 
+     public boolean isValid() {
+-        return this.width >= 2 && this.width <= 21 && this.height >= 3 && this.height <= 21;
++        return this.width >= 2 && this.width <= this.limit && this.height >= 3 && this.height <= this.limit;
+     }
+ 
+     // CraftBukkit start - return boolean, add entity
+diff --git a/net/minecraft/world/level/block/NetherPortalBlock.java b/net/minecraft/world/level/block/NetherPortalBlock.java
+--- a/net/minecraft/world/level/block/NetherPortalBlock.java
++++ b/net/minecraft/world/level/block/NetherPortalBlock.java
+@@ -100,6 +100,10 @@
+         Direction.Axis updateAxis = directionToNeighbour.getAxis();
+         Direction.Axis axis = state.getValue(AXIS);
+         boolean wrongAxis = axis != updateAxis && updateAxis.isHorizontal();
++        if (fun.bm.mili.carpet.config.modules.WorldGameplayConfig.customizedNetherPortal) return state;
++        if (level instanceof ServerLevel world && (fun.bm.mili.carpet.config.modules.WorldGameplayConfig.netherPortalMaxSize() != 21
++            || fun.bm.mili.carpet.config.modules.WorldGameplayConfig.cryingObsidianNetherPortal || !"false".equals(fun.bm.mili.carpet.config.modules.WorldGameplayConfig.violentNetherPortalCreation()))
++            && !fun.bm.mili.carpet.WorldGameplayRules.ownsPortalPlane(world, pos, axis, fun.bm.mili.carpet.config.modules.WorldGameplayConfig.netherPortalMaxSize() + 1)) return state;
+         return !wrongAxis && !neighbourState.is(this) && !PortalShape.findAnyShape(level, pos, axis).isComplete()
+             ? Blocks.AIR.defaultBlockState()
+             : super.updateShape(state, level, ticks, pos, directionToNeighbour, neighbourPos, neighbourState, random);
+@@ -195,7 +199,7 @@
+ 
+         BlockState portalState = world.getBlockStateFromEmptyChunk(found);
+ 
+-        return BlockUtil.getLargestRectangleAround(found, portalState.getValue(BlockStateProperties.HORIZONTAL_AXIS), 21, Direction.Axis.Y, 21, (pos) -> {
++        return BlockUtil.getLargestRectangleAround(found, portalState.getValue(BlockStateProperties.HORIZONTAL_AXIS), fun.bm.mili.carpet.WorldGameplayRules.portalSearchSize(), Direction.Axis.Y, fun.bm.mili.carpet.WorldGameplayRules.portalSearchSize(), (pos) -> {
+             return world.getBlockStateFromEmptyChunk(pos) == portalState;
+         }).withFoundOrigin(found); // Anonymous - Fix folia nether portal ticket placement
+     }
+@@ -219,9 +223,9 @@
+             exitPortal = BlockUtil.getLargestRectangleAround(
+                 pos,
+                 portalState.getValue(BlockStateProperties.HORIZONTAL_AXIS),
+-                21,
++                fun.bm.mili.carpet.WorldGameplayRules.portalSearchSize(),
+                 Direction.Axis.Y,
+-                21,
++                fun.bm.mili.carpet.WorldGameplayRules.portalSearchSize(),
+                 blockPos -> newLevel.getBlockStateFromEmptyChunk(blockPos) == portalState // Folia - region threading
+             );
+             post = TeleportTransition.PLAY_PORTAL_SOUND.then(e -> e.placePortalTicket(pos));
+@@ -261,7 +265,7 @@
+         if (blockState.hasProperty(BlockStateProperties.HORIZONTAL_AXIS)) {
+             axis = blockState.getValue(BlockStateProperties.HORIZONTAL_AXIS);
+             BlockUtil.FoundRectangle portalArea = BlockUtil.getLargestRectangleAround(
+-                portalEntryPos, axis, 21, Direction.Axis.Y, 21, pos -> entity.level().getBlockState(pos) == blockState
++                portalEntryPos, axis, fun.bm.mili.carpet.WorldGameplayRules.portalSearchSize(), Direction.Axis.Y, fun.bm.mili.carpet.WorldGameplayRules.portalSearchSize(), pos -> entity.level().getBlockState(pos) == blockState
+             );
+             offset = entity.getRelativePortalPosition(axis, portalArea);
+         } else {
+diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
+--- a/net/minecraft/world/entity/Entity.java
++++ b/net/minecraft/world/entity/Entity.java
+@@ -4935,7 +4935,7 @@
+                     originalPortalBlock == null || !originalPortalBlock.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_AXIS)
+                         ? null
+                         : BlockUtil.getLargestRectangleAround(
+-                            originPortal, originalPortalDirection, 21, Direction.Axis.Y, 21,
++                            originPortal, originalPortalDirection, fun.bm.mili.carpet.WorldGameplayRules.portalSearchSize(), Direction.Axis.Y, fun.bm.mili.carpet.WorldGameplayRules.portalSearchSize(),
+                             (blockpos) -> {
+                                 return origin.getBlockStateFromEmptyChunkIfLoaded(blockpos) == originalPortalBlock;
+                             }
+@@ -4994,7 +4994,7 @@
+                 // kick off search for existing portal or creation
+                 destination.portalSearchChunkLoads.load(
+                     // add 32 so that the final search for a portal frame doesn't load any chunks
+-                    targetPos, portalSearchRadius + 32,
++                    targetPos, portalSearchRadius + Math.max(32, fun.bm.mili.carpet.WorldGameplayRules.portalSearchSize() + 2),
+                     (chunks) -> {
+                         BlockUtil.FoundRectangle portal =
+                             net.minecraft.world.level.block.NetherPortalBlock.findPortalAround(destination, targetPos, destinationBorder, portalSearchRadius);
+diff --git a/net/minecraft/world/level/block/state/BlockBehaviour.java b/net/minecraft/world/level/block/state/BlockBehaviour.java
+--- a/net/minecraft/world/level/block/state/BlockBehaviour.java
++++ b/net/minecraft/world/level/block/state/BlockBehaviour.java
+@@ -843,6 +843,7 @@
+         }
+ 
+         public float getDestroySpeed(final BlockGetter level, final BlockPos pos) {
++            if (fun.bm.mili.carpet.config.modules.WorldGameplayConfig.customizedNetherPortal && this.getBlock() instanceof net.minecraft.world.level.block.NetherPortalBlock) return 0.518F;
+             return this.destroySpeed;
+         }
+ 

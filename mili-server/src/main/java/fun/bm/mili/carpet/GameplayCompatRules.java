@@ -26,7 +26,44 @@ public final class GameplayCompatRules {
         return false;
     }
 
+    public static float explosionResistance(net.minecraft.world.level.block.Block block, float original) {
+        if (GameplayCompatConfig.blowUpEverything) return 0.0F;
+        double configured = GameplayCompatConfig.effectiveWorldEaterResistance();
+        if (configured < 0 || original < 17) return original;
+        return protectedResistanceBlock(block) ? original : (float) configured;
+    }
+
+    private static boolean protectedResistanceBlock(net.minecraft.world.level.block.Block block) {
+        return block == net.minecraft.world.level.block.Blocks.BEDROCK || block == net.minecraft.world.level.block.Blocks.ANVIL
+            || block == net.minecraft.world.level.block.Blocks.CHIPPED_ANVIL || block == net.minecraft.world.level.block.Blocks.DAMAGED_ANVIL
+            || block == net.minecraft.world.level.block.Blocks.END_PORTAL_FRAME || block == net.minecraft.world.level.block.Blocks.END_PORTAL
+            || block == net.minecraft.world.level.block.Blocks.END_GATEWAY;
+    }
+
+    public static void announcePhantom(ServerLevel level, net.minecraft.server.level.ServerPlayer trigger, BlockPos pos) {
+        var message = net.minecraft.network.chat.Component.translatableWithFallback("carpetamsaddition.rule.phantomSpawnAlert.msg",
+            "Phantom spawned near %1$s at %2$s", trigger.getGameProfile().name(), pos.toShortString());
+        var original = trigger.getBukkitEntity();
+        for (var recipient : level.getServer().getPlayerList().getPlayers()) {
+            recipient.getBukkitEntity().taskScheduler.schedule((net.minecraft.server.level.ServerPlayer current) -> {
+                if (GameplayCompatConfig.phantomSpawnAlert && current.level() == level && current.getBukkitEntity().canSee(original)) {
+                    current.sendSystemMessage(message);
+                }
+            }, null, 1L);
+        }
+    }
+
     static void registerProtocolRules(final List<CarpetRule> rules) {
+        rules.add(CarpetRule.of("carpetorgaddition", "blockDropsDirectlyEnterInventory", GameplayCompatConfig.blockDropsDirectlyEnterInventory));
+        rules.add(CarpetRule.of("carpettisaddition", "hopperXpCounters", GameplayCompatConfig.hopperXpCounters));
+        rules.add(CarpetRule.of("carpet", "maxEntityCollisions", Math.max(0, GameplayCompatConfig.maxEntityCollisions)));
+        rules.add(CarpetRule.of("carpetamsaddition", "blowUpEverything", GameplayCompatConfig.blowUpEverything));
+        rules.add(CarpetRule.of("carpetamsaddition", "enhancedWorldEater", Double.toString(GameplayCompatConfig.effectiveWorldEaterResistance())));
+        rules.add(CarpetRule.of("carpetamsaddition", "phantomSpawnAlert", GameplayCompatConfig.phantomSpawnAlert));
+        rules.add(CarpetRule.of("carpetamsaddition", "witchGlowstoneDustDropController", Math.clamp(GameplayCompatConfig.witchGlowstoneDustDropController, -1, 64)));
+        rules.add(CarpetRule.of("carpetamsaddition", "witchRedstoneDustDropController", Math.clamp(GameplayCompatConfig.witchRedstoneDustDropController, -1, 64)));
+        rules.add(CarpetRule.of("carpetorgaddition", "truePeacefulMode", GameplayCompatConfig.truePeacefulMode));
+        rules.add(CarpetRule.of("carpettisaddition", "flattenTriangularDistribution", GameplayCompatConfig.useFlatDistribution()));
         rules.add(CarpetRule.of("carpet", "cleanLogs", GameplayCompatConfig.cleanLogs));
         rules.add(CarpetRule.of("carpet", "customMOTD", GameplayCompatConfig.customMOTD));
         rules.add(CarpetRule.of("carpet", "disableDamageImmunity", GameplayCompatConfig.disableDamageImmunity));
