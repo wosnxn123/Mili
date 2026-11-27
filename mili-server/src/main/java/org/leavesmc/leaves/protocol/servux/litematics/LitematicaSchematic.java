@@ -49,37 +49,43 @@ import java.util.*;
 
 public record LitematicaSchematic(Map<String, SubRegion> subRegions, SchematicMetadata metadata) {
 
-    public static final int MINECRAFT_DATA_VERSION = SharedConstants.getProtocolVersion();
+    public static final int MINECRAFT_DATA_VERSION = SharedConstants.getCurrentVersion().dataVersion().version();
     public static final int SCHEMATIC_VERSION = 7;
 
     @NotNull
     @Contract("_ -> new")
     public static LitematicaSchematic readFromNBT(@NotNull CompoundTag nbt) {
-        if (nbt.contains("Version")) {
-            final int version = nbt.getIntOr("Version", -1);
-            final int minecraftDataVersion = nbt.contains("MinecraftDataVersion") ? nbt.getInt("MinecraftDataVersion").orElseThrow() : SharedConstants.getProtocolVersion();
-
-            if (version >= 1 && version <= SCHEMATIC_VERSION) {
-                SchematicMetadata metadata = SchematicMetadata.readFromNBT(nbt.getCompoundOrEmpty("Metadata"), version, minecraftDataVersion, FileType.LITEMATICA_SCHEMATIC);
-                Map<String, SubRegion> subRegions = readSubRegionsFromNBT(nbt.getCompoundOrEmpty("Regions"), version, minecraftDataVersion);
-                return new LitematicaSchematic(subRegions, metadata);
-            } else {
-                throw new RuntimeException("Unsupported or future schematic version");
-            }
-        } else {
+        if (!nbt.contains("Version")) {
             throw new RuntimeException("The schematic doesn't have version information, and can't be safely loaded!");
         }
+        final int version = nbt.getIntOr("Version", -1);
+        if (version < 1 || version > SCHEMATIC_VERSION) {
+            throw new RuntimeException("Unsupported or future schematic version");
+        }
+
+        // Only a missing tag defaults to the server data version; this does not convert the payload.
+        final int minecraftDataVersion = nbt.contains("MinecraftDataVersion")
+                ? nbt.getInt("MinecraftDataVersion").orElseThrow(() -> new IllegalArgumentException("Invalid MinecraftDataVersion in Litematica schematic"))
+                : MINECRAFT_DATA_VERSION;
+        if (minecraftDataVersion < MINECRAFT_DATA_VERSION) {
+            ServuxProtocol.LOGGER.warn("Reading Litematica data version {} on server data version {} without conversion; older data may not load correctly",
+                    minecraftDataVersion, MINECRAFT_DATA_VERSION);
+        }
+
+        SchematicMetadata metadata = SchematicMetadata.readFromNBT(nbt.getCompoundOrEmpty("Metadata"), version, minecraftDataVersion, FileType.LITEMATICA_SCHEMATIC);
+        Map<String, SubRegion> subRegions = readSubRegionsFromNBT(nbt.getCompoundOrEmpty("Regions"), version);
+        return new LitematicaSchematic(subRegions, metadata);
     }
 
     @NotNull
-    private static Map<String, SubRegion> readSubRegionsFromNBT(@NotNull CompoundTag tag, int version, int minecraftDataVersion) {
+    private static Map<String, SubRegion> readSubRegionsFromNBT(@NotNull CompoundTag tag, int version) {
         Map<String, SubRegion> subRegions = new HashMap<>();
         for (String regionName : tag.keySet()) {
             Tag region = tag.get(regionName);
             if (region == null || region.getId() != Tag.TAG_COMPOUND) {
                 throw new RuntimeException("Unknown region: " + regionName);
             }
-            subRegions.put(regionName, SubRegion.readFromNBT(tag.getCompoundOrEmpty(regionName), version, minecraftDataVersion));
+            subRegions.put(regionName, SubRegion.readFromNBT(tag.getCompoundOrEmpty(regionName), version));
         }
         return subRegions;
     }
@@ -109,8 +115,8 @@ public record LitematicaSchematic(Map<String, SubRegion> subRegions, SchematicMe
             BlockPos size
     ) {
         @NotNull
-        @Contract("_, _, _ -> new")
-        public static SubRegion readFromNBT(@NotNull CompoundTag regionTag, int version, int minecraftDataVersion) {
+        @Contract("_, _ -> new")
+        public static SubRegion readFromNBT(@NotNull CompoundTag regionTag, int version) {
             BlockPos position = NbtUtils.readBlockPos(regionTag.getCompoundOrEmpty("Position"));
             BlockPos size = NbtUtils.readBlockPos(regionTag.getCompoundOrEmpty("Size"));
             if (position == null || size == null) {
@@ -147,9 +153,6 @@ public record LitematicaSchematic(Map<String, SubRegion> subRegions, SchematicMe
                 BlockPos posMax = PositionUtils.getMaxCorner(position, posEndRel);
                 BlockPos containerSize = posMax.subtract(posMin).offset(1, 1, 1);
                 blockContainers = LitematicaBlockStateContainer.createFrom(palette, blockStateArr, containerSize);
-                if (minecraftDataVersion < MINECRAFT_DATA_VERSION) {
-                    ServuxProtocol.LOGGER.warn("Cannot process minecraft data version: {}", minecraftDataVersion);
-                }
             }
 
             return new SubRegion(blockContainers, tileEntities, pendingBlockTicks, pendingFluidTicks, entities, position, size);

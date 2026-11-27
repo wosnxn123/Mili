@@ -14,12 +14,13 @@ public class ServerFeatureManager implements FeatureManager {
     public static ServerFeatureManager INSTANCE = new ServerFeatureManager();
     private final Set<String> availableFeatures = new HashSet<>();
 
-    private ServerFeatureManager() {
+    ServerFeatureManager() {
         availableFeatures.addAll(Set.of(
                 FAKEPLAYER,
                 PHOTOGRAPHER
         ));
-        if (Boolean.getBoolean("leavesclip.enable.mixin")) {
+        // Match the pinned Riceear launcher's ENABLE_LEAVES_PLUGIN predicate.
+        if (Boolean.getBoolean("leavesclip.enable.mixin") || Boolean.getBoolean("riceear.enable.mixin")) {
             availableFeatures.add(MIXIN);
         }
     }
