@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: MrHua269 <mrhua269@gmail.com>
+Date: Thu, 4 Jun 2026 17:28:24 +0800
+Subject: [PATCH] Gale: Cache ShapePairKey hash
+
+License: LGPL-3.0-only (https://www.gnu.org/licenses/lgpl-3.0.html)
+Gale - https://github.com/GaleMC/Gale
+
+The JMH benchmark of this patch can be found in SunBox's `RecordHashCode`
+
+Keep the pair private and immutable and preserve ordered reference equality and the original hash.
+
+diff --git a/net/minecraft/world/level/block/Block.java b/net/minecraft/world/level/block/Block.java
+--- a/net/minecraft/world/level/block/Block.java
++++ b/net/minecraft/world/level/block/Block.java
+@@ -731,7 +731,16 @@
+     }
+     // Mili end - reset push reaction
+ 
+-    private record ShapePairKey(VoxelShape first, VoxelShape second) {
++    private static final class ShapePairKey {
++        private final VoxelShape first;
++        private final VoxelShape second;
++        private final int hash;
++
++        private ShapePairKey(final VoxelShape first, final VoxelShape second) {
++            this.first = first;
++            this.second = second;
++            this.hash = System.identityHashCode(first) * 31 + System.identityHashCode(second);
++        }
+         @Override
+         public boolean equals(final Object o) {
+             return o instanceof Block.ShapePairKey that && this.first == that.first && this.second == that.second;
+@@ -739,7 +748,7 @@
+ 
+         @Override
+         public int hashCode() {
+-            return System.identityHashCode(this.first) * 31 + System.identityHashCode(this.second);
++            return this.hash;
+         }
+     }
+ 

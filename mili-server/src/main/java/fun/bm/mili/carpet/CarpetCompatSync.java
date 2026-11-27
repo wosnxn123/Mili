@@ -192,6 +192,7 @@ public final class CarpetCompatSync {
         rules.add(CarpetServerProtocol.CarpetRule.of("carpet", "disableGhastFire", GeneralCompatConfig.disableGhastFire));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpet", "disableBlazeFire", GeneralCompatConfig.disableBlazeFire));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpettisaddition", "largeBarrel", GeneralCompatConfig.largeBarrel));
+        GameplayCompatRules.registerProtocolRules(rules);
         CarpetServerProtocol.CarpetRules.replace(rules);
     }
 }

@@ -7,6 +7,8 @@ required = {
     'fun.bm.mili.regression.CommandTreeEnumerationTestSuite',
     'fun.bm.mili.regression.CreativeRemovalTestSuite',
     'fun.bm.mili.carpet.CarpetRuleApiTestSuite',
+    'fun.bm.mili.carpet.GameplayCompatTestSuite',
+    'fun.bm.mili.portal.PortalSearchChunkLoadsTest',
     'fun.bm.mili.update.MiliAutoUpdateTestSuite',
     'net.minecraft.world.level.block.CactusRotationTest',
     'net.minecraft.world.level.block.CarpetLargeBarrelTest',

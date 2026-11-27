@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sat, 22 Aug 2026 15:00:00 +0800
+Subject: [PATCH] Coalesce nether portal search chunk loads
+
+Keep Moonrise responsible for chunk tickets and share only identical
+in-flight portal search area loads. This avoids the custom reference-counted
+ticket cache while preventing every entity in a high-throughput farm from
+scheduling the same chunk area independently.
+
+Also honor the requested chunk status in Moonrise's async area loader instead
+of forcing every request to FULL. Portal searches request EMPTY explicitly.
+
+Mili adaptation of Lophine 0027 (7a51f49a, GPL-3.0): share only active EMPTY/HIGH portal search loads. The baseline already forwards the requested status in Moonrise. Keep status, priority, tickets, and all per-entity search callbacks unchanged.
+
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -223,6 +223,7 @@
+     private final StructureCheck structureCheck;
+     public final boolean tickTime; // Folia - region threading
+     private final LevelDebugSynchronizers debugSynchronizers = new LevelDebugSynchronizers(this);
++    public final fun.bm.mili.portal.PortalSearchChunkLoads portalSearchChunkLoads = new fun.bm.mili.portal.PortalSearchChunkLoads(this);
+ 
+     // CraftBukkit start
+     private final ResourceKey<LevelStem> typeKey;
+diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
+--- a/net/minecraft/world/entity/Entity.java
++++ b/net/minecraft/world/entity/Entity.java
+@@ -4989,11 +4989,9 @@
+                 );
+ 
+                 // kick off search for existing portal or creation
+-                destination.moonrise$loadChunksAsync(
++                destination.portalSearchChunkLoads.load(
+                     // add 32 so that the final search for a portal frame doesn't load any chunks
+                     targetPos, portalSearchRadius + 32,
+-                    net.minecraft.world.level.chunk.status.ChunkStatus.EMPTY,
+-                    ca.spottedleaf.concurrentutil.util.Priority.HIGH,
+                     (chunks) -> {
+                         BlockUtil.FoundRectangle portal =
+                             net.minecraft.world.level.block.NetherPortalBlock.findPortalAround(destination, targetPos, destinationBorder, portalSearchRadius);

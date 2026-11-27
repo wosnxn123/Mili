@@ -1,0 +1,47 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Helvetica Volubi <suisuroru@blue-millennium.fun>
+Date: Tue, 28 Jul 2026 15:09:19 +0800
+Subject: [PATCH] Anonymous Object: Lithium optimized non poi block searching
+
+As requested by the original author, this patch will be anonymous and hide the original commit address.
+This patch is used with permission from the original author.
+Licensed under: GPL-3.0 (https://www.gnu.org/licenses/gpl-3.0.html)
+
+Vanilla 26.3 already uses OrderedBlockMatcher and FilteredSectionCache to skip impossible section palettes. Keep its Manhattan ordering and the existing MoveToBlockGoal movingTarget assignment; reject unowned or unloaded chunks before either path reads block states.
+
+diff --git a/net/minecraft/world/entity/ai/goal/MoveToBlockGoal.java b/net/minecraft/world/entity/ai/goal/MoveToBlockGoal.java
+--- a/net/minecraft/world/entity/ai/goal/MoveToBlockGoal.java
++++ b/net/minecraft/world/entity/ai/goal/MoveToBlockGoal.java
+@@ -119,7 +119,8 @@
+                 for (int x = 0; x <= r; x = x > 0 ? -x : 1 - x) {
+                     for (int z = x < r && x > -r ? r : 0; z <= r; z = z > 0 ? -z : 1 - z) {
+                         pos.setWithOffset(mobPos, x, y - 1, z);
+-                        if (!this.mob.level().hasChunkAt(pos)) continue; // Gale - Airplane - block goal does not load chunks - if this block isn't loaded, continue
++                        if (!ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(this.mob.level(), pos)
++                            || !this.mob.level().hasChunkAt(pos)) continue; // Never load a chunk or inspect another region for a goal target.
+                         if (this.mob.isWithinHome(pos) && this.isValidTarget(this.mob.level(), pos)) {
+                             this.blockPos = pos;
+                             this.mob.movingTarget = pos == BlockPos.ZERO ? null : pos.immutable(); // Paper
+diff --git a/net/minecraft/world/entity/ai/sensing/HoglinSpecificSensor.java b/net/minecraft/world/entity/ai/sensing/HoglinSpecificSensor.java
+--- a/net/minecraft/world/entity/ai/sensing/HoglinSpecificSensor.java
++++ b/net/minecraft/world/entity/ai/sensing/HoglinSpecificSensor.java
+@@ -58,6 +58,6 @@
+     }
+ 
+     private Optional<BlockPos> findNearestRepellent(final ServerLevel level, final Hoglin body) {
+-        return level.findBlocksInBoxByManhattanDistance(body.blockPosition(), 8, 4).filterState(state -> state.is(BlockTags.HOGLIN_REPELLENTS)).findFirst();
++        return fun.bm.mili.chunk.RepellentBlockSearch.find(level, body.blockPosition(), state -> state.is(BlockTags.HOGLIN_REPELLENTS));
+     }
+ }
+diff --git a/net/minecraft/world/entity/ai/sensing/PiglinSpecificSensor.java b/net/minecraft/world/entity/ai/sensing/PiglinSpecificSensor.java
+--- a/net/minecraft/world/entity/ai/sensing/PiglinSpecificSensor.java
++++ b/net/minecraft/world/entity/ai/sensing/PiglinSpecificSensor.java
+@@ -109,7 +109,7 @@
+     }
+ 
+     private static Optional<BlockPos> findNearestRepellent(final ServerLevel level, final LivingEntity body) {
+-        return level.findBlocksInBoxByManhattanDistance(body.blockPosition(), 8, 4).filterState(PiglinSpecificSensor::isValidRepellent).findFirst();
++        return fun.bm.mili.chunk.RepellentBlockSearch.find(level, body.blockPosition(), PiglinSpecificSensor::isValidRepellent);
+     }
+ 
+     private static boolean isValidRepellent(final BlockState state) {

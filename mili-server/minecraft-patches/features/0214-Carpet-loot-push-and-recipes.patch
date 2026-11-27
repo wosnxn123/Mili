@@ -1,0 +1,169 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Carpet: loot, push reactions, and AMS recipes
+
+Adapted from Lophine 7a51f49a512f1b5465f15a905d3704754e4bed02, Minecraft patches 0131-0134.
+Retain loot event/capture paths. Register the added recipe set only as RecipeManager is built.
+See META-INF/licenses/carpet-26.3.txt for source and license notices.
+
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index fcf5f97..e6deadc 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -2018,7 +2018,11 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+     }
+ 
+     public void dropFromLootTable(final ServerLevel level, final DamageSource source, final boolean playerKilled, final ResourceKey<LootTable> lootTable) {
+-        this.dropFromLootTable(level, source, playerKilled, lootTable, itemStack -> this.spawnAtLocation(level, itemStack));
++        this.dropFromLootTable(level, source, playerKilled, lootTable, itemStack -> {
++            if (!fun.bm.mili.carpet.config.modules.GameplayCompatConfig.ironGolemNoDropFlower || !(this instanceof net.minecraft.world.entity.animal.golem.IronGolem) || !itemStack.is(Items.POPPY)) {
++                this.spawnAtLocation(level, itemStack);
++            }
++        });
+     }
+ 
+     public void dropFromLootTable(
+diff --git a/net/minecraft/world/item/crafting/RecipeManager.java b/net/minecraft/world/item/crafting/RecipeManager.java
+index 3103cdd..255ea58 100644
+--- a/net/minecraft/world/item/crafting/RecipeManager.java
++++ b/net/minecraft/world/item/crafting/RecipeManager.java
+@@ -18,6 +18,9 @@ import net.minecraft.resources.Identifier;
+ import net.minecraft.resources.ResourceKey;
+ import net.minecraft.server.level.ServerLevel;
+ import net.minecraft.world.flag.FeatureFlagSet;
++import net.minecraft.world.item.Item;
++import net.minecraft.world.item.ItemStackTemplate;
++import net.minecraft.world.item.Items;
+ import net.minecraft.world.item.crafting.display.RecipeDisplay;
+ import net.minecraft.world.item.crafting.display.RecipeDisplayEntry;
+ import net.minecraft.world.item.crafting.display.RecipeDisplayId;
+@@ -73,6 +76,30 @@ public class RecipeManager implements RecipeAccess {
+             addCompatRecipe(recipeMap, createBetterCraftableDispenserShapedRecipe());
+             addCompatRecipe(recipeMap, createBetterCraftableDispenserShapelessRecipe());
+         }
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.craftableEnchantedGoldenApples) {
++            addCompatRecipe(recipeMap, carpetShaped("carpet_enchanted_golden_apple", Items.ENCHANTED_GOLDEN_APPLE,
++                Map.of('#', Ingredient.of(Items.GOLD_BLOCK), 'A', Ingredient.of(Items.APPLE)), "###", "#A#", "###"));
++        }
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.craftableElytra) {
++            addCompatRecipe(recipeMap, carpetShaped("carpet_elytra", Items.ELYTRA,
++                Map.of('P', Ingredient.of(Items.PHANTOM_MEMBRANE), 'S', Ingredient.of(Items.STICK),
++                    '*', Ingredient.of(Items.SADDLE), 'L', Ingredient.of(Items.STRING)), "PSP", "P*P", "PLP"));
++        }
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.betterCraftablePolishedBlackStoneButton) {
++            addCompatRecipe(recipeMap, new RecipeHolder<>(compatRecipeKey("carpet_polished_blackstone_button"),
++                new ShapelessRecipe(new Recipe.CommonInfo(true), new CraftingRecipe.CraftingBookInfo(CraftingBookCategory.MISC, ""),
++                    new ItemStackTemplate(Items.POLISHED_BLACKSTONE_BUTTON), List.of(Ingredient.of(Items.DEEPSLATE)))));
++        }
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.rottenFleshBurnedIntoLeather) {
++            addCompatRecipe(recipeMap, new RecipeHolder<>(compatRecipeKey("carpet_leather"), new SmeltingRecipe(new Recipe.CommonInfo(true),
++                new AbstractCookingRecipe.CookingBookInfo(CookingBookCategory.MISC, ""), Ingredient.of(Items.ROTTEN_FLESH),
++                new ItemStackTemplate(Items.LEATHER), 0.1F, 50)));
++        }
++    }
++
++    private static RecipeHolder<?> carpetShaped(final String path, final Item output, final Map<Character, Ingredient> ingredients, final String... pattern) {
++        return new RecipeHolder<>(compatRecipeKey(path), new ShapedRecipe(new Recipe.CommonInfo(true),
++            new CraftingRecipe.CraftingBookInfo(CraftingBookCategory.MISC, ""), ShapedRecipePattern.of(ingredients, pattern), new ItemStackTemplate(output)));
+     }
+ 
+     private static void addCompatRecipe(RecipeMap recipeMap, RecipeHolder<?> recipeHolder) {
+diff --git a/net/minecraft/world/level/block/Block.java b/net/minecraft/world/level/block/Block.java
+index cd57307..dc62261 100644
+--- a/net/minecraft/world/level/block/Block.java
++++ b/net/minecraft/world/level/block/Block.java
+@@ -448,6 +448,19 @@ public class Block extends BlockBehaviour implements ItemLike {
+     ) {
+         if (level instanceof ServerLevel serverLevel) {
+             getDrops(state, serverLevel, pos, blockEntity, breaker, tool).forEach(stack -> popResource(level, pos, stack));
++            if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.cakeBlockDropOnBreak && state.is(Blocks.CAKE) && state.getValue(CakeBlock.BITES) == 0) {
++                popResource(level, pos, new ItemStack(net.minecraft.world.item.Items.CAKE));
++            }
++            int podLimit = fun.bm.mili.carpet.config.modules.GameplayCompatConfig.easyGetPitcherPod();
++            if (podLimit >= 2 && state.is(Blocks.PITCHER_CROP)) {
++                popResource(level, pos, new ItemStack(net.minecraft.world.item.Items.PITCHER_POD, 2 + serverLevel.getRandom().nextInt(podLimit - 1)));
++            }
++            if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.movableAmethyst && state.is(Blocks.BUDDING_AMETHYST) && breaker instanceof ServerPlayer
++                && tool.is(net.minecraft.tags.ItemTags.PICKAXES) && net.minecraft.world.item.enchantment.EnchantmentHelper.getItemEnchantmentLevel(
++                    serverLevel.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT)
++                        .getOrThrow(net.minecraft.world.item.enchantment.Enchantments.SILK_TOUCH), tool) > 0) {
++                popResource(level, pos, new ItemStack(net.minecraft.world.item.Items.BUDDING_AMETHYST));
++            }
+             state.spawnAfterBreak(serverLevel, pos, tool, dropExperience); // Paper - Properly handle xp dropping
+         }
+     }
+diff --git a/net/minecraft/world/level/block/ShulkerBoxBlock.java b/net/minecraft/world/level/block/ShulkerBoxBlock.java
+index c255173..a39aef3 100644
+--- a/net/minecraft/world/level/block/ShulkerBoxBlock.java
++++ b/net/minecraft/world/level/block/ShulkerBoxBlock.java
+@@ -100,6 +100,7 @@ public class ShulkerBoxBlock extends BaseEntityBlock {
+         BlockEntity blockEntity = level.getBlockEntity(pos);
+         if (blockEntity instanceof ShulkerBoxBlockEntity shulkerBoxBlockEntity) {
+             if (!level.isClientSide() && player.preventsBlockDrops() && !shulkerBoxBlockEntity.isEmpty()) {
++                if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.creativeShulkerBoxDropsDisabled && player.isCreative()) return super.playerWillDestroy(level, pos, state, player);
+                 ItemStack itemStack = new ItemStack(state.getBlock());
+                 itemStack.applyComponents(blockEntity.collectComponents());
+                 ItemEntity entity = new ItemEntity(level, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, itemStack);
+diff --git a/net/minecraft/world/level/block/entity/vault/VaultServerData.java b/net/minecraft/world/level/block/entity/vault/VaultServerData.java
+index 4cc5f6e..95c9ef4 100644
+--- a/net/minecraft/world/level/block/entity/vault/VaultServerData.java
++++ b/net/minecraft/world/level/block/entity/vault/VaultServerData.java
+@@ -59,7 +59,7 @@ public class VaultServerData {
+     }
+ 
+     boolean hasRewardedPlayer(final Player player) {
+-        return this.rewardedPlayers.contains(player.getUUID());
++        return !fun.bm.mili.carpet.config.modules.GameplayCompatConfig.vaultBlacklistDisabled && this.rewardedPlayers.contains(player.getUUID());
+     }
+ 
+     @VisibleForTesting
+@@ -68,7 +68,7 @@ public class VaultServerData {
+         addToRewardedPlayers(player.getUUID());
+     }
+     public boolean addToRewardedPlayers(final java.util.UUID player) {
+-        if (fun.bm.mili.config.modules.misc.OldMCConfig.disableVaultBlacklist) return false; // Mili - disable vault blacklist
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.vaultBlacklistDisabled || fun.bm.mili.config.modules.misc.OldMCConfig.disableVaultBlacklist) return false; // Mili - disable vault blacklist
+         final boolean removed = this.rewardedPlayers.add(player);
+     // Paper end - Vault API
+         if (this.rewardedPlayers.size() > 128) {
+diff --git a/net/minecraft/world/level/block/entity/vault/VaultSharedData.java b/net/minecraft/world/level/block/entity/vault/VaultSharedData.java
+index 41154db..dfe7bab 100644
+--- a/net/minecraft/world/level/block/entity/vault/VaultSharedData.java
++++ b/net/minecraft/world/level/block/entity/vault/VaultSharedData.java
+@@ -70,7 +70,7 @@ public class VaultSharedData {
+         Set<UUID> currentConnectedPlayers = config.playerDetector()
+             .detect(serverLevel, config.entitySelector(), pos, limit, false)
+             .stream()
+-            .filter(uuid -> !serverData.getRewardedPlayers().contains(uuid))
++            .filter(uuid -> fun.bm.mili.carpet.config.modules.GameplayCompatConfig.vaultBlacklistDisabled || !serverData.getRewardedPlayers().contains(uuid))
+             .collect(Collectors.toSet());
+         if (!this.connectedPlayers.equals(currentConnectedPlayers)) {
+             this.connectedPlayers = currentConnectedPlayers;
+diff --git a/net/minecraft/world/level/block/piston/PistonBaseBlock.java b/net/minecraft/world/level/block/piston/PistonBaseBlock.java
+index c2e8ea2..0d4e35e 100644
+--- a/net/minecraft/world/level/block/piston/PistonBaseBlock.java
++++ b/net/minecraft/world/level/block/piston/PistonBaseBlock.java
+@@ -270,7 +270,8 @@ public class PistonBaseBlock extends DirectionalBlock {
+         }
+ 
+         if (!state.is(Blocks.PISTON) && !state.is(Blocks.STICKY_PISTON)) {
+-            if (state.getDestroySpeed(level, pos) == -1.0F) {
++            if (state.getDestroySpeed(level, pos) == -1.0F
++                && !(fun.bm.mili.carpet.config.modules.GameplayCompatConfig.moveableReinforcedDeepslate && state.is(Blocks.REINFORCED_DEEPSLATE))) {
+                 return false;
+             }
+ 
+diff --git a/net/minecraft/world/level/block/state/BlockBehaviour.java b/net/minecraft/world/level/block/state/BlockBehaviour.java
+index 12a2db8..3d2747e 100644
+--- a/net/minecraft/world/level/block/state/BlockBehaviour.java
++++ b/net/minecraft/world/level/block/state/BlockBehaviour.java
+@@ -855,6 +855,8 @@ public abstract class BlockBehaviour implements FeatureElement, org.leavesmc.lea
+         }
+ 
+         public PushReaction getPistonPushReaction() {
++            if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.movableAmethyst && this.is(Blocks.BUDDING_AMETHYST)
++                || fun.bm.mili.carpet.config.modules.GameplayCompatConfig.moveableReinforcedDeepslate && this.is(Blocks.REINFORCED_DEEPSLATE)) return PushReaction.PUSH_PULL;
+             return !this.isDestroyable() ? PushReaction.IMMOVEABLE : this.getBlock().getResetPushReaction() == null ? this.pushReaction : this.getBlock().getResetPushReaction(); // Paper - Protect Bedrock and End Portal/Frames from being destroyed // Mili - reset push reaction
+         }
+ 

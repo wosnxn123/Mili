@@ -1,0 +1,123 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Carpet: furnace, TNT and inventory transfer settings
+
+Adapted from Lophine 7a51f49a512f1b5465f15a905d3704754e4bed02, Minecraft patches 0131-0134.
+Uses Paper inventory and smelting events; no dispenser or creative-removal feature edits.
+See META-INF/licenses/carpet-26.3.txt for source and license notices.
+
+diff --git a/net/minecraft/world/entity/item/PrimedTnt.java b/net/minecraft/world/entity/item/PrimedTnt.java
+index e0ba289..0bc1ce2 100644
+--- a/net/minecraft/world/entity/item/PrimedTnt.java
++++ b/net/minecraft/world/entity/item/PrimedTnt.java
+@@ -77,8 +77,12 @@ public class PrimedTnt extends Entity implements TraceableEntity {
+         if (fun.bm.mili.carpet.config.modules.GeneralCompatConfig.tntPrimerMomentumRemoved) {
+             this.setDeltaMovement(0.0, 0.20000000298023224D, 0.0);
+         } else {
+-            this.setDeltaMovement(-Math.sin(rot) * 0.02, 0.2F, -Math.cos(rot) * 0.02);
++            double angle = fun.bm.mili.carpet.config.modules.GameplayCompatConfig.hardcodeTNTangle();
++            double launchAngle = angle == -1.0 ? rot : angle;
++            this.setDeltaMovement(-Math.sin(launchAngle) * 0.02, 0.2F, -Math.cos(launchAngle) * 0.02);
+         }
++        double power = fun.bm.mili.carpet.config.modules.GameplayCompatConfig.tntPowerController();
++        if (power >= 0.0) this.explosionPower = (float) power;
+         this.setFuse(getConfiguredFuseTime());
+         this.xo = x;
+         this.yo = y;
+diff --git a/net/minecraft/world/item/FireworkRocketItem.java b/net/minecraft/world/item/FireworkRocketItem.java
+index 2c3d096..5a36145 100644
+--- a/net/minecraft/world/item/FireworkRocketItem.java
++++ b/net/minecraft/world/item/FireworkRocketItem.java
+@@ -52,7 +52,15 @@ public class FireworkRocketItem extends Item implements ProjectileItem {
+             // Paper start - PlayerLaunchProjectileEvent
+             com.destroystokyo.paper.event.player.PlayerLaunchProjectileEvent event = new com.destroystokyo.paper.event.player.PlayerLaunchProjectileEvent((org.bukkit.entity.Player) context.getPlayer().getBukkitEntity(), org.bukkit.craftbukkit.inventory.CraftItemStack.asBukkitMirror(itemStack), (org.bukkit.entity.Firework) fireworkRocketEntity.projectile().getBukkitEntity());
+             if (!event.callEvent() || !fireworkRocketEntity.attemptSpawn()) return InteractionResult.PASS;
+-            if (event.shouldConsume() && !context.getPlayer().hasInfiniteMaterials()) itemStack.shrink(1);
++            // Org cooldown belongs to a successful launch; creative and event consumption flags govern only item cost.
++            if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.fireworkRocketUseCooldown
++                && context.getPlayer() instanceof net.minecraft.server.level.ServerPlayer serverPlayer
++                && !(serverPlayer instanceof org.leavesmc.leaves.bot.ServerBot)) {
++                serverPlayer.getCooldowns().addCooldown(itemStack, 5);
++            }
++            if (event.shouldConsume() && !context.getPlayer().hasInfiniteMaterials()) {
++                itemStack.shrink(1);
++            }
+             else context.getPlayer().containerMenu.forceHeldSlot(context.getHand());
+             // Paper end - PlayerLaunchProjectileEvent
+         }
+@@ -73,6 +81,11 @@ public class FireworkRocketItem extends Item implements ProjectileItem {
+                     if (player.dropAllLeashConnections(player, hand)) { // Paper - PlayerUnleashEntityEvent
+                         level.playSound(null, player, SoundEvents.LEAD_BREAK, SoundSource.NEUTRAL, 1.0F, 1.0F);
+                     }
++                    if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.fireworkRocketUseCooldown
++                        && player instanceof net.minecraft.server.level.ServerPlayer serverPlayer
++                        && !(serverPlayer instanceof org.leavesmc.leaves.bot.ServerBot)) {
++                        serverPlayer.getCooldowns().addCooldown(itemStack, 5);
++                    }
+                     if (event.shouldConsume() && !player.hasInfiniteMaterials()) {
+                         itemStack.shrink(1); // Moved up from below
+                     } else {
+diff --git a/net/minecraft/world/level/block/DropperBlock.java b/net/minecraft/world/level/block/DropperBlock.java
+index 7804dba..7d750b0 100644
+--- a/net/minecraft/world/level/block/DropperBlock.java
++++ b/net/minecraft/world/level/block/DropperBlock.java
+@@ -52,11 +52,14 @@ public class DropperBlock extends DispenserBlock {
+                 ItemStack itemStack = blockEntity.getItem(slot);
+                 if (!itemStack.isEmpty()) {
+                     Direction direction = level.getBlockState(pos).getValue(FACING);
+-                    Container into = HopperBlockEntity.getContainerAt(level, pos.relative(direction));
++                    boolean noItemCost = fun.bm.mili.carpet.config.modules.GameplayCompatConfig.dropperNoItemCost;
++                    BlockPos target = pos.relative(direction);
++                    if (noItemCost && !fun.bm.mili.carpet.GameplayCompatRules.ownsLoaded(level, target)) return;
++                    Container into = HopperBlockEntity.getContainerAt(level, target);
+                     ItemStack remaining;
+                     if (into == null) {
+                         if (!org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockPreDispenseEvent(level, pos, itemStack, slot)) return; // Paper - Add BlockPreDispenseEvent
+-                        remaining = DISPENSE_BEHAVIOUR.dispense(source, itemStack);
++                        remaining = DISPENSE_BEHAVIOUR.dispense(source, noItemCost ? itemStack.copy() : itemStack);
+                     } else {
+                         // CraftBukkit start - Fire event when pushing items into other inventories
+                         org.bukkit.inventory.ItemStack oitemstack = org.bukkit.craftbukkit.inventory.CraftItemStack.asBukkitMirror(itemStack.copyWithCount(1));
+@@ -83,7 +86,7 @@ public class DropperBlock extends DispenserBlock {
+                         }
+                     }
+ 
+-                    blockEntity.setItem(slot, remaining);
++                    if (!noItemCost) blockEntity.setItem(slot, remaining);
+                 }
+             }
+         }
+diff --git a/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java b/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
+index c67b2d4..ef70d6c 100644
+--- a/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
+@@ -372,6 +372,8 @@ public abstract class AbstractFurnaceBlockEntity extends BaseContainerBlockEntit
+ 
+     private static int getTotalCookTime(final RecipeHolder<? extends AbstractCookingRecipe> recipe, final AbstractFurnaceBlockEntity entity) {
+     // Paper start - cook speed multiplier API
++        int configured = fun.bm.mili.carpet.config.modules.GameplayCompatConfig.furnaceSmeltingTimeController();
++        if (configured >= 0) return Math.max(1, configured);
+         return entity.cookSpeedMultiplier != 1.0d ? (int) Math.ceil(getTotalCookTimeVanilla(recipe, entity) / entity.cookSpeedMultiplier) : getTotalCookTimeVanilla(recipe, entity);
+     }
+     private static int getTotalCookTimeVanilla(final RecipeHolder<? extends AbstractCookingRecipe> recipe, final AbstractFurnaceBlockEntity entity) {
+diff --git a/net/minecraft/world/level/block/entity/HopperBlockEntity.java b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+index 29abbca..c968da0 100644
+--- a/net/minecraft/world/level/block/entity/HopperBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+@@ -669,6 +669,7 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+     }
+ 
+     public static boolean suckInItems(final Level level, final Hopper hopper) {
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.hopperSuctionDisabled) return false;
+         io.papermc.paper.threadedregions.RegionizedWorldData worldData = io.papermc.paper.threadedregions.TickRegionScheduler.getCurrentRegionizedWorldData(); // Folia - region threading
+         BlockPos blockPos = BlockPos.containing(hopper.getLevelX(), hopper.getLevelY() + 1.0, hopper.getLevelZ());
+         BlockState blockState = transferBlockState(level, blockPos);
+@@ -1000,6 +1001,7 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+     }
+ 
+     public static void entityInside(final Level level, final BlockPos pos, final BlockState blockState, final Entity entity, final HopperBlockEntity hopper) {
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.hopperSuctionDisabled) return;
+         if (entity instanceof ItemEntity itemEntity
+             && !itemEntity.getItem().isEmpty()
+             && entity.getBoundingBox().move(-pos.getX(), -pos.getY(), -pos.getZ()).intersects(hopper.getSuckAabb())) {

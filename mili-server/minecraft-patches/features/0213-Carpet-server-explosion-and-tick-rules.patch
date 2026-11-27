@@ -1,0 +1,235 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Carpet: server defaults, explosion and tick predicates
+
+Adapted from Lophine 7a51f49a512f1b5465f15a905d3704754e4bed02, Minecraft patches 0131-0134.
+Preserve existing Paper defaults and use the native server and region paths.
+See META-INF/licenses/carpet-26.3.txt for source and license notices.
+
+diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
+index feadaa9..be93787 100644
+--- a/net/minecraft/server/MinecraftServer.java
++++ b/net/minecraft/server/MinecraftServer.java
+@@ -1899,7 +1899,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+     private ServerStatus buildServerStatus() {
+         ServerStatus.Players players = this.buildPlayerStatus();
+         return new ServerStatus(
+-            io.papermc.paper.adventure.PaperAdventure.asVanilla(this.motd), // Paper - Adventure
++            io.papermc.paper.adventure.PaperAdventure.asVanilla(this.motd()), // Paper - Adventure
+             Optional.of(players),
+             Optional.of(ServerStatus.Version.current()),
+             Optional.ofNullable(this.statusIcon),
+@@ -1914,7 +1914,8 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+             return new ServerStatus.Players(maxPlayers, players.size(), List.of());
+         }
+ 
+-        int sampleSize = Math.min(players.size(), org.spigotmc.SpigotConfig.playerSample); // Paper - PaperServerListPingEvent
++        int configuredSample = fun.bm.mili.carpet.config.modules.GameplayCompatConfig.pingPlayerListLimit();
++        int sampleSize = Math.min(players.size(), configuredSample == 12 ? org.spigotmc.SpigotConfig.playerSample : configuredSample); // Paper - PaperServerListPingEvent
+         ObjectArrayList<NameAndId> sample = new ObjectArrayList<>(sampleSize);
+         int offset = Mth.nextInt(this.random, 0, players.size() - sampleSize);
+ 
+@@ -2351,7 +2352,8 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+     }
+ 
+     public net.kyori.adventure.text.Component motd() {
+-        return this.motd;
++        String custom = fun.bm.mili.carpet.config.modules.GameplayCompatConfig.customMOTD;
++        return custom == null || "_".equals(custom) ? this.motd : net.kyori.adventure.text.Component.text(custom);
+     }
+ 
+     public void motd(final net.kyori.adventure.text.Component motd) {
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+index 9ba99cf..4c7d886 100644
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -2305,7 +2305,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+                             eventData.pos().getX(),
+                             eventData.pos().getY(),
+                             eventData.pos().getZ(),
+-                            64.0,
++                            fun.bm.mili.carpet.config.modules.GameplayCompatConfig.blockEventPacketRange(),
+                             this.dimension(),
+                             new ClientboundBlockEventPacket(eventData.pos(), eventData.block(), eventData.paramA(), eventData.paramB())
+                         );
+diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
+index a16a765..f3e4b7e 100644
+--- a/net/minecraft/world/entity/Entity.java
++++ b/net/minecraft/world/entity/Entity.java
+@@ -1008,7 +1008,9 @@ public abstract class Entity
+     public void checkBelowWorld() {
+         if (!this.level.getWorld().isVoidDamageEnabled()) return; // Paper - check if void damage is enabled on the world
+         // Paper start - Configurable nether ceiling damage
+-        if (this.getY() < (this.level.getMinY() + this.level.getWorld().getVoidDamageMinBuildHeightOffset()) || (this.level.getWorld().getEnvironment() == org.bukkit.World.Environment.NETHER // Paper - use configured min build height offset
++        double carpetOffset = fun.bm.mili.carpet.config.modules.GameplayCompatConfig.voidRelatedAltitude();
++        double offset = carpetOffset == -64.0 ? this.level.getWorld().getVoidDamageMinBuildHeightOffset() : carpetOffset;
++        if (this.getY() < this.level.getMinY() + offset || (this.level.getWorld().getEnvironment() == org.bukkit.World.Environment.NETHER // Paper - use configured min build height offset
+             && this.level.paperConfig().environment.netherCeilingVoidDamageHeight.test(v -> this.getY() >= v)
+             && (!(this instanceof Player player) || !player.getAbilities().invulnerable))) {
+             // Paper end - Configurable nether ceiling damage
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 67f579b..fcf5f97 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -2839,7 +2839,13 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+ 
+     @Override
+     protected void onBelowWorld() {
+-        this.hurt(this.damageSources().fellOutOfWorld(), this.level().getWorld().getVoidDamageAmount()); // Paper - use configured void damage amount
++        if (this instanceof ServerPlayer player && fun.bm.mili.carpet.GameplayCompatRules.ignoresVoidDamage(player.gameMode.getGameModeForPlayer())) return;
++        double damage = fun.bm.mili.carpet.config.modules.GameplayCompatConfig.voidDamageAmount();
++        if (damage != 4.0) {
++            if (damage > 0.0) this.hurt(this.damageSources().fellOutOfWorld(), (float) damage);
++        } else {
++            this.hurt(this.damageSources().fellOutOfWorld(), this.level().getWorld().getVoidDamageAmount()); // Paper - use configured void damage amount
++        }
+     }
+ 
+     @Override
+diff --git a/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java b/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
+index 40c290e..aafd1d1 100644
+--- a/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
++++ b/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
+@@ -207,7 +207,9 @@ public class ThrownEnderpearl extends ThrowableItemProjectile {
+                             // damage player
+                             teleported.resetFallDistance();
+                             player.resetCurrentImpulseContext();
+-                            player.hurtServer(player.level(), player.damageSources().enderPearl().eventEntityDamager(enderPearl), 5.0F); // CraftBukkit // Paper - fix DamageSource API
++                            if (!fun.bm.mili.carpet.config.modules.GameplayCompatConfig.notDamageEnderPearl) {
++                                player.hurtServer(player.level(), player.damageSources().enderPearl().eventEntityDamager(enderPearl), 5.0F); // CraftBukkit // Paper - fix DamageSource API
++                            }
+                             playSound(teleported.level(), to);
+                         } else {
+                             // reset fall damage so that if the entity was falling they do not instantly die
+@@ -290,7 +292,9 @@ public class ThrownEnderpearl extends ThrowableItemProjectile {
+                         if (newOwner != null) {
+                             newOwner.resetFallDistance();
+                             newOwner.resetCurrentImpulseContext();
+-                            newOwner.hurtServer(player.level(), this.damageSources().enderPearl().eventEntityDamager(this), 5.0F); // CraftBukkit // Paper - fix DamageSource API
++                            if (!fun.bm.mili.carpet.config.modules.GameplayCompatConfig.notDamageEnderPearl) {
++                                newOwner.hurtServer(player.level(), this.damageSources().enderPearl().eventEntityDamager(this), 5.0F); // CraftBukkit // Paper - fix DamageSource API
++                            }
+                         }
+ 
+                         this.playSound(level, teleportPos);
+diff --git a/net/minecraft/world/level/NaturalSpawner.java b/net/minecraft/world/level/NaturalSpawner.java
+index 99e4400..e591c57 100644
+--- a/net/minecraft/world/level/NaturalSpawner.java
++++ b/net/minecraft/world/level/NaturalSpawner.java
+@@ -497,11 +497,41 @@ public final class NaturalSpawner {
+         ChunkPos pos = chunk.getPos();
+         int x = pos.getMinBlockX() + level.random.nextInt(16);
+         int z = pos.getMinBlockZ() + level.random.nextInt(16);
+-        int topEmptyY = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, x, z) + 1;
++        int surfaceY = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, x, z);
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.naturalSpawningUse13Heightmap) {
++            surfaceY = carpetSample13SpawnHeight(level, chunk, x, z, surfaceY);
++        }
++        int topEmptyY = surfaceY + 1;
+         int y = Mth.randomBetweenInclusive(level.random, level.getMinY(), topEmptyY);
+         return new BlockPos(x, y, z);
+     }
+ 
++    public static int carpetSample13SpawnHeight(final Level level, final ChunkAccess chunk, final int x, final int z, final int initialY) {
++        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
++        final int minY = level.getMinY();
++        int y = initialY;
++        while (y >= minY) {
++            cursor.set(x, y, z);
++            BlockState state = chunk.getBlockState(cursor);
++            net.minecraft.world.level.block.Block block = state.getBlock();
++            boolean special = fun.bm.mili.carpet.config.modules.GameplayCompatConfig.naturalSpawningUse13HeightmapExtra
++                && (block instanceof net.minecraft.world.level.block.piston.PistonBaseBlock
++                    || block instanceof net.minecraft.world.level.block.piston.PistonHeadBlock
++                    || block instanceof net.minecraft.world.level.block.SlimeBlock
++                    || block instanceof net.minecraft.world.level.block.HoneyBlock);
++            boolean ignored = special || (state.canOcclude() && state.useShapeForLightOcclusion()
++                ? !net.minecraft.world.phys.shapes.Shapes.faceShapeOccludes(
++                    state.getFaceOcclusionShape(Direction.UP), state.getFaceOcclusionShape(Direction.DOWN)
++                )
++                : state.getLightDampening() == 0);
++            if (!ignored) {
++                break;
++            }
++            --y;
++        }
++        return y;
++    }
++
+     public static boolean isValidEmptySpawnBlock(
+         final BlockGetter level, final BlockPos pos, final BlockState blockState, final FluidState fluidState, final EntityType<?> type
+     ) {
+diff --git a/net/minecraft/world/level/ServerExplosion.java b/net/minecraft/world/level/ServerExplosion.java
+index c4711cb..4f5d814 100644
+--- a/net/minecraft/world/level/ServerExplosion.java
++++ b/net/minecraft/world/level/ServerExplosion.java
+@@ -482,7 +482,7 @@ public class ServerExplosion implements Explosion {
+             int y1 = Mth.floor(this.center.y + doubleRadius + 1.0);
+             int z0 = Mth.floor(this.center.z - doubleRadius - 1.0);
+             int z1 = Mth.floor(this.center.z + doubleRadius + 1.0);
+-            List<Entity> list = this.level.getEntities(this.excludeSourceFromDamage ? this.source : null, new AABB(x0, y0, z0, x1, y1, z1), entity -> entity.isAlive() && !entity.isSpectator()); // Paper - Fix lag from explosions processing dead entities, Allow explosions to damage source
++            List<Entity> list = fun.bm.mili.carpet.config.modules.GameplayCompatConfig.explosionNoEntityInfluence ? List.of() : this.level.getEntities(this.excludeSourceFromDamage ? this.source : null, new AABB(x0, y0, z0, x1, y1, z1), entity -> entity.isAlive() && !entity.isSpectator()); // Paper - Fix lag from explosions processing dead entities, Allow explosions to damage source
+ 
+             for (Entity entity : list) { // Paper - used in loop
+                 if (!entity.ignoreExplosion(this)) {
+diff --git a/net/minecraft/world/level/block/DiodeBlock.java b/net/minecraft/world/level/block/DiodeBlock.java
+index d0956d1..36979f3 100644
+--- a/net/minecraft/world/level/block/DiodeBlock.java
++++ b/net/minecraft/world/level/block/DiodeBlock.java
+@@ -67,7 +67,7 @@ public abstract class DiodeBlock extends HorizontalDirectionalBlock {
+                 // Paper end - Call BlockRedstoneEvent
+                 level.setBlock(pos, state.setValue(POWERED, true), Block.UPDATE_CLIENTS);
+                 if (!shouldTurnOn) {
+-                    level.scheduleTick(pos, this, this.getDelay(state), TickPriority.VERY_HIGH);
++                    level.scheduleTick(pos, this, this.getCarpetDelay(level, pos, state), TickPriority.VERY_HIGH);
+                 }
+             }
+         }
+@@ -104,7 +104,7 @@ public abstract class DiodeBlock extends HorizontalDirectionalBlock {
+                     priority = TickPriority.VERY_HIGH;
+                 }
+ 
+-                level.scheduleTick(pos, this, this.getDelay(state), priority);
++                level.scheduleTick(pos, this, this.getCarpetDelay(level, pos, state), priority);
+             }
+         }
+     }
+@@ -222,5 +222,13 @@ public abstract class DiodeBlock extends HorizontalDirectionalBlock {
+         return isDiode(oppositeState) && oppositeState.getValue(FACING) != direction;
+     }
+ 
++    private int getCarpetDelay(final Level level, final BlockPos pos, final BlockState state) {
++        int delay = this.getDelay(state);
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.repeaterHalfDelay && this instanceof RepeaterBlock && level.getBlockState(pos.below()).is(Blocks.REDSTONE_ORE)) {
++            return Math.max(1, delay / 2);
++        }
++        return delay;
++    }
++
+     protected abstract int getDelay(BlockState state);
+ }
+diff --git a/net/minecraft/world/level/redstone/CollectingNeighborUpdater.java b/net/minecraft/world/level/redstone/CollectingNeighborUpdater.java
+index 16a0a78..4947d2e 100644
+--- a/net/minecraft/world/level/redstone/CollectingNeighborUpdater.java
++++ b/net/minecraft/world/level/redstone/CollectingNeighborUpdater.java
+@@ -68,7 +68,9 @@ public class CollectingNeighborUpdater implements NeighborUpdater {
+     private void addAndRun(final BlockPos pos, final CollectingNeighborUpdater.NeighborUpdates update) {
+         ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.level, pos, "Adding block without owning region"); // Folia - region threading
+         boolean runningAlready = this.count > 0;
+-        boolean tooManyUpdates = this.maxChainedNeighborUpdates >= 0 && this.count >= this.maxChainedNeighborUpdates;
++        int configuredMax = fun.bm.mili.carpet.config.modules.GameplayCompatConfig.maxChainUpdateDepth();
++        int maximum = configuredMax == -1 ? this.maxChainedNeighborUpdates : configuredMax;
++        boolean tooManyUpdates = maximum >= 0 && this.count >= maximum;
+         this.count++;
+         if (!tooManyUpdates) {
+             if (runningAlready) {
+@@ -76,7 +78,7 @@ public class CollectingNeighborUpdater implements NeighborUpdater {
+             } else {
+                 this.stack.push(update);
+             }
+-        } else if (this.count - 1 == this.maxChainedNeighborUpdates) {
++        } else if (this.count - 1 == maximum) {
+             LOGGER.error("Too many chained neighbor updates. Skipping the rest. First skipped position: {}", pos.toShortString());
+         }
+ 

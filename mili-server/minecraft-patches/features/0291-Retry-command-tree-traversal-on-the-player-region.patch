@@ -1,0 +1,105 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Helvetica Volubi <suisuroru@blue-millennium.fun>
+Date: Mon, 21 Sep 2026 01:02:22 +0800
+Subject: [PATCH] Fix a command async problem if a plugin modify command node
+ when player join the server
+
+Mili adaptation of Lophine 0019 (7a51f49a, GPL-3.0): discard the partial graph, retry once from the current dispatcher via the player scheduler, and keep the normal Paper permission and event stages.
+
+diff --git a/net/minecraft/commands/Commands.java b/net/minecraft/commands/Commands.java
+--- a/net/minecraft/commands/Commands.java
++++ b/net/minecraft/commands/Commands.java
+@@ -489,6 +489,10 @@
+     }
+ 
+     public void sendCommands(final ServerPlayer player) {
++        this.sendCommands(player, true);
++    }
++
++    private void sendCommands(final ServerPlayer player, final boolean mayRetry) {
+         // Paper start - Send empty commands if tab completion is disabled
+         if (org.spigotmc.SpigotConfig.tabComplete < 0) {
+             player.connection.send(new ClientboundCommandsPacket(new RootCommandNode<>(), COMMAND_NODE_INSPECTOR));
+@@ -500,8 +504,15 @@
+         // Paper start - Perf: Async command map building
+         // Copy root node to avoid concurrent modification during building
+         final RootCommandNode<CommandSourceStack> rootNode = new RootCommandNode<>();
+-        this.dispatcher.getRoot().getChildren().forEach(rootNode::addChild);
+-        COMMAND_SENDING_POOL.execute(() -> this.sendAsync(player, rootNode));
++        try {
++            for (final CommandNode<CommandSourceStack> child : this.dispatcher.getRoot().getChildren()) {
++                rootNode.addChild(requireCommandNode(child));
++            }
++        } catch (java.util.ConcurrentModificationException ex) {
++            this.retryCommandSend(player, mayRetry, ex);
++            return;
++        }
++        COMMAND_SENDING_POOL.execute(() -> this.sendAsync(player, rootNode, mayRetry));
+     }
+ 
+     // Fixed pool, but with discard policy
+@@ -515,13 +526,37 @@
+         new java.util.concurrent.ThreadPoolExecutor.DiscardPolicy()
+     );
+ 
+-    private void sendAsync(ServerPlayer player, RootCommandNode<CommandSourceStack> dispatcherRoot) {
++    private static <S> CommandNode<S> requireCommandNode(final CommandNode<S> node) {
++        if (node == null) {
++            throw new java.util.ConcurrentModificationException("Command node disappeared during command tree traversal");
++        }
++        return node;
++    }
++
++    private void retryCommandSend(final ServerPlayer player, final boolean mayRetry, final java.util.ConcurrentModificationException failure) {
++        if (!mayRetry) {
++            LOGGER.debug("Command tree changed again while building the client tree", failure);
++            return;
++        }
++        player.getBukkitEntity().taskScheduler.schedule(updatedPlayer -> {
++            if (updatedPlayer instanceof ServerPlayer current && !current.hasDisconnected()) {
++                current.level().getServer().getCommands().sendCommands(current, false);
++            }
++        }, null, 1L);
++    }
++
++    private void sendAsync(ServerPlayer player, RootCommandNode<CommandSourceStack> dispatcherRoot, boolean mayRetry) {
+         // Paper end - Perf: Async command map building
+         Map<CommandNode<CommandSourceStack>, CommandNode<CommandSourceStack>> playerCommands = new HashMap<>();
+         RootCommandNode<CommandSourceStack> root = new RootCommandNode<>();
+         // Paper start - Perf: Async command map building; pass copy of root
+         playerCommands.put(dispatcherRoot, root);
+-        fillUsableCommands(dispatcherRoot, root, player.createCommandSourceStack(), playerCommands);
++        try {
++            fillUsableCommands(dispatcherRoot, root, player.createCommandSourceStack(), playerCommands);
++        } catch (java.util.ConcurrentModificationException ex) {
++            this.retryCommandSend(player, mayRetry, ex);
++            return; // Do not send partial output or call Paper's events with an incomplete graph.
++        }
+         // Paper end - Perf: Async command map building; pass copy of root
+ 
+         java.util.Collection<String> bukkit = new java.util.LinkedHashSet<>();
+@@ -556,10 +591,12 @@
+     private static <S> void fillUsableCommands(
+         final CommandNode<S> source, final CommandNode<S> target, final S commandFilter, final Map<CommandNode<S>, CommandNode<S>> converted
+     ) {
+-        for (CommandNode<S> child : source.getChildren()) {
++        for (final CommandNode<S> entry : source.getChildren()) {
++            CommandNode<S> child = requireCommandNode(entry);
+             // Paper start - Brigadier API
+-            if (child.clientNode != null) {
+-                child = child.clientNode;
++            final CommandNode<S> clientNode = child.clientNode;
++            if (clientNode != null) {
++                child = clientNode;
+             }
+             // Paper end - Brigadier API
+             if (!org.spigotmc.SpigotConfig.sendNamespaced && child.getName().contains(":")) continue; // Spigot
+@@ -594,7 +631,7 @@
+                     }
+                     // Diff copied from LiteralCommand#createBuilder
+                     for (final CommandNode<S> redirectChild : redirect.getChildren()) {
+-                        redirectBuilder.then(redirectChild);
++                        redirectBuilder.then(requireCommandNode(redirectChild));
+                     }
+ 
+                     builder = redirectBuilder;

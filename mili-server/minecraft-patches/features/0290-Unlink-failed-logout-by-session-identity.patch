@@ -1,0 +1,75 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Helvetica Volubi <suisuroru@blue-millennium.fun>
+Date: Sun, 8 Nov 2026 00:28:54 +0800
+Subject: [PATCH] Drop failed PlayerList removals from the online list
+
+PlayerList.remove can throw before unmapping, for example on a region
+thread check. Entity.equals uses the reusable network id, so the leftover
+ServerPlayer stays in players and playersByUUID. A later login with the
+same UUID then cannot place a new session.
+
+Mili adaptation of Lophine 0018 (7a51f49a, GPL-3.0): compare session identity under the concurrent map operation. Keep world cleanup, disconnect notifications and Paper visibility decisions on the existing paths.
+
+diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
+--- a/net/minecraft/server/players/PlayerList.java
++++ b/net/minecraft/server/players/PlayerList.java
+@@ -739,6 +739,42 @@
+         return this.remove(player, net.kyori.adventure.text.Component.translatable("multiplayer.player.left", net.kyori.adventure.text.format.NamedTextColor.YELLOW, io.papermc.paper.configuration.GlobalConfiguration.get().messages.useDisplayNameInQuitMessage ? player.getBukkitEntity().displayName() : io.papermc.paper.adventure.PaperAdventure.asAdventure(player.getDisplayName())));
+     }
+     public net.kyori.adventure.text.@Nullable Component remove(final ServerPlayer player, final net.kyori.adventure.text.Component leaveMessage) {
++        try {
++            return this.removeFromWorld(player, leaveMessage);
++        } catch (RuntimeException | Error failure) {
++            // A failed region/world cleanup must not leave a stale session in the online indexes.
++            // Do not retry world operations here; their original ownership checks still apply.
++            this.removeOnlineNameAndLists(player);
++            this.removeOnlineUuid(player);
++            throw failure;
++        }
++    }
++
++    private void removeOnlineNameAndLists(final ServerPlayer player) {
++        this.players.removeIf(online -> online == player);
++        this.realPlayers.removeIf(online -> online == player);
++        this.playersByName.computeIfPresent(player.getScoreboardName().toLowerCase(java.util.Locale.ROOT),
++            (name, online) -> online == player ? null : online);
++    }
++
++    private boolean removeOnlineUuid(final ServerPlayer player) {
++        // Map.remove(key, value) compares Entity.equals (network ID), not session identity.
++        final UUID uuid = player.getUUID();
++        if (this.playersByUUID.get(uuid) != player) {
++            return false;
++        }
++        final boolean[] removed = {false};
++        this.playersByUUID.computeIfPresent(uuid, (key, online) -> {
++            if (online == player) {
++                removed[0] = true;
++                return null;
++            }
++            return online;
++        });
++        return removed[0];
++    }
++
++    private net.kyori.adventure.text.@Nullable Component removeFromWorld(final ServerPlayer player, final net.kyori.adventure.text.Component leaveMessage) {
+         // Paper end - Fix kick event leave message not being sent
+         org.leavesmc.leaves.protocol.core.LeavesProtocolManager.handlePlayerLeave(player); // Leaves - protocol
+         ServerLevel level = player.level();
+@@ -799,14 +835,9 @@
+         player.retireScheduler(); // Paper - Folia schedulers
+         player.getBukkitEntity().packetProcessor.close(); // Folia - region threading
+         player.getAdvancements().clearTriggers();
+-        this.players.remove(player);
+-        this.realPlayers.remove(player); // Leaves - replay api
+-        this.playersByName.remove(player.getScoreboardName().toLowerCase(java.util.Locale.ROOT)); // Spigot
++        this.removeOnlineNameAndLists(player);
+         this.server.getCustomBossEvents().onPlayerDisconnect(player);
+-        UUID uuid = player.getUUID();
+-        ServerPlayer serverPlayer = this.playersByUUID.get(uuid);
+-        if (serverPlayer == player) {
+-            this.playersByUUID.remove(uuid);
++        if (this.removeOnlineUuid(player)) {
+             // CraftBukkit start
+             // this.stats.remove(uuid);
+             // this.advancements.remove(uuid);

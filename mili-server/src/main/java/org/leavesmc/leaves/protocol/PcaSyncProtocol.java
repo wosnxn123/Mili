@@ -1,5 +1,11 @@
+/*
+ * PCA sync: Leaves (violetc), GPL-3.0; Lophine 7a51f49a, Minecraft 0110 (Bacteriawa).
+ * Mili keeps its own player-data policy and applies Paper/Folia visibility and ownership checks.
+ */
 package org.leavesmc.leaves.protocol;
 
+import ca.spottedleaf.moonrise.common.util.TickThread;
+import fun.bm.mili.config.modules.function.protocol.PcaSyncProtocolConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
@@ -9,54 +15,46 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.CompoundContainer;
+import net.minecraft.world.Container;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.level.Level;
+import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.ChestType;
-import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.apache.commons.lang3.tuple.MutablePair;
-import org.apache.commons.lang3.tuple.Pair;
-import org.bukkit.Bukkit;
+import org.bukkit.craftbukkit.inventory.CraftInventory;
 import org.jetbrains.annotations.Contract;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import fun.bm.mili.config.modules.function.protocol.PcaSyncProtocolConfig;
-import org.leavesmc.leaves.LeavesLogger;
 import org.leavesmc.leaves.bot.ServerBot;
-import org.leavesmc.leaves.plugin.MinecraftInternalPlugin;
 import org.leavesmc.leaves.protocol.core.LeavesCustomPayload;
 import org.leavesmc.leaves.protocol.core.LeavesProtocol;
 import org.leavesmc.leaves.protocol.core.ProtocolHandler;
 import org.leavesmc.leaves.protocol.core.ProtocolUtils;
 import org.leavesmc.leaves.util.TagUtil;
 
-import java.util.HashMap;
-import java.util.HashSet;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.locks.ReentrantLock;
 
 @LeavesProtocol.Register(namespace = "pca")
 public class PcaSyncProtocol implements LeavesProtocol {
 
     public static final String PROTOCOL_ID = "pca";
-
-    public static final ReentrantLock lock = new ReentrantLock(true);
-    public static final ReentrantLock pairLock = new ReentrantLock(true);
-
-    // send
     private static final Identifier ENABLE_PCA_SYNC_PROTOCOL = id("enable_pca_sync_protocol");
     private static final Identifier DISABLE_PCA_SYNC_PROTOCOL = id("disable_pca_sync_protocol");
 
-    private static final Map<ServerPlayer, Pair<Identifier, BlockPos>> playerWatchBlockPos = new HashMap<>();
-    private static final Map<ServerPlayer, Pair<Identifier, Entity>> playerWatchEntity = new HashMap<>();
-    private static final Map<Pair<Identifier, BlockPos>, Set<ServerPlayer>> blockPosWatchPlayerSet = new HashMap<>();
-    private static final Map<Pair<Identifier, Entity>, Set<ServerPlayer>> entityWatchPlayerSet = new HashMap<>();
-    private static final MutablePair<Identifier, Entity> IdentifierEntityPair = new MutablePair<>();
-    private static final MutablePair<Identifier, BlockPos> IdentifierBlockPosPair = new MutablePair<>();
+    private static final Object WATCH_LOCK = new Object();
+    private static final Map<ServerPlayer, Watch> WATCHES = new IdentityHashMap<>();
+    private static final Map<Object, Set<Watch>> BY_TARGET = new IdentityHashMap<>();
+
+    // Player/entity IDs can be reused, so index by live session and target identity.
+    private record Watch(ServerPlayer viewer, ServerLevel world, Object target, Object partner, AbstractContainerMenu menu) {
+        boolean menuStillOpen() {
+            return this.menu == null || this.viewer.containerMenu == this.menu;
+        }
+    }
 
     @Contract("_ -> new")
     public static Identifier id(String path) {
@@ -66,273 +64,339 @@ public class PcaSyncProtocol implements LeavesProtocol {
     @ProtocolHandler.PlayerJoin
     private static void onJoin(ServerPlayer player) {
         if (PcaSyncProtocolConfig.enable) {
-            enablePcaSyncProtocol(player);
+            ProtocolUtils.sendEmptyPacket(player, ENABLE_PCA_SYNC_PROTOCOL);
+        }
+    }
+
+    @ProtocolHandler.PlayerLeave
+    public static void clearPlayerWatchData(ServerPlayer player) {
+        synchronized (WATCH_LOCK) {
+            remove(WATCHES.get(player));
         }
     }
 
     @ProtocolHandler.BytebufReceiver(key = "cancel_sync_block_entity")
     private static void cancelSyncBlockEntityHandler(ServerPlayer player, FriendlyByteBuf buf) {
-        PcaSyncProtocol.clearPlayerWatchBlock(player);
+        synchronized (WATCH_LOCK) {
+            final Watch watch = WATCHES.get(player);
+            if (watch != null && watch.target instanceof BlockEntity) {
+                remove(watch);
+            }
+        }
     }
 
     @ProtocolHandler.BytebufReceiver(key = "cancel_sync_entity")
     private static void cancelSyncEntityHandler(ServerPlayer player, FriendlyByteBuf buf) {
-        PcaSyncProtocol.clearPlayerWatchEntity(player);
+        synchronized (WATCH_LOCK) {
+            final Watch watch = WATCHES.get(player);
+            if (watch != null && watch.target instanceof Entity) {
+                remove(watch);
+            }
+        }
+    }
+
+    // The Paper payload handler has already dispatched to this player's packet processor.
+    // Consume only the four existing PCA request IDs; all other channels keep Paper's path.
+    public static boolean handleIncoming(ServerPlayer player, Identifier channel, byte[] data) {
+        if (!PROTOCOL_ID.equals(channel.getNamespace()) || !canReceive(player)) {
+            return false;
+        }
+        final int length = switch (channel.getPath()) {
+            case "sync_block_entity" -> Long.BYTES;
+            case "sync_entity" -> Integer.BYTES;
+            case "cancel_sync_block_entity", "cancel_sync_entity" -> 0;
+            default -> -1;
+        };
+        if (length < 0) {
+            return false;
+        }
+        if (data.length != length) {
+            return true;
+        }
+        final FriendlyByteBuf input = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(data));
+        try {
+            switch (channel.getPath()) {
+                case "sync_block_entity" -> syncBlockEntityHandler(player, SyncBlockEntityPayload.CODEC.decode(input));
+                case "sync_entity" -> syncEntityHandler(player, SyncEntityPayload.CODEC.decode(input));
+                case "cancel_sync_block_entity" -> cancelSyncBlockEntityHandler(player, input);
+                case "cancel_sync_entity" -> cancelSyncEntityHandler(player, input);
+                default -> throw new AssertionError(channel);
+            }
+        } finally {
+            input.release();
+        }
+        return true;
     }
 
     @ProtocolHandler.PayloadReceiver(payload = SyncBlockEntityPayload.class)
     private static void syncBlockEntityHandler(ServerPlayer player, SyncBlockEntityPayload payload) {
-        BlockPos pos = payload.pos;
-        ServerLevel world = player.level();
+        if (canReceive(player)) {
+            subscribeBlock(player, payload.pos);
+        }
+    }
 
-        Bukkit.getGlobalRegionScheduler().run(MinecraftInternalPlugin.INSTANCE, (task) -> {
-            BlockState blockState = world.getBlockState(pos);
-            clearPlayerWatchData(player);
-
-            BlockEntity blockEntityAdj = null;
-            if (blockState.getBlock() instanceof ChestBlock) {
-                if (blockState.getValue(ChestBlock.TYPE) != ChestType.SINGLE) {
-                    BlockPos posAdj = pos.relative(ChestBlock.getConnectedDirection(blockState));
-                    // The method in World now checks that the caller is from the same thread...
-                    blockEntityAdj = world.getChunk(posAdj).getBlockEntity(posAdj);
+    private static void subscribeBlock(ServerPlayer player, BlockPos pos) {
+        clearPlayerWatchData(player);
+        final ServerLevel world = player.level();
+        if (!canReachBlock(player, world, pos)) {
+            return;
+        }
+        final BlockEntity block = loadedBlockEntity(world, pos);
+        if (!canReceiveBlock(player, world, block)) {
+            return;
+        }
+        BlockEntity partner = null;
+        final var state = block.getBlockState();
+        if (state.getBlock() instanceof ChestBlock && state.getValue(ChestBlock.TYPE) != ChestType.SINGLE) {
+            final BlockPos adjacent = pos.relative(ChestBlock.getConnectedDirection(state));
+            if (canReachBlock(player, world, adjacent)) {
+                final BlockEntity other = loadedBlockEntity(world, adjacent);
+                if (canReceiveBlock(player, world, other)) {
+                    partner = other;
                 }
             }
-
-            if (blockEntityAdj != null) {
-                updateBlockEntity(player, blockEntityAdj);
+        }
+        final Watch watch = new Watch(player, world, block, partner, player.containerMenu);
+        if (subscribe(watch)) {
+            sendBlock(watch, block);
+            if (partner != null) {
+                sendBlock(watch, partner);
             }
-
-            // The method in World now checks that the caller is from the same thread...
-            BlockEntity blockEntity = world.getChunk(pos).getBlockEntity(pos);
-            if (blockEntity != null) {
-                updateBlockEntity(player, blockEntity);
-            }
-
-            Pair<Identifier, BlockPos> pair = new ImmutablePair<>(player.level().dimension().identifier(), pos);
-            lock.lock();
-            playerWatchBlockPos.put(player, pair);
-            if (!blockPosWatchPlayerSet.containsKey(pair)) {
-                blockPosWatchPlayerSet.put(pair, new HashSet<>());
-            }
-            blockPosWatchPlayerSet.get(pair).add(player);
-            lock.unlock();
-        });
+        }
     }
 
     @ProtocolHandler.PayloadReceiver(payload = SyncEntityPayload.class)
     private static void syncEntityHandler(ServerPlayer player, SyncEntityPayload payload) {
-        MinecraftServer server = MinecraftServer.getServer();
-        int entityId = payload.entityId;
-        ServerLevel world = player.level();
-
-        Bukkit.getGlobalRegionScheduler().run(MinecraftInternalPlugin.INSTANCE, (task) -> {
-            Entity entity = world.getEntity(entityId);
-
-            if (entity != null) {
-                clearPlayerWatchData(player);
-
-                if (entity instanceof Player) {
-                    switch (PcaSyncProtocolConfig.syncPlayerEntity) {
-                        case NOBODY -> {
-                            return;
-                        }
-                        case BOT -> {
-                            if (!(entity instanceof ServerBot)) {
-                                return;
-                            }
-                        }
-                        case OPS -> {
-                            if (!(entity instanceof ServerBot) && !server.getPlayerList().isOp(player.nameAndId())) {
-                                return;
-                            }
-                        }
-                        case OPS_AND_SELF -> {
-                            if (!(entity instanceof ServerBot) && !server.getPlayerList().isOp(player.nameAndId()) && entity != player) {
-                                return;
-                            }
-                        }
-                        case EVERYONE -> {
-                        }
-                        case null -> LeavesLogger.LOGGER.warning("pcaSyncPlayerEntity wtf???");
-                    }
-                }
-                updateEntity(player, entity);
-
-                Pair<Identifier, Entity> pair = new ImmutablePair<>(entity.level().dimension().identifier(), entity);
-                lock.lock();
-                playerWatchEntity.put(player, pair);
-                if (!entityWatchPlayerSet.containsKey(pair)) {
-                    entityWatchPlayerSet.put(pair, new HashSet<>());
-                }
-                entityWatchPlayerSet.get(pair).add(player);
-                lock.unlock();
-            }
-        });
-    }
-
-    public static void onConfigModify(boolean enable) {
-        if (enable) {
-            enablePcaSyncProtocolGlobal();
-        } else {
-            disablePcaSyncProtocolGlobal();
-        }
-    }
-
-    public static void enablePcaSyncProtocol(@NotNull ServerPlayer player) {
-        ProtocolUtils.sendEmptyPacket(player, ENABLE_PCA_SYNC_PROTOCOL);
-        lock.lock();
-        lock.unlock();
-    }
-
-    public static void disablePcaSyncProtocol(@NotNull ServerPlayer player) {
-        ProtocolUtils.sendEmptyPacket(player, DISABLE_PCA_SYNC_PROTOCOL);
-    }
-
-    public static void updateEntity(@NotNull ServerPlayer player, @NotNull Entity entity) {
-        CompoundTag nbt = TagUtil.saveEntity(entity);
-        ProtocolUtils.sendPayloadPacket(player, new UpdateEntityPayload(entity.level().dimension().identifier(), entity.getId(), nbt));
-    }
-
-    public static void updateBlockEntity(@NotNull ServerPlayer player, @NotNull BlockEntity blockEntity) {
-        Level world = blockEntity.getLevel();
-
-        if (world == null) {
+        if (!canReceive(player)) {
             return;
         }
-
-        ProtocolUtils.sendPayloadPacket(player, new UpdateBlockEntityPayload(world.dimension().identifier(), blockEntity.getBlockPos(), blockEntity.saveWithoutMetadata(world.registryAccess())));
+        clearPlayerWatchData(player);
+        final ServerLevel world = player.level();
+        final Entity entity = world.getEntity(payload.entityId);
+        if (entity != null && canReceiveEntity(player, world, entity)) {
+            final Watch watch = new Watch(player, world, entity, null, entity instanceof Container ? player.containerMenu : null);
+            if (subscribe(watch)) {
+                sendEntity(watch, entity);
+            }
+        }
     }
 
-    private static MutablePair<Identifier, Entity> getIdentifierEntityPair(Identifier Identifier, Entity entity) {
-        pairLock.lock();
-        IdentifierEntityPair.setLeft(Identifier);
-        IdentifierEntityPair.setRight(entity);
-        pairLock.unlock();
-        return IdentifierEntityPair;
+    private static boolean canReceive(ServerPlayer player) {
+        return PcaSyncProtocolConfig.enable && TickThread.isTickThreadFor(player) && !player.hasDisconnected()
+            && player.level().getServer().getPlayerList().getPlayer(player.getUUID()) == player;
     }
 
-    private static MutablePair<Identifier, BlockPos> getIdentifierBlockPosPair(Identifier Identifier, BlockPos pos) {
-        pairLock.lock();
-        IdentifierBlockPosPair.setLeft(Identifier);
-        IdentifierBlockPosPair.setRight(pos);
-        pairLock.unlock();
-        return IdentifierBlockPosPair;
+    private static boolean canReachBlock(ServerPlayer player, ServerLevel world, BlockPos pos) {
+        return TickThread.isTickThreadFor(world, pos)
+            && player.isWithinBlockInteractionRange(pos, 1.0)
+            && world.getWorldBorder().isWithinBounds(pos)
+            && world.moonrise$getPlayerChunkLoader().isChunkSent(player, pos.getX() >> 4, pos.getZ() >> 4);
     }
 
-    private static @Nullable Set<ServerPlayer> getWatchPlayerList(@NotNull Entity entity) {
-        return entityWatchPlayerSet.get(getIdentifierEntityPair(entity.level().dimension().identifier(), entity));
+    private static BlockEntity loadedBlockEntity(ServerLevel world, BlockPos pos) {
+        return world.lithium$getLoadedExistingBlockEntity(pos);
     }
 
-    private static @Nullable Set<ServerPlayer> getWatchPlayerList(@NotNull Level world, @NotNull BlockPos blockPos) {
-        return blockPosWatchPlayerSet.get(getIdentifierBlockPosPair(world.dimension().identifier(), blockPos));
+    private static boolean canReceiveBlock(ServerPlayer player, ServerLevel world, BlockEntity block) {
+        return block instanceof Container container && block.getLevel() == world && !block.isRemoved()
+            && canReachBlock(player, world, block.getBlockPos()) && hasOpenInventory(player, container);
     }
 
-    public static boolean syncEntityToClient(@NotNull Entity entity) {
-        if (entity.level().isClientSide()) {
+    private static boolean hasOpenInventory(ServerPlayer player, Container target) {
+        // The actual Paper menu (including both halves of a chest) is proof of access. Merely
+        // asking for a nearby position or ID would bypass lock, protection and inventory-open events.
+        if (player.containerMenu == player.inventoryMenu
+            || !(player.containerMenu.getBukkitView().getTopInventory() instanceof CraftInventory inventory)) {
             return false;
         }
-        lock.lock();
-        Set<ServerPlayer> playerList = getWatchPlayerList(entity);
-        boolean ret = false;
-        if (playerList != null) {
-            for (ServerPlayer player : playerList) {
-                updateEntity(player, entity);
-                ret = true;
-            }
-        }
-        lock.unlock();
-        return ret;
+        final Container opened = inventory.getInventory();
+        return opened == target || opened instanceof CompoundContainer pair && pair.contains(target);
     }
 
-    public static boolean syncBlockEntityToClient(@NotNull BlockEntity blockEntity) {
-        boolean ret = false;
-        Level world = blockEntity.getLevel();
-        BlockPos pos = blockEntity.getBlockPos();
-        if (world != null) {
-            if (world.isClientSide()) {
+    private static boolean canReceiveEntity(ServerPlayer viewer, ServerLevel world, Entity entity) {
+        if (!TickThread.isTickThreadFor(entity) || entity.level() != world || entity.isRemoved()) {
+            return false;
+        }
+        if (entity != viewer && (!viewer.isWithinEntityInteractionRange(entity, 1.0)
+            || !viewer.getBukkitEntity().canSee(entity.getBukkitEntity())
+            || entity.generation || !entity.getBukkitEntity().isTrackedBy(viewer.getBukkitEntity()))) {
+            return false;
+        }
+        if (entity instanceof Player) {
+            final boolean isOp = world.getServer().getPlayerList().isOp(viewer.nameAndId());
+            final var mode = PcaSyncProtocolConfig.syncPlayerEntity;
+            return mode != null && switch (mode) {
+                case NOBODY -> false;
+                case BOT -> entity instanceof ServerBot;
+                case OPS -> entity instanceof ServerBot || isOp;
+                case OPS_AND_SELF -> entity instanceof ServerBot || isOp || entity == viewer;
+                case EVERYONE -> true;
+            };
+        }
+        // For non-players the protocol carries full serialized entity data, not a vanilla spawn packet.
+        // Non-operators may inspect a container entity only through a menu they actually opened.
+        return entity instanceof Container container ? hasOpenInventory(viewer, container)
+            : viewer.permissions().hasPermission(net.minecraft.server.permissions.Permissions.COMMANDS_GAMEMASTER)
+                && viewer.getBukkitEntity().hasPermission("minecraft.command.data");
+    }
+
+    private static boolean subscribe(Watch watch) {
+        synchronized (WATCH_LOCK) {
+            if (!PcaSyncProtocolConfig.enable) {
                 return false;
             }
-            BlockState blockState = world.getBlockState(pos);
-            lock.lock();
-            Set<ServerPlayer> playerList = getWatchPlayerList(world, blockEntity.getBlockPos());
+            remove(WATCHES.get(watch.viewer));
+            WATCHES.put(watch.viewer, watch);
+            addTarget(watch.target, watch);
+            if (watch.partner != null) {
+                addTarget(watch.partner, watch);
+            }
+            return true;
+        }
+    }
 
-            Set<ServerPlayer> playerListAdj = null;
+    private static void addTarget(Object target, Watch watch) {
+        BY_TARGET.computeIfAbsent(target, key -> Collections.newSetFromMap(new IdentityHashMap<>())).add(watch);
+    }
 
-            if (blockState.getBlock() instanceof ChestBlock) {
-                if (blockState.getValue(ChestBlock.TYPE) != ChestType.SINGLE) {
-                    BlockPos posAdj = pos.relative(ChestBlock.getConnectedDirection(blockState));
-                    playerListAdj = getWatchPlayerList(world, posAdj);
+    // WATCH_LOCK is held only for index mutations and copies, never for world access or serialization.
+    private static void remove(Watch watch) {
+        if (watch == null || WATCHES.get(watch.viewer) != watch) {
+            return;
+        }
+        WATCHES.remove(watch.viewer);
+        removeTarget(watch.target, watch);
+        if (watch.partner != null) {
+            removeTarget(watch.partner, watch);
+        }
+    }
+
+    private static void removeTarget(Object target, Watch watch) {
+        final Set<Watch> watchers = BY_TARGET.get(target);
+        if (watchers != null && watchers.remove(watch) && watchers.isEmpty()) {
+            BY_TARGET.remove(target);
+        }
+    }
+
+    private static List<Watch> watching(Object target) {
+        synchronized (WATCH_LOCK) {
+            final Set<Watch> watchers = BY_TARGET.get(target);
+            return watchers == null ? List.of() : List.copyOf(watchers);
+        }
+    }
+
+    private static boolean isCurrent(Watch watch) {
+        synchronized (WATCH_LOCK) {
+            return PcaSyncProtocolConfig.enable && WATCHES.get(watch.viewer) == watch;
+        }
+    }
+
+    public static boolean syncEntityToClient(Entity entity) {
+        if (!PcaSyncProtocolConfig.enable || !TickThread.isTickThreadFor(entity)
+            || !(entity.level() instanceof ServerLevel world)) {
+            return false;
+        }
+        boolean sent = false;
+        for (final Watch watch : watching(entity)) {
+            final ServerPlayer viewer = watch.viewer;
+            if (!TickThread.isTickThreadFor(viewer)) {
+                continue;
+            }
+            if (watch.world != world || !canReceive(viewer) || viewer.level() != world || !watch.menuStillOpen() || !canReceiveEntity(viewer, world, entity)) {
+                synchronized (WATCH_LOCK) { remove(watch); }
+            } else {
+                sent |= sendEntity(watch, entity);
+            }
+        }
+        return sent;
+    }
+
+    public static boolean syncBlockEntityToClient(BlockEntity block) {
+        if (!PcaSyncProtocolConfig.enable || !(block.getLevel() instanceof ServerLevel world)
+            || !TickThread.isTickThreadFor(world, block.getBlockPos())) {
+            return false;
+        }
+        boolean sent = false;
+        for (final Watch watch : watching(block)) {
+            final ServerPlayer viewer = watch.viewer;
+            if (!TickThread.isTickThreadFor(viewer)) {
+                continue;
+            }
+            if (watch.world != world || !canReceive(viewer) || viewer.level() != world || !watch.menuStillOpen() || !canReceiveBlock(viewer, world, block)) {
+                synchronized (WATCH_LOCK) { remove(watch); }
+            } else {
+                sent |= sendBlock(watch, block);
+            }
+        }
+        return sent;
+    }
+
+    private static boolean sendEntity(Watch watch, Entity entity) {
+        if (!isCurrent(watch)) {
+            return false;
+        }
+        final CompoundTag tag = entity instanceof Container ? inventoryTag(TagUtil.saveEntity(entity)) : TagUtil.saveEntity(entity);
+        // Passenger and root-vehicle snapshots can disclose entities the viewer cannot inspect.
+        tag.remove("Passengers");
+        tag.remove("RootVehicle");
+        tag.remove("BukkitValues");
+        if (!isCurrent(watch)) {
+            return false;
+        }
+        ProtocolUtils.sendPayloadPacket(watch.viewer, new UpdateEntityPayload(watch.world.dimension().identifier(), entity.getId(), tag));
+        return true;
+    }
+
+    private static boolean sendBlock(Watch watch, BlockEntity block) {
+        if (!isCurrent(watch)) {
+            return false;
+        }
+        final CompoundTag tag = inventoryTag(block.saveWithoutMetadata(watch.world.registryAccess()));
+        if (!isCurrent(watch)) {
+            return false;
+        }
+        ProtocolUtils.sendPayloadPacket(watch.viewer, new UpdateBlockEntityPayload(watch.world.dimension().identifier(), block.getBlockPos(), tag));
+        return true;
+    }
+
+    private static CompoundTag inventoryTag(CompoundTag saved) {
+        // Saved stacks can contain server-only data components filtered by Paper's normal codecs.
+        // The inventory preview needs only the slot, item ID and count, not raw item components.
+        final var items = new net.minecraft.nbt.ListTag();
+        for (final var entry : saved.getListOrEmpty("Items")) {
+            if (entry instanceof CompoundTag stack) {
+                final CompoundTag visible = new CompoundTag();
+                for (final String field : List.of("Slot", "id", "count")) {
+                    final var value = stack.get(field);
+                    if (value != null) {
+                        visible.put(field, value);
+                    }
                 }
+                items.add(visible);
             }
-            if (playerListAdj != null) {
-                if (playerList == null) {
-                    playerList = playerListAdj;
-                } else {
-                    playerList.addAll(playerListAdj);
+        }
+        final CompoundTag tag = new CompoundTag();
+        tag.put("Items", items);
+        return tag;
+    }
+
+    public static void onConfigLoaded() {
+        final boolean enable = PcaSyncProtocolConfig.enable;
+        synchronized (WATCH_LOCK) {
+            WATCHES.clear();
+            BY_TARGET.clear();
+        }
+        final MinecraftServer server = MinecraftServer.getServer();
+        if (server == null || server.getPlayerList() == null) {
+            return;
+        }
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            player.getBukkitEntity().taskScheduler.schedule(current -> {
+                if (current == player && !player.hasDisconnected() && PcaSyncProtocolConfig.enable == enable) {
+                    ProtocolUtils.sendEmptyPacket(player, enable ? ENABLE_PCA_SYNC_PROTOCOL : DISABLE_PCA_SYNC_PROTOCOL);
                 }
-            }
-
-            if (playerList != null) {
-                for (ServerPlayer player : playerList) {
-                    updateBlockEntity(player, blockEntity);
-                    ret = true;
-                }
-            }
-            lock.unlock();
+            }, null, 1L);
         }
-        return ret;
-    }
-
-    private static void clearPlayerWatchEntity(ServerPlayer player) {
-        lock.lock();
-        Pair<Identifier, Entity> pair = playerWatchEntity.get(player);
-        if (pair != null) {
-            Set<ServerPlayer> playerSet = entityWatchPlayerSet.get(pair);
-            playerSet.remove(player);
-            if (playerSet.isEmpty()) {
-                entityWatchPlayerSet.remove(pair);
-            }
-            playerWatchEntity.remove(player);
-        }
-        lock.unlock();
-    }
-
-    private static void clearPlayerWatchBlock(ServerPlayer player) {
-        lock.lock();
-        Pair<Identifier, BlockPos> pair = playerWatchBlockPos.get(player);
-        if (pair != null) {
-            Set<ServerPlayer> playerSet = blockPosWatchPlayerSet.get(pair);
-            playerSet.remove(player);
-            if (playerSet.isEmpty()) {
-                blockPosWatchPlayerSet.remove(pair);
-            }
-            playerWatchBlockPos.remove(player);
-        }
-        lock.unlock();
-    }
-
-    public static void disablePcaSyncProtocolGlobal() {
-        lock.lock();
-        playerWatchBlockPos.clear();
-        playerWatchEntity.clear();
-        blockPosWatchPlayerSet.clear();
-        entityWatchPlayerSet.clear();
-        lock.unlock();
-        for (ServerPlayer player : MinecraftServer.getServer().getPlayerList().getPlayers()) {
-            disablePcaSyncProtocol(player);
-        }
-    }
-
-    public static void enablePcaSyncProtocolGlobal() {
-        for (ServerPlayer player : MinecraftServer.getServer().getPlayerList().getPlayers()) {
-            enablePcaSyncProtocol(player);
-        }
-    }
-
-
-    public static void clearPlayerWatchData(ServerPlayer player) {
-        PcaSyncProtocol.clearPlayerWatchBlock(player);
-        PcaSyncProtocol.clearPlayerWatchEntity(player);
     }
 
     @Override
@@ -379,7 +443,7 @@ public class PcaSyncProtocol implements LeavesProtocol {
         public static final Identifier SYNC_BLOCK_ENTITY = PcaSyncProtocol.id("sync_block_entity");
 
         @Codec
-        private static final StreamCodec<FriendlyByteBuf, SyncBlockEntityPayload> CODEC = StreamCodec.composite(
+        public static final StreamCodec<FriendlyByteBuf, SyncBlockEntityPayload> CODEC = StreamCodec.composite(
             BlockPos.STREAM_CODEC, SyncBlockEntityPayload::pos, SyncBlockEntityPayload::new
         );
     }
@@ -389,7 +453,7 @@ public class PcaSyncProtocol implements LeavesProtocol {
         public static final Identifier SYNC_ENTITY = PcaSyncProtocol.id("sync_entity");
 
         @Codec
-        private static final StreamCodec<FriendlyByteBuf, SyncEntityPayload> CODEC = StreamCodec.composite(
+        public static final StreamCodec<FriendlyByteBuf, SyncEntityPayload> CODEC = StreamCodec.composite(
             ByteBufCodecs.INT, SyncEntityPayload::entityId, SyncEntityPayload::new
         );
     }

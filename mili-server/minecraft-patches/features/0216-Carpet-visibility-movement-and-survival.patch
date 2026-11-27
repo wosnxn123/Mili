@@ -1,0 +1,94 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Carpet: local visibility, movement and survival settings
+
+Adapted from Lophine 7a51f49a512f1b5465f15a905d3704754e4bed02, Minecraft patches 0131-0134.
+Change native predicates while preserving region transfer, spawn events and movement checks.
+See META-INF/licenses/carpet-26.3.txt for source and license notices.
+
+diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
+index c1ac54d..b81cb23 100644
+--- a/net/minecraft/server/level/ServerPlayer.java
++++ b/net/minecraft/server/level/ServerPlayer.java
+@@ -2414,6 +2414,10 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+ 
+     @Override
+     public boolean isInvulnerableTo(final ServerLevel level, final DamageSource source) {
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.safeFlight && source.is(DamageTypes.FLY_INTO_WALL)
++            || fun.bm.mili.carpet.config.modules.GameplayCompatConfig.invulnerable && !source.is(DamageTypes.FELL_OUT_OF_WORLD) && !source.is(net.minecraft.tags.DamageTypeTags.BYPASSES_INVULNERABILITY)) {
++            return true;
++        }
+         // Paper start - disable player cramming
+         return (super.isInvulnerableTo(level, source) || this.isChangingDimension() && !source.is(DamageTypes.ENDER_PEARL) || !this.connection.hasClientLoaded())
+             || (!fun.bm.mili.config.modules.fixes.VanillaLikeExperienceConfig.enabled && !this.level().paperConfig().collisions.allowPlayerCrammingDamage && source.is(DamageTypes.CRAMMING)); // Mili - Lophine vanilla-like experience
+diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
+index f3e4b7e..057bf62 100644
+--- a/net/minecraft/world/entity/Entity.java
++++ b/net/minecraft/world/entity/Entity.java
+@@ -6441,6 +6441,8 @@ public abstract class Entity
+     }
+ 
+     public float maxUpStep() {
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.climbingBoat && this instanceof net.minecraft.world.entity.vehicle.boat.Boat
++            && this.getControllingPassenger() instanceof Player) return 1.0F;
+         return 0.0F;
+     }
+ 
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index e6deadc..25d1311 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -1056,6 +1056,7 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+     }
+ 
+     public double getVisibilityPercent(final ServerLevel serverLevel, final @Nullable Entity targetingEntity) {
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.perfectInvisibility && this.isInvisible() || fun.bm.mili.carpet.config.modules.GameplayCompatConfig.sneakInvisibility && this.isDiscrete()) return 0.0;
+         double visibilityPercent = 1.0;
+         if (this.isDiscrete()) {
+             visibilityPercent *= 0.8;
+@@ -1836,6 +1837,9 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+ 
+             this.setHealth(1.0F);
+             protection.applyEffects(protectionItem, this);
++            if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.totemOfUndyingInvincibleTime && protection == DeathProtection.TOTEM_OF_UNDYING) {
++                this.addEffect(new MobEffectInstance(MobEffects.RESISTANCE, 40, 4), org.bukkit.event.entity.EntityPotionEffectEvent.Cause.TOTEM);
++            }
+             this.level().broadcastEntityEvent(this, EntityEvent.PROTECTED_FROM_DEATH);
+         }
+ 
+diff --git a/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java b/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
+index aafd1d1..b146269 100644
+--- a/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
++++ b/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
+@@ -180,7 +180,7 @@ public class ThrownEnderpearl extends ThrowableItemProjectile {
+                             ServerLevel world = player.level();
+ 
+                             // endermite spawn chance
+-                            if (world.getRandom().nextFloat() < 0.05F && world.isSpawningMonsters()) {
++                            if ((world.getRandom().nextFloat() < 0.05F || fun.bm.mili.carpet.config.modules.GameplayCompatConfig.mitePearl) && world.isSpawningMonsters()) {
+                                 Endermite entityendermite = EntityTypes.ENDERMITE.create(world, EntitySpawnReason.TRIGGERED);
+ 
+                                 if (entityendermite != null) {
+@@ -272,7 +272,7 @@ public class ThrownEnderpearl extends ThrowableItemProjectile {
+                             return;
+                         }
+                         // CraftBukkit end
+-                        if (this.random.nextFloat() < 0.05F && level.isSpawningMonsters() && level.getLevelData().getDifficulty() != Difficulty.PEACEFUL) {
++                        if ((this.random.nextFloat() < 0.05F || fun.bm.mili.carpet.config.modules.GameplayCompatConfig.mitePearl) && level.isSpawningMonsters() && level.getLevelData().getDifficulty() != Difficulty.PEACEFUL) {
+                             Endermite endermite = EntityTypes.ENDERMITE.create(level, EntitySpawnReason.TRIGGERED);
+                             if (endermite != null) {
+                                 endermite.snapTo(preTeleportX, preTeleportY, preTeleportZ, preTeleportYRot, preTeleportXRot); // Paper - spawn endermite at pre teleport position as teleport has been moved up
+diff --git a/net/minecraft/world/item/FireworkRocketItem.java b/net/minecraft/world/item/FireworkRocketItem.java
+index 5a36145..7cdefc2 100644
+--- a/net/minecraft/world/item/FireworkRocketItem.java
++++ b/net/minecraft/world/item/FireworkRocketItem.java
+@@ -78,7 +78,7 @@ public class FireworkRocketItem extends Item implements ProjectileItem {
+                 com.destroystokyo.paper.event.player.PlayerElytraBoostEvent event = new com.destroystokyo.paper.event.player.PlayerElytraBoostEvent((org.bukkit.entity.Player) player.getBukkitEntity(), org.bukkit.craftbukkit.inventory.CraftItemStack.asBukkitMirror(itemStack), (org.bukkit.entity.Firework) delayed.projectile().getBukkitEntity(), org.bukkit.craftbukkit.CraftEquipmentSlot.getHand(hand));
+                 if (event.callEvent() && delayed.attemptSpawn()) {
+                     player.awardStat(Stats.ITEM_USED.get(this)); // Moved up from below
+-                    if (player.dropAllLeashConnections(player, hand)) { // Paper - PlayerUnleashEntityEvent
++                    if (!fun.bm.mili.carpet.config.modules.GameplayCompatConfig.elytraFireworkKeepLeashConnection && player.dropAllLeashConnections(player, hand)) { // Paper - PlayerUnleashEntityEvent
+                         level.playSound(null, player, SoundEvents.LEAD_BREAK, SoundSource.NEUTRAL, 1.0F, 1.0F);
+                     }
+                     if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.fireworkRocketUseCooldown

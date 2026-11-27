@@ -1,0 +1,122 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Carpet: additional combat, sensing and server preferences
+
+Adapted from Lophine 7a51f49a512f1b5465f15a905d3704754e4bed02, Minecraft patches 0131-0134.
+Keep native callbacks and avoid incompatible client or script integrations.
+See META-INF/licenses/carpet-26.3.txt for source and license notices.
+
+diff --git a/net/minecraft/world/entity/boss/wither/WitherBoss.java b/net/minecraft/world/entity/boss/wither/WitherBoss.java
+index c31aab4..f9e8ea6 100644
+--- a/net/minecraft/world/entity/boss/wither/WitherBoss.java
++++ b/net/minecraft/world/entity/boss/wither/WitherBoss.java
+@@ -306,7 +306,7 @@ public class WitherBoss extends Monster implements RangedAttackMob {
+             for (int i = 1; i < 3; i++) {
+                 if (this.tickCount >= this.nextHeadUpdate[i - 1]) {
+                     this.nextHeadUpdate[i - 1] = this.tickCount + 10 + this.random.nextInt(10);
+-                    if ((level.getDifficulty() == Difficulty.NORMAL || level.getDifficulty() == Difficulty.HARD) && this.idleHeadUpdates[i - 1]++ > 15) {
++                    if (!"never".equalsIgnoreCase(fun.bm.mili.carpet.config.modules.GameplayCompatConfig.blueSkullController) && (level.getDifficulty() == Difficulty.NORMAL || level.getDifficulty() == Difficulty.HARD) && this.idleHeadUpdates[i - 1]++ > 15) {
+                         float hrange = 10.0F;
+                         float vrange = 5.0F;
+                         double xt = Mth.nextDouble(this.random, this.getX() - 10.0, this.getX() + 10.0);
+@@ -474,7 +474,7 @@ public class WitherBoss extends Monster implements RangedAttackMob {
+         Vec3 direction = new Vec3(xd, yd, zd);
+         WitherSkull entity = new WitherSkull(this.level(), this, direction.normalize());
+         entity.setOwner(this);
+-        if (dangerous) {
++        if (!"never".equalsIgnoreCase(fun.bm.mili.carpet.config.modules.GameplayCompatConfig.blueSkullController) && (dangerous || "surely".equalsIgnoreCase(fun.bm.mili.carpet.config.modules.GameplayCompatConfig.blueSkullController))) {
+             entity.setDangerous(true);
+         }
+ 
+diff --git a/net/minecraft/world/entity/monster/piglin/PiglinAi.java b/net/minecraft/world/entity/monster/piglin/PiglinAi.java
+index 8eaa065..7d9c58a 100644
+--- a/net/minecraft/world/entity/monster/piglin/PiglinAi.java
++++ b/net/minecraft/world/entity/monster/piglin/PiglinAi.java
+@@ -816,7 +816,7 @@ public class PiglinAi {
+     }
+ 
+     private static void admireGoldItem(final LivingEntity body) {
+-        long time = fun.bm.mili.carpet.config.modules.GameplayCompatConfig.customPiglinBarteringTime;
++        long time = fun.bm.mili.carpet.config.modules.GameplayCompatConfig.customPiglinBarteringTime();
+         body.getBrain().setMemoryWithExpiry(MemoryModuleType.ADMIRING_ITEM, true, time == -1L ? 119L : time);
+     }
+ 
+diff --git a/net/minecraft/world/entity/player/Inventory.java b/net/minecraft/world/entity/player/Inventory.java
+index 59dc40b..068cecc 100644
+--- a/net/minecraft/world/entity/player/Inventory.java
++++ b/net/minecraft/world/entity/player/Inventory.java
+@@ -555,6 +555,7 @@ public class Inventory implements Container, Nameable {
+             if (!itemStack.isEmpty()) {
+                 ItemEntity drop = this.player.createItemStackToDrop(itemStack, true, false);
+                 if (drop != null) {
++                    if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.playerDropsNotDespawning) drop.setUnlimitedLifetime();
+                     this.player.level().addFreshEntity(drop);
+                 }
+ 
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index a7e5168..1fb6719 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -1584,6 +1584,9 @@ public abstract class Player extends Avatar implements ContainerUser {
+     }
+ 
+     public void awardStat(final Stat<?> stat) {
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.fakePlayerNoScoreboardCounter && this instanceof org.leavesmc.leaves.bot.ServerBot) {
++            return;
++        }
+         this.awardStat(stat, 1);
+     }
+ 
+diff --git a/net/minecraft/world/inventory/AnvilMenu.java b/net/minecraft/world/inventory/AnvilMenu.java
+index a577225..3a65b4e 100644
+--- a/net/minecraft/world/inventory/AnvilMenu.java
++++ b/net/minecraft/world/inventory/AnvilMenu.java
+@@ -226,7 +226,8 @@ public class AnvilMenu extends ItemCombinerMenu {
+ 
+                             price += fee * level;
+                             if (input.getCount() > 1) {
+-                                price = 40;
++                                int carpetLimit = fun.bm.mili.carpet.config.modules.GameplayCompatConfig.setAnvilExperienceConsumptionLimit();
++                                price = carpetLimit == -1 ? 40 : Math.max(1, carpetLimit - 1);
+                             }
+                         }
+                     }
+@@ -267,7 +268,8 @@ public class AnvilMenu extends ItemCombinerMenu {
+                 this.onlyRenaming = true;
+             }
+ 
+-            if (this.cost.get() >= this.maximumRepairCost && !this.player.hasInfiniteMaterials()) { // CraftBukkit
++            int carpetLimit = fun.bm.mili.carpet.config.modules.GameplayCompatConfig.setAnvilExperienceConsumptionLimit();
++            if (this.cost.get() >= (carpetLimit == -1 ? this.maximumRepairCost : carpetLimit) && !this.player.hasInfiniteMaterials()) { // CraftBukkit
+                 result = ItemStack.EMPTY;
+             }
+ 
+diff --git a/net/minecraft/world/level/block/entity/SculkSensorBlockEntity.java b/net/minecraft/world/level/block/entity/SculkSensorBlockEntity.java
+index 7903289..832cf82 100644
+--- a/net/minecraft/world/level/block/entity/SculkSensorBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/SculkSensorBlockEntity.java
+@@ -95,6 +95,7 @@ public class SculkSensorBlockEntity extends BlockEntity implements GameEventList
+ 
+         @Override
+         public int getListenerRadius() {
++            if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.sculkSensorRange() != 8) return fun.bm.mili.carpet.config.modules.GameplayCompatConfig.sculkSensorRange();
+             if (SculkSensorBlockEntity.this.rangeOverride != null) return SculkSensorBlockEntity.this.rangeOverride; // Paper - Configurable sculk sensor listener range
+             return 8;
+         }
+diff --git a/net/minecraft/world/level/material/FlowingFluid.java b/net/minecraft/world/level/material/FlowingFluid.java
+index 5e6c328..be32601 100644
+--- a/net/minecraft/world/level/material/FlowingFluid.java
++++ b/net/minecraft/world/level/material/FlowingFluid.java
+@@ -325,6 +325,11 @@ public abstract class FlowingFluid extends Fluid {
+             container.placeLiquid(level, pos, state, target);
+         } else {
+             if (!state.isAir()) {
++                // Lophine start - Carpet features
++                if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.fluidDestructionDisabled) {
++                    return;
++                }
++                // Lophine end - Carpet features
+                 this.beforeDestroyingBlock(level, pos, state, pos.relative(direction.getOpposite())); // Paper - Add BlockBreakBlockEvent
+             }
+ 

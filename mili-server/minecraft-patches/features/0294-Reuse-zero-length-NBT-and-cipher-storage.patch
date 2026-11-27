@@ -1,0 +1,105 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Helvetica Volubi <suisuroru@blue-millennium.fun>
+Date: Sun, 28 Jun 2026 22:45:55 +0800
+Subject: [PATCH] Gale Reduce array allocations
+
+License: GPL-3.0-only (https://www.gnu.org/licenses/gpl-3.0.html)
+Gale - https://github.com/GaleMC/Gale
+
+Enum's values returns anew array copy of the enums, this behavior is defined in
+`src/jdk.compiler/share/classes/com/sun/tools/javac/comp/Lower.java#visitEnumDef`
+
+This is a defensive programming strategy to prevent enums from being modified. However,
+copying is unnecessary if we only have read calls.
+So we can cache the values result to avoid useless allocations.
+
+Cached as the array since it does not create iterator on the enhanced for loop,
+But the list does, and may spend more time than iterating using the array.
+
+One-time calls are excluded from this patch, since no need.
+
+The JMH benchmark of this patch can be found in SunBox's `CachedEnumValuesForLoop`
+
+This patch is based on the following patch:
+"reduce allocs"
+By: Simon Gardling <titaniumtown@gmail.com>
+As part of: JettPack (https://gitlab.com/Titaniumtown/JettPack)
+Licensed under: GPL-3.0-only (https://www.gnu.org/licenses/gpl-3.0.html)
+
+Port the leaf allocations only: reuse zero-length arrays without exporting mutable enum caches or changing existing singleton empty arrays.
+
+diff --git a/net/minecraft/nbt/ByteArrayTag.java b/net/minecraft/nbt/ByteArrayTag.java
+--- a/net/minecraft/nbt/ByteArrayTag.java
++++ b/net/minecraft/nbt/ByteArrayTag.java
+@@ -8,6 +8,7 @@
+ import org.apache.commons.lang3.ArrayUtils;
+ 
+ public final class ByteArrayTag implements CollectionTag {
++    private static final byte[] EMPTY_DATA = new byte[0];
+     // Paper start - Optimize NBT reading/writing
+     @Override
+     public final void moonrise$writeWithId(final ca.spottedleaf.ioutil.stream.AbstractBufferOutputStream out, final boolean stringFallback) throws IOException {
+@@ -166,7 +167,7 @@
+ 
+     @Override
+     public void clear() {
+-        this.data = new byte[0];
++        this.data = EMPTY_DATA;
+     }
+ 
+     @Override
+diff --git a/net/minecraft/nbt/IntArrayTag.java b/net/minecraft/nbt/IntArrayTag.java
+--- a/net/minecraft/nbt/IntArrayTag.java
++++ b/net/minecraft/nbt/IntArrayTag.java
+@@ -8,6 +8,7 @@
+ import org.apache.commons.lang3.ArrayUtils;
+ 
+ public final class IntArrayTag implements CollectionTag {
++    private static final int[] EMPTY_DATA = new int[0];
+     // Paper start - Optimize NBT reading/writing
+     @Override
+     public final void moonrise$writeWithId(final ca.spottedleaf.ioutil.stream.AbstractBufferOutputStream out, final boolean stringFallback) throws IOException {
+@@ -173,7 +174,7 @@
+ 
+     @Override
+     public void clear() {
+-        this.data = new int[0];
++        this.data = EMPTY_DATA;
+     }
+ 
+     @Override
+diff --git a/net/minecraft/nbt/LongArrayTag.java b/net/minecraft/nbt/LongArrayTag.java
+--- a/net/minecraft/nbt/LongArrayTag.java
++++ b/net/minecraft/nbt/LongArrayTag.java
+@@ -8,6 +8,7 @@
+ import org.apache.commons.lang3.ArrayUtils;
+ 
+ public final class LongArrayTag implements CollectionTag {
++    private static final long[] EMPTY_DATA = new long[0];
+     // Paper start - Optimize NBT reading/writing
+     @Override
+     public final void moonrise$writeWithId(final ca.spottedleaf.ioutil.stream.AbstractBufferOutputStream out, final boolean stringFallback) throws IOException {
+@@ -173,7 +174,7 @@
+ 
+     @Override
+     public void clear() {
+-        this.data = new long[0];
++        this.data = EMPTY_DATA;
+     }
+ 
+     @Override
+diff --git a/net/minecraft/network/CipherBase.java b/net/minecraft/network/CipherBase.java
+--- a/net/minecraft/network/CipherBase.java
++++ b/net/minecraft/network/CipherBase.java
+@@ -7,8 +7,9 @@
+ 
+ public class CipherBase {
+     private final Cipher cipher;
+-    private byte[] heapIn = new byte[0];
+-    private byte[] heapOut = new byte[0];
++    private static final byte[] EMPTY = new byte[0];
++    private byte[] heapIn = EMPTY;
++    private byte[] heapOut = EMPTY;
+ 
+     protected CipherBase(final Cipher cipher) {
+         this.cipher = cipher;

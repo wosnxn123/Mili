@@ -1,0 +1,99 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Tue, 23 Jun 2026 02:32:14 +0800
+Subject: [PATCH] PCA sync protocol
+
+Co-authored by: violetc <58360096+s-yh-china@users.noreply.github.com>
+As a part of : Leaves (https://github.com/LeavesMC/Leaves/blob/252a16955f6e1e31aac85d222b093b0797d392f8/leaves-server/minecraft-patches/features/0027-PCA-sync-protocol.patch)
+Licensed under: GPL-3.0 (https://www.gnu.org/licenses/gpl-3.0.html)
+
+Mili adaptation: consume the existing PCA request channels only in the game-phase Paper payload handler after Folia dispatch. Cap reads to loaded owned state, cancel saved subscriptions on dimension switches and reuse the existing Leaves wire format.
+
+diff --git a/net/minecraft/server/network/ServerCommonPacketListenerImpl.java b/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
+--- a/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
+@@ -180,6 +180,10 @@
+                 this.clientBrand = new net.minecraft.network.FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(data)).readUtf(256);
+             }
+ 
++            if (this instanceof ServerGamePacketListenerImpl game
++                && org.leavesmc.leaves.protocol.PcaSyncProtocol.handleIncoming(game.player, identifier, data)) {
++                return;
++            }
+             this.cserver.getMessenger().dispatchIncomingMessage(paperConnection(), identifier.toString(), data);
+         } catch (final Exception e) {
+             LOGGER.error("Couldn't handle custom payload on channel {}", identifier, e);
+diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
+--- a/net/minecraft/server/level/ServerPlayer.java
++++ b/net/minecraft/server/level/ServerPlayer.java
+@@ -3396,6 +3396,9 @@
+     }
+ 
+     public void setServerLevel(final ServerLevel level) {
++        if (this.level() != level) {
++            org.leavesmc.leaves.protocol.PcaSyncProtocol.clearPlayerWatchData(this);
++        }
+         this.setLevel(level);
+         this.gameMode.setLevel(level);
+     }
+diff --git a/net/minecraft/world/SimpleContainer.java b/net/minecraft/world/SimpleContainer.java
+--- a/net/minecraft/world/SimpleContainer.java
++++ b/net/minecraft/world/SimpleContainer.java
+@@ -199,6 +199,11 @@
+ 
+     @Override
+     public void setChanged() {
++        if (fun.bm.mili.config.modules.function.protocol.PcaSyncProtocolConfig.enable
++            && this.getOwner() instanceof org.bukkit.craftbukkit.entity.CraftEntity owner) {
++            // The protocol checks ownership; getHandle() can throw during an async destination restore.
++            org.leavesmc.leaves.protocol.PcaSyncProtocol.syncEntityToClient(owner.getHandleRaw());
++        }
+     }
+ 
+     @Override
+diff --git a/net/minecraft/world/entity/vehicle/boat/AbstractChestBoat.java b/net/minecraft/world/entity/vehicle/boat/AbstractChestBoat.java
+--- a/net/minecraft/world/entity/vehicle/boat/AbstractChestBoat.java
++++ b/net/minecraft/world/entity/vehicle/boat/AbstractChestBoat.java
+@@ -142,6 +142,9 @@
+ 
+     @Override
+     public void setChanged() {
++        if (fun.bm.mili.config.modules.function.protocol.PcaSyncProtocolConfig.enable) {
++            org.leavesmc.leaves.protocol.PcaSyncProtocol.syncEntityToClient(this);
++        }
+     }
+ 
+     @Override
+diff --git a/net/minecraft/world/entity/vehicle/minecart/AbstractMinecartContainer.java b/net/minecraft/world/entity/vehicle/minecart/AbstractMinecartContainer.java
+--- a/net/minecraft/world/entity/vehicle/minecart/AbstractMinecartContainer.java
++++ b/net/minecraft/world/entity/vehicle/minecart/AbstractMinecartContainer.java
+@@ -66,6 +66,9 @@
+ 
+     @Override
+     public void setChanged() {
++        if (fun.bm.mili.config.modules.function.protocol.PcaSyncProtocolConfig.enable) {
++            org.leavesmc.leaves.protocol.PcaSyncProtocol.syncEntityToClient(this);
++        }
+     }
+ 
+     @Override
+diff --git a/net/minecraft/world/level/block/entity/BlockEntity.java b/net/minecraft/world/level/block/entity/BlockEntity.java
+--- a/net/minecraft/world/level/block/entity/BlockEntity.java
++++ b/net/minecraft/world/level/block/entity/BlockEntity.java
+@@ -241,6 +241,16 @@
+                 net.minecraft.world.level.block.CarpetLargeBarrel.updatePartnerComparators(level, worldPosition, blockState);
+             }
+         }
++        if (fun.bm.mili.config.modules.function.protocol.PcaSyncProtocolConfig.enable && level instanceof net.minecraft.server.level.ServerLevel world
++            && ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(world, worldPosition)) {
++            final net.minecraft.world.level.chunk.LevelChunk chunk = world.getChunkIfLoaded(worldPosition);
++            if (chunk != null) {
++                final BlockEntity current = chunk.getBlockEntity(worldPosition);
++                if (current != null) {
++                    org.leavesmc.leaves.protocol.PcaSyncProtocol.syncBlockEntityToClient(current);
++                }
++            }
++        }
+     }
+ 
+     public BlockPos getBlockPos() {

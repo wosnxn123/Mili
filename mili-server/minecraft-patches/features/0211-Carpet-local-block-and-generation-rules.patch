@@ -1,0 +1,231 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Carpet: local block interactions and generation
+
+Adapted from Lophine 7a51f49a512f1b5465f15a905d3704754e4bed02, Minecraft patches 0131-0134.
+Adjust predicates at the native block/feature call sites rather than replacing Paper interactions.
+See META-INF/licenses/carpet-26.3.txt for source and license notices.
+
+diff --git a/net/minecraft/world/entity/boss/enderdragon/EnderDragon.java b/net/minecraft/world/entity/boss/enderdragon/EnderDragon.java
+index 2e28801..c1575ca 100644
+--- a/net/minecraft/world/entity/boss/enderdragon/EnderDragon.java
++++ b/net/minecraft/world/entity/boss/enderdragon/EnderDragon.java
+@@ -466,6 +466,11 @@ public class EnderDragon extends Mob implements Enemy {
+                     BlockState state = level.getBlockState(blockPos);
+                     if (!state.isAir() && !state.is(BlockTags.DRAGON_TRANSPARENT)) {
+                         if (level.getGameRules().get(GameRules.MOB_GRIEFING) && !state.is(BlockTags.DRAGON_IMMUNE)) {
++                            // Lophine start - Carpet features
++                            if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.enderDragonNoDestroyBlock) {
++                                continue;
++                            }
++                            // Lophine end - Carpet features
+                             // CraftBukkit start - Add blocks to list rather than destroying them
+                             //flag1 = level.removeBlock(blockPos, false) || flag1;
+                             destroyedBlock = true;
+diff --git a/net/minecraft/world/item/BucketItem.java b/net/minecraft/world/item/BucketItem.java
+index a26a9ce..ea12278 100644
+--- a/net/minecraft/world/item/BucketItem.java
++++ b/net/minecraft/world/item/BucketItem.java
+@@ -155,7 +155,8 @@ public class BucketItem extends Item implements DispensibleContainerItem {
+                     itemLeftInHandAfterPlayerBucketEmptyEvent.set(event.getItemStack() != null ? event.getItemStack().equals(org.bukkit.inventory.ItemStack.of(org.bukkit.Material.BUCKET)) ? null : org.bukkit.craftbukkit.inventory.CraftItemStack.asNMSCopy(event.getItemStack()) : ItemStack.EMPTY); // Paper - Fix PlayerBucketEmptyEvent result itemstack // Folia - region threading
+                 }
+                 // CraftBukkit end
+-                if (level.environmentAttributes().getValue(EnvironmentAttributes.WATER_EVAPORATES, pos) && this.content.is(FluidTags.WATER)) {
++                if (level.environmentAttributes().getValue(EnvironmentAttributes.WATER_EVAPORATES, pos) && this.content.is(FluidTags.WATER)
++                    && !(user instanceof Player player && (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.netherWaterPlacement || fun.bm.mili.carpet.config.modules.GameplayCompatConfig.creativeNetherWaterPlacement && player.isCreative()))) {
+                     int x = pos.getX();
+                     int y = pos.getY();
+                     int z = pos.getZ();
+diff --git a/net/minecraft/world/level/block/BedBlock.java b/net/minecraft/world/level/block/BedBlock.java
+index 1b6c792..e0fb18b 100644
+--- a/net/minecraft/world/level/block/BedBlock.java
++++ b/net/minecraft/world/level/block/BedBlock.java
+@@ -45,6 +45,7 @@ public class BedBlock extends AbstractBedBlock {
+ 
+     @Override
+     protected InteractionResult destroyOnUse(final BlockState state, final Level level, BlockPos pos, final Player player) {
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.disableRespawnBlocksExplode) return InteractionResult.SUCCESS_SERVER;
+         org.bukkit.block.BlockState blockState = org.bukkit.craftbukkit.block.CraftBlock.at(level, pos).getState(); // CraftBukkit - capture BlockState before remove block
+         level.removeBlock(pos, false);
+         BlockPos blockPos = pos.relative(state.getValue(FACING).getOpposite());
+diff --git a/net/minecraft/world/level/block/CakeBlock.java b/net/minecraft/world/level/block/CakeBlock.java
+index 2a0617f..c8cfd87 100644
+--- a/net/minecraft/world/level/block/CakeBlock.java
++++ b/net/minecraft/world/level/block/CakeBlock.java
+@@ -91,6 +91,9 @@ public class CakeBlock extends Block {
+     }
+ 
+     protected static InteractionResult eat(final LevelAccessor level, final BlockPos pos, final BlockState state, final Player player) {
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.noCakeEating || fun.bm.mili.carpet.config.modules.GameplayCompatConfig.sneakToEatCake && !player.isShiftKeyDown()) {
++            return InteractionResult.FAIL;
++        }
+         if (!player.canEat(false)) {
+             return InteractionResult.PASS;
+         }
+diff --git a/net/minecraft/world/level/block/DragonEggBlock.java b/net/minecraft/world/level/block/DragonEggBlock.java
+index 4c24150..83ff1e5 100644
+--- a/net/minecraft/world/level/block/DragonEggBlock.java
++++ b/net/minecraft/world/level/block/DragonEggBlock.java
+@@ -44,6 +44,7 @@ public class DragonEggBlock extends FallingBlock {
+     }
+ 
+     private void teleport(final BlockState state, final Level level, final BlockPos pos) {
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.easyMineDragonEgg) return;
+         if (!level.isClientSide()) {
+             WorldBorder worldBorder = level.getWorldBorder();
+             RandomSource random = level.getRandom();
+diff --git a/net/minecraft/world/level/block/PointedDripstoneBlock.java b/net/minecraft/world/level/block/PointedDripstoneBlock.java
+index 5cfa8ea..d9321bb 100644
+--- a/net/minecraft/world/level/block/PointedDripstoneBlock.java
++++ b/net/minecraft/world/level/block/PointedDripstoneBlock.java
+@@ -52,6 +52,11 @@ public class PointedDripstoneBlock extends SpeleothemBlock {
+ 
+     @Override
+     public void fallOn(final Level level, final BlockState state, final BlockPos pos, final Entity entity, final double fallDistance) {
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.safePointedDripstone
++            && entity instanceof net.minecraft.world.entity.player.Player) {
++            entity.causeFallDamage(fallDistance, 1.0F, level.damageSources().fall());
++            return;
++        }
+         if (state.getValue(TIP_DIRECTION) == Direction.UP && state.getValue(THICKNESS) == SpeleothemThickness.TIP) {
+             entity.causeFallDamage(fallDistance + 2.5, 2.0F, level.damageSources().stalagmite().eventBlockDamager(level, pos)); // CraftBukkit
+         } else {
+diff --git a/net/minecraft/world/level/block/RespawnAnchorBlock.java b/net/minecraft/world/level/block/RespawnAnchorBlock.java
+index 79bbb3a..ea13d5d 100644
+--- a/net/minecraft/world/level/block/RespawnAnchorBlock.java
++++ b/net/minecraft/world/level/block/RespawnAnchorBlock.java
+@@ -98,7 +98,9 @@ public class RespawnAnchorBlock extends Block {
+ 
+         if (level instanceof ServerLevel serverLevel) {
+             if (!canSetSpawn(serverLevel, pos)) {
+-                this.explode(state, serverLevel, pos);
++                if (!fun.bm.mili.carpet.config.modules.GameplayCompatConfig.disableRespawnBlocksExplode) {
++                    this.explode(state, serverLevel, pos);
++                }
+                 return InteractionResult.SUCCESS_SERVER;
+             }
+ 
+diff --git a/net/minecraft/world/level/block/TurtleEggBlock.java b/net/minecraft/world/level/block/TurtleEggBlock.java
+index f83a212..f9c5663 100644
+--- a/net/minecraft/world/level/block/TurtleEggBlock.java
++++ b/net/minecraft/world/level/block/TurtleEggBlock.java
+@@ -172,6 +172,13 @@ public class TurtleEggBlock extends Block {
+         final ItemStack destroyedWith
+         , boolean includeDrops, boolean dropExp // Paper - fix drops not preventing stats/food exhaustion
+     ) {
++        // Lophine start - Carpet features
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.turtleEggFastMine) {
++            super.playerDestroy(level, player, pos, state, blockEntity, destroyedWith, includeDrops, dropExp);
++            level.playSound(null, pos, SoundEvents.TURTLE_EGG_BREAK, SoundSource.BLOCKS, 0.7F, 0.9F + level.getRandom().nextFloat() * 0.2F);
++            return;
++        }
++        // Lophine end - Carpet features
+         super.playerDestroy(level, player, pos, state, blockEntity, destroyedWith, includeDrops, dropExp); // Paper - fix drops not preventing stats/food exhaustion
+         this.decreaseEggs(level, pos, state);
+     }
+diff --git a/net/minecraft/world/level/block/entity/BeaconBlockEntity.java b/net/minecraft/world/level/block/entity/BeaconBlockEntity.java
+index a3b95d7..ec1e65c 100644
+--- a/net/minecraft/world/level/block/entity/BeaconBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/BeaconBlockEntity.java
+@@ -251,6 +251,10 @@ public class BeaconBlockEntity extends BlockEntity implements MenuProvider, Name
+     }
+ 
+     private static int updateBase(final Level level, final int x, final int y, final int z) {
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.easyMaxLevelBeacon
++            && level.getBlockState(new BlockPos(x, y - 1, z)).is(net.minecraft.tags.BlockTags.BEACON_BASE_BLOCKS)) {
++            return 4;
++        }
+         int levels = 0;
+ 
+         for (int step = 1; step <= 4; levels = step++) {
+diff --git a/net/minecraft/world/level/block/grower/TreeGrower.java b/net/minecraft/world/level/block/grower/TreeGrower.java
+index 13797ac..674d84d 100644
+--- a/net/minecraft/world/level/block/grower/TreeGrower.java
++++ b/net/minecraft/world/level/block/grower/TreeGrower.java
+@@ -103,6 +103,14 @@ public final class TreeGrower {
+     }
+ 
+     private @Nullable ResourceKey<Feature> getConfiguredFeature(final RandomSource random, final boolean hasFlowers) {
++        // Carpet TIS Addition: 26.3 stores the ordinary oak choices in a weighted list.
++        int oakPercent = fun.bm.mili.carpet.config.modules.GameplayCompatConfig.oakBalloonPercent;
++        if (this == OAK && oakPercent > 0 && !hasFlowers) {
++            WeightedList<ResourceKey<Feature>> selected = WeightedList.of(
++                random.nextFloat() < oakPercent / 100.0F ? TreeFeatures.FANCY_OAK : TreeFeatures.OAK
++            );
++            return selected.getRandom(random).orElse(null);
++        }
+         return hasFlowers && !this.flowerTrees.isEmpty() ? this.flowerTrees.getRandom(random).orElse(null) : this.trees.getRandom(random).orElse(null);
+     }
+ 
+diff --git a/net/minecraft/world/level/block/state/BlockBehaviour.java b/net/minecraft/world/level/block/state/BlockBehaviour.java
+index 0758eff..12a2db8 100644
+--- a/net/minecraft/world/level/block/state/BlockBehaviour.java
++++ b/net/minecraft/world/level/block/state/BlockBehaviour.java
+@@ -201,7 +201,7 @@ public abstract class BlockBehaviour implements FeatureElement, org.leavesmc.lea
+                     // CraftBukkit end
+                 }
+ 
+-                state.spawnAfterBreak(level, pos, ItemStack.EMPTY, doDropExperienceHack);
++                state.spawnAfterBreak(level, pos, ItemStack.EMPTY, doDropExperienceHack || fun.bm.mili.carpet.config.modules.GameplayCompatConfig.xpFromExplosions);
+                 state.getDrops(params).forEach(stack -> onHit.accept(stack, pos));
+             }
+ 
+@@ -883,6 +883,10 @@ public abstract class BlockBehaviour implements FeatureElement, org.leavesmc.lea
+         }
+ 
+         public VoxelShape getCollisionShape(final BlockGetter level, final BlockPos pos, final CollisionContext context) {
++            if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.pointedDripstoneCollisionBoxDisabled && this.is(Blocks.POINTED_DRIPSTONE)
++                || fun.bm.mili.carpet.config.modules.GameplayCompatConfig.bambooCollisionBoxDisabled && this.is(Blocks.BAMBOO)) {
++                return Shapes.empty();
++            }
+             return this.getBlock().getCollisionShape(this.asState(), level, pos, context);
+         }
+ 
+@@ -1167,7 +1171,7 @@ public abstract class BlockBehaviour implements FeatureElement, org.leavesmc.lea
+ 
+             private Cache(final BlockState state) {
+                 Block block = state.getBlock();
+-                this.collisionShape = block.getCollisionShape(state, EmptyBlockGetter.INSTANCE, BlockPos.ZERO, CollisionContext.empty());
++                this.collisionShape = state.getCollisionShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO, CollisionContext.empty());
+                 if (!this.collisionShape.isEmpty() && state.hasOffsetFunction()) {
+                     throw new IllegalStateException(
+                         String.format(
+diff --git a/net/minecraft/world/level/levelgen/feature/HugeFungusFeature.java b/net/minecraft/world/level/levelgen/feature/HugeFungusFeature.java
+index 704db4b..1b72418 100644
+--- a/net/minecraft/world/level/levelgen/feature/HugeFungusFeature.java
++++ b/net/minecraft/world/level/levelgen/feature/HugeFungusFeature.java
+@@ -112,6 +112,9 @@ public record HugeFungusFeature(
+     }
+ 
+     private void placeHat(final WorldGenLevel level, final RandomSource random, final BlockPos surfaceOrigin, final int totalHeight, final boolean isHuge) {
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.foliageGenerateDisabled) {
++            return;
++        }
+         BlockPos.MutableBlockPos blockPos = new BlockPos.MutableBlockPos();
+         boolean placeVines = this.hatState.is(Blocks.NETHER_WART_BLOCK);
+         int hatHeight = Math.min(random.nextInt(1 + totalHeight / 3) + 5, totalHeight);
+@@ -187,6 +190,9 @@ public record HugeFungusFeature(
+     }
+ 
+     private static void tryPlaceWeepingVines(final BlockPos hatBlockPos, final LevelAccessor level, final RandomSource random) {
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.foliageGenerateDisabled) {
++            return;
++        }
+         BlockPos.MutableBlockPos placePos = hatBlockPos.mutable().move(Direction.DOWN);
+         if (level.isEmptyBlock(placePos)) {
+             int goalVineHeight = Mth.nextInt(random, 1, 5);
+diff --git a/net/minecraft/world/level/levelgen/feature/foliageplacers/FoliagePlacer.java b/net/minecraft/world/level/levelgen/feature/foliageplacers/FoliagePlacer.java
+index e4bd972..327a018 100644
+--- a/net/minecraft/world/level/levelgen/feature/foliageplacers/FoliagePlacer.java
++++ b/net/minecraft/world/level/levelgen/feature/foliageplacers/FoliagePlacer.java
+@@ -101,6 +101,9 @@ public abstract class FoliagePlacer {
+         final int y,
+         final boolean doubleTrunk
+     ) {
++        if (fun.bm.mili.carpet.config.modules.GameplayCompatConfig.foliageGenerateDisabled) {
++            return;
++        }
+         int offset = doubleTrunk ? 1 : 0;
+         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+ 

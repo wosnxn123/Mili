@@ -1,0 +1,132 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Helvetica Volubi <suisuroru@blue-millennium.fun>
+Date: Sun, 28 Jun 2026 18:54:50 +0800
+Subject: [PATCH] Anonymous Object: Configurable region format framework
+
+As requested by the original author, this patch will be anonymous and hide the original commit address.
+This patch is used with permission from the original author.
+Licensed under: GPL-3.0 (https://www.gnu.org/licenses/gpl-3.0.html)
+
+Port only the offline data-upgrader discovery delta. Use the existing Mili storage factory, quote the extension per invocation, and keep the Anvil rewrite path unchanged. Recreating custom files is rejected before storage is opened: buffered writes and rename ordering are not verified for that migration.
+
+diff --git a/net/minecraft/util/worldupdate/RegionStorageUpgrader.java b/net/minecraft/util/worldupdate/RegionStorageUpgrader.java
+--- a/net/minecraft/util/worldupdate/RegionStorageUpgrader.java
++++ b/net/minecraft/util/worldupdate/RegionStorageUpgrader.java
+@@ -26,7 +26,7 @@
+ import net.minecraft.world.level.ChunkPos;
+ import net.minecraft.world.level.Level;
+ import net.minecraft.world.level.chunk.storage.RecreatingSimpleRegionStorage;
+-import net.minecraft.world.level.chunk.storage.RegionFile;
++import net.minecraft.world.level.chunk.storage.RegionFileStorage;
+ import net.minecraft.world.level.chunk.storage.RegionStorageInfo;
+ import net.minecraft.world.level.chunk.storage.SimpleRegionStorage;
+ import net.minecraft.world.level.storage.LevelStorageSource;
+@@ -36,7 +36,6 @@
+ public class RegionStorageUpgrader {
+     private static final Logger LOGGER = LogUtils.getLogger();
+     private static final String NEW_DIRECTORY_PREFIX = "new_";
+-    private static final Pattern REGEX = Pattern.compile("^r\\.(-?[0-9]+)\\.(-?[0-9]+)\\.mca$");
+     private final DataFixer dataFixer;
+     private final UpgradeProgress upgradeProgress;
+     private final String type;
+@@ -79,9 +78,13 @@
+     public void init(final ResourceKey<Level> dimensionKey, final LevelStorageSource.LevelStorageAccess levelStorage) {
+         RegionStorageInfo info = new RegionStorageInfo(levelStorage.getLevelId(), dimensionKey, this.type);
+         Path regionFolder = levelStorage.getDimensionPath(dimensionKey).resolve(this.folderName);
++        final String extension = RegionFileStorage.getExtensionName();
++        if (this.recreateRegionFiles && !extension.equals(".mca")) {
++            throw new IllegalStateException("Recreating region files is only supported with Anvil storage");
++        }
+         this.dimensionKey = dimensionKey;
+         this.storage = this.createStorage(info, regionFolder);
+-        this.files = this.getFilesToProcess(info, regionFolder);
++        this.files = this.getFilesToProcess(info, regionFolder, extension);
+     }
+ 
+     public void upgrade() {
+@@ -110,7 +113,7 @@
+                         if (converted) {
+                             this.onFileFinished(fileToUpgrade.file());
+                         } else {
+-                            LOGGER.error("Failed to convert region file {}", fileToUpgrade.file().getPath());
++                            LOGGER.error("Failed to convert region file {}", fileToUpgrade.file());
+                         }
+                     }
+                 }
+@@ -150,8 +153,8 @@
+             : new SimpleRegionStorage(info, regionFolder, this.dataFixer, true, this.dataFixType);
+     }
+ 
+-    private List<FileToUpgrade> getFilesToProcess(final RegionStorageInfo info, final Path regionFolder) {
+-        List<FileToUpgrade> filesToUpgrade = getAllChunkPositions(info, regionFolder);
++    private List<FileToUpgrade> getFilesToProcess(final RegionStorageInfo info, final Path regionFolder, final String extension) {
++        List<FileToUpgrade> filesToUpgrade = getAllChunkPositions(info, regionFolder, extension);
+         this.upgradeProgress.addTotalFileFixOperations(filesToUpgrade.size());
+         this.upgradeProgress.addTotalChunks(filesToUpgrade.stream().mapToInt(fileToUpgrade -> fileToUpgrade.chunksToUpgrade().size()).sum());
+         return filesToUpgrade;
+@@ -161,22 +164,23 @@
+         return this.files == null ? 0 : this.files.size();
+     }
+ 
+-    private static List<FileToUpgrade> getAllChunkPositions(final RegionStorageInfo info, final Path regionFolder) {
+-        File[] files = regionFolder.toFile().listFiles((dir, name) -> name.endsWith(".mca"));
++    private static List<FileToUpgrade> getAllChunkPositions(final RegionStorageInfo info, final Path regionFolder, final String extension) {
++        File[] files = regionFolder.toFile().listFiles((dir, name) -> name.endsWith(extension));
+         if (files == null) {
+             return List.of();
+         }
+ 
++        final Pattern filename = Pattern.compile("^r\\.(-?[0-9]+)\\.(-?[0-9]+)" + Pattern.quote(extension) + "$");
+         List<FileToUpgrade> regionFileChunks = Lists.newArrayList();
+ 
+         for (File regionFile : files) {
+-            Matcher regex = REGEX.matcher(regionFile.getName());
++            Matcher regex = filename.matcher(regionFile.getName());
+             if (regex.matches()) {
+                 int xOffset = Integer.parseInt(regex.group(1)) << 5;
+                 int zOffset = Integer.parseInt(regex.group(2)) << 5;
+                 List<ChunkPos> chunkPositions = Lists.newArrayList();
+ 
+-                try (RegionFile regionSource = new RegionFile(info, regionFile.toPath(), regionFolder, true)) {
++                try (abomination.IRegionFile regionSource = RegionFileStorage.createNew(info, regionFile.toPath(), regionFolder, true)) {
+                     for (int x = 0; x < 32; x++) {
+                         for (int z = 0; z < 32; z++) {
+                             ChunkPos pos = new ChunkPos(x + xOffset, z + zOffset);
+@@ -187,7 +191,7 @@
+                     }
+ 
+                     if (!chunkPositions.isEmpty()) {
+-                        regionFileChunks.add(new FileToUpgrade(regionSource, chunkPositions));
++                        regionFileChunks.add(new FileToUpgrade(regionFile.toPath(), chunkPositions));
+                     }
+                 } catch (Throwable t) {
+                     LOGGER.error("Failed to read chunks from region file {}", regionFile.toPath(), t);
+@@ -253,13 +257,12 @@
+         return storage.upgradeChunkTag(chunkTag, this.defaultVersion, this.dataFixContextTag, targetVersion);
+     }
+ 
+-    private void onFileFinished(final RegionFile regionFile) {
++    private void onFileFinished(final Path filePath) {
+         if (this.recreateRegionFiles) {
+             if (this.previousWriteFuture != null) {
+                 this.previousWriteFuture.join();
+             }
+ 
+-            Path filePath = regionFile.getPath();
+             Path directoryPath = filePath.getParent();
+             Path newFilePath = resolveRecreateDirectory(directoryPath).resolve(filePath.getFileName().toString());
+ 
+diff --git a/net/minecraft/util/worldupdate/FileToUpgrade.java b/net/minecraft/util/worldupdate/FileToUpgrade.java
+--- a/net/minecraft/util/worldupdate/FileToUpgrade.java
++++ b/net/minecraft/util/worldupdate/FileToUpgrade.java
+@@ -1,8 +1,8 @@
+ package net.minecraft.util.worldupdate;
+ 
++import java.nio.file.Path;
+ import java.util.List;
+ import net.minecraft.world.level.ChunkPos;
+-import net.minecraft.world.level.chunk.storage.RegionFile;
+ 
+-public record FileToUpgrade(RegionFile file, List<ChunkPos> chunksToUpgrade) {
++public record FileToUpgrade(Path file, List<ChunkPos> chunksToUpgrade) {
+ }
