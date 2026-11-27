@@ -60,13 +60,11 @@ import net.minecraft.world.entity.vehicle.boat.AbstractBoat;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.item.FishingRodItem;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.MapItem;
 import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.level.gamerules.GameRules;
 import net.minecraft.world.level.portal.TeleportTransition;
-import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.*;
@@ -225,6 +223,8 @@ public class ServerBot extends ServerPlayer {
         }
 
         this.livingEntityTick();
+        // 假玩家绕过 Player.tick，需要执行上游的持有地图检查。
+        this.tickInventoryMapsWithoutInventoryTick();
 
         this.foodData.tick(this);
 
@@ -646,14 +646,8 @@ public class ServerBot extends ServerPlayer {
 
     private void dropInventoryStack(ItemStack itemStack, boolean randomly) {
         // The old drop(stack, randomly, thrownFromHand) API reordered its arguments in 26.3.
-        ItemEntity dropped = this.drop(itemStack, false, Prediction.PREDICTED, randomly, true, null);
-        // Preserve ServerPlayer's map cleanup, which the six-argument LivingEntity overload bypasses.
-        if (dropped != null && dropped.getItem().getItem() instanceof MapItem) {
-            MapItemSavedData mapData = MapItem.getSavedData(dropped.getItem(), this.level());
-            if (mapData != null) {
-                mapData.tickCarriedBy(this, dropped.getItem(), null);
-            }
-        }
+        // 地图持有关系由物品栏检查维护；不能将刚丢出的地图再次标记为持有。
+        this.drop(itemStack, false, Prediction.PREDICTED, randomly, true, null);
     }
 
     public void dropAll(boolean death) {

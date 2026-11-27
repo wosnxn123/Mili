@@ -69,7 +69,8 @@ final class VanillaGameplayTestSuite {
         assertEquals(scheduler, store.schedulers().get(id));
         assertEquals(8, store.snapshots().getFirst().getIntOr("Age", -1));
 
-        store.close();
+        assertEquals(scheduler, store.closeAndGetSchedulers().get(id));
+        assertTrue(store.closeAndGetSchedulers().isEmpty());
         store.forget(id, scheduler);
         assertFalse(store.publish(id, new CompoundTag(), scheduler));
         assertEquals(8, store.snapshots().getFirst().getIntOr("Age", -1));

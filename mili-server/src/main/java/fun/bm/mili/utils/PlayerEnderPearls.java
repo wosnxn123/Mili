@@ -49,6 +49,12 @@ public final class PlayerEnderPearls {
         this.closing = true;
     }
 
+    public synchronized Map<UUID, EntityScheduler> closeAndGetSchedulers() {
+        if (this.closing) return Map.of();
+        this.closing = true;
+        return schedulers();
+    }
+
     public synchronized Map<UUID, EntityScheduler> schedulers() {
         Map<UUID, EntityScheduler> result = new HashMap<>();
         this.entries.forEach((id, entry) -> {

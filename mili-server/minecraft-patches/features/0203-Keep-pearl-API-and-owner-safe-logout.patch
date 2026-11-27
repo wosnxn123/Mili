@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Patch Build <noreply@example.invalid>
+Date: Sat, 28 Nov 2026 02:03:32 +0800
+Subject: [PATCH] Keep the Paper pearl API and share owner-safe logout cleanup
+
+Co-Authored-By: Claude Code <noreply@anthropic.com>
+
+diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
+index 9ad1f4316f7d435fda5c19671176ca2b13b01ecf..c1ac54de21df70725bda02cc46567c7733b2f8d7 100644
+--- a/net/minecraft/server/level/ServerPlayer.java
++++ b/net/minecraft/server/level/ServerPlayer.java
+@@ -3596,6 +3596,15 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+         return getInputVector(new Vec3(leftIntent, 0.0, forwardIntent), 1.0F, this.getYRot());
+     }
+ 
++    // Paper API 使用当前包装器关联的实体快照；不在玩家线程读取或修改珍珠状态。
++    public Set<ThrownEnderpearl> getEnderPearls() {
++        final var pearls = new java.util.HashSet<ThrownEnderpearl>();
++        for (var scheduler : this.mili$enderPearls.schedulers().values()) {
++            if (scheduler.entity.getHandleRaw() instanceof ThrownEnderpearl pearl) pearls.add(pearl);
++        }
++        return java.util.Collections.unmodifiableSet(pearls);
++    }
++
+     public fun.bm.mili.utils.PlayerEnderPearls mili$getEnderPearls() {
+         return this.mili$enderPearls;
+     }
+diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
+index fb6640b83ebbe595a67f3291298aa212183966ac..e063ff753131b53ccaae1a683ed292836eb76b7b 100644
+--- a/net/minecraft/server/players/PlayerList.java
++++ b/net/minecraft/server/players/PlayerList.java
+@@ -118,6 +118,11 @@ public abstract class PlayerList {
+         }
+     }
+ 
++    public void mili$closeEnderPearlsForLogout(final ServerPlayer player) {
++        final var storage = player.mili$getEnderPearls();
++        storage.closeAndGetSchedulers().forEach((id, scheduler) -> this.mili$unloadPearl(id, scheduler, storage));
++    }
++
+     private void mili$unloadPearl(final UUID id, final io.papermc.paper.threadedregions.EntityScheduler scheduler, final fun.bm.mili.utils.PlayerEnderPearls storage) {
+         var unloading = new java.util.concurrent.CompletableFuture<Void>();
+         this.mili$unloadingPearls.put(id, unloading);
+@@ -767,9 +772,7 @@ public abstract class PlayerList {
+             player.drop(carried, false, net.minecraft.util.Prediction.PREDICTED);
+         }
+         // Paper end - Drop carried item when player has disconnected
+-        fun.bm.mili.utils.PlayerEnderPearls pearlStorage = player.mili$getEnderPearls();
+-        pearlStorage.close(); // Freeze the quit snapshot before saving or dispatching removals.
+-        pearlStorage.schedulers().forEach((id, scheduler) -> this.mili$unloadPearl(id, scheduler, pearlStorage));
++        this.mili$closeEnderPearlsForLogout(player);
+         this.save(player);
+         if (player.isPassenger()) {
+             Entity vehicle = player.getRootVehicle();

@@ -42,14 +42,12 @@ import net.minecraft.util.ProblemReporter;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.npc.villager.AbstractVillager;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownEnderpearl;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.storage.ValueInput;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.command.CommandSender;
 import org.bukkit.craftbukkit.CraftWorld;
-import org.bukkit.event.entity.EntityRemoveEvent;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -276,6 +274,8 @@ public class BotList {
             bot.removeTaskId = -1;
         }
 
+        // 在保存与断线前冻结快照；实体只由各自所属区域卸载。
+        this.server.getPlayerList().mili$closeEnderPearlsForLogout(bot);
         bot.disconnect();
 
         this.resumeDataStorage.removeSavedData(bot);
@@ -307,13 +307,6 @@ public class BotList {
         }
 
         bot.unRide();
-        for (ThrownEnderpearl thrownEnderpearl : bot.getEnderPearls()) {
-            if (!thrownEnderpearl.level().paperConfig().misc.legacyEnderPearlBehavior) {
-                thrownEnderpearl.setRemoved(Entity.RemovalReason.UNLOADED_WITH_PLAYER, EntityRemoveEvent.Cause.PLAYER_QUIT);
-            } else {
-                thrownEnderpearl.setOwner(null);
-            }
-        }
 
         bot.level().getCurrentWorldData().connections.remove(bot.connection.connection);
         bot.level().removePlayerImmediately(bot, Entity.RemovalReason.UNLOADED_WITH_PLAYER);
