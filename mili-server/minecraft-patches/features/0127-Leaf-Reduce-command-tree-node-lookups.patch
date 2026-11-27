@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hayanesuru <hayanesuru@outlook.jp>
+Date: Wed, 29 Jul 2026 12:52:50 +0900
+Subject: [PATCH] Leaf: Reduce command tree node lookups
+
+Insert a new command node with one hash table probe and enqueue its
+children and redirect only if insertion changed the map size. Retain the
+original breadth-first numbering and default return value.
+
+Ported from Lophine (GPLv3 for its changes; see licenses/GPL.md):
+https://github.com/LophineLabs/Lophine/blob/7a51f49a512f1b5465f15a905d3704754e4bed02/lophine-server/minecraft-patches/features/0149-Leaf-Reduce-command-tree-node-lookups.patch
+Lophine patch blob: 320d0c09f328f0484cd144c49d982e476817c060
+https://github.com/LophineLabs/Lophine/blob/7a51f49a512f1b5465f15a905d3704754e4bed02/LICENSE.md
+
+Original Leaf patch by hayanesuru (MIT per Leaf's patch license):
+https://github.com/Winds-Studio/Leaf/blob/06c9c91a17e61aeed16bcfc846ebe91aa70d6c84/leaf-server/minecraft-patches/features/0291-optimize-ClientboundCommandsPacket-enumerateNodes.patch
+Leaf patch blob: b67028498d5ee2c450ca264c241c400a9e4745e3
+https://github.com/Winds-Studio/Leaf/blob/06c9c91a17e61aeed16bcfc846ebe91aa70d6c84/LICENSE.md
+https://github.com/Winds-Studio/Leaf/blob/06c9c91a17e61aeed16bcfc846ebe91aa70d6c84/licenses/MIT.txt
+
+MIT License
+
+Copyright (c) 2022-2024 Respective authors of parts of Leaf, or software included therein
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+diff --git a/net/minecraft/network/protocol/game/ClientboundCommandsPacket.java b/net/minecraft/network/protocol/game/ClientboundCommandsPacket.java
+index d2585a69b978e00cf3b9e8829807d63128fc0b55..1261171a83e9f3112d507eb7662287a32fbe7d4c 100644
+--- a/net/minecraft/network/protocol/game/ClientboundCommandsPacket.java
++++ b/net/minecraft/network/protocol/game/ClientboundCommandsPacket.java
+@@ -84,14 +84,16 @@ public class ClientboundCommandsPacket implements Packet<ClientGamePacketListene
+
+         CommandNode<S> node;
+         while ((node = queue.poll()) != null) {
+-            if (!nodeToId.containsKey(node)) {
+-                int id = nodeToId.size();
+-                nodeToId.put(node, id);
++            // Leaf start - optimize ClientboundCommandsPacket#enumerateNodes
++            final int id = nodeToId.size();
++            nodeToId.putIfAbsent(node, id);
++            if (nodeToId.size() != id) {
+                 queue.addAll(node.getChildren());
+                 if (node.getRedirect() != null) {
+                     queue.add(node.getRedirect());
+                 }
+             }
++            // Leaf end - optimize ClientboundCommandsPacket#enumerateNodes
+         }
+
+         return nodeToId;
