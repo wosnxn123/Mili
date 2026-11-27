@@ -14,6 +14,7 @@ plugins {
     idea
     kotlin("jvm") version "2.3.21"
     id("io.papermc.paperweight.core")
+    id("io.papermc.paperweight.paper-checkstyle")
     id("io.papermc.fill.gradle") version "1.0.14"
 }
 
@@ -24,7 +25,7 @@ kotlin {
 val paperMavenPublicUrl = "https://repo.papermc.io/repository/maven-public/"
 
 dependencies {
-    mache("io.papermc:mache:26.3+build.1")
+    mache("io.papermc:mache:26.3+build.2")
     // Keep the custom launcher's staged-update and optional Mixin bootstrap.
     // Fetch and verify it with scripts/download_launcher.py before packaging.
     paperclip(files(rootProject.layout.projectDirectory.file("libs/hyacinthusclip.jar")))
@@ -66,6 +67,14 @@ paperweight {
     updatingMinecraft {
         // oldPaperCommit = "d4fe85375af18bfa88f44d7c1e6a61904ae550cc"
     }
+}
+
+paperCheckstyle {
+    directoriesToSkipFile = layout.projectDirectory.file("../paper-server/.checkstyle/ignored_directories.txt")
+}
+
+tasks.named<io.papermc.paperweight.checkstyle.tasks.MergeCheckstyleConfigs>("mergeCheckstyleConfigs") {
+    overrideConfigFile.set(layout.projectDirectory.file("../paper-server/.checkstyle/checkstyle.xml"))
 }
 
 tasks.generateDevelopmentBundle {
@@ -186,7 +195,7 @@ dependencies {
     }
     // Leaves end - leaves plugin
     // Luminol end
-    implementation(platform("ca.spottedleaf.leafpile:bom:1.3.2"))
+    implementation(platform("ca.spottedleaf.leafpile:bom:1.3.3"))
     implementation("ca.spottedleaf.leafpile:common")
     implementation("ca.spottedleaf.leafpile:concurrentutil")
     implementation("ca.spottedleaf.leafpile:converter")

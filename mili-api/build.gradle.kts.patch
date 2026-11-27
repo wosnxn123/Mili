@@ -101,7 +101,7 @@
          }
      }
  }
-@@ -267,7 +288,7 @@
+@@ -262,7 +283,7 @@
      options.compilerArgs.add("-parameters")
  }
  
@@ -110,7 +110,7 @@
      badAnnotations.add("Lio/papermc/paper/annotation/DoNotUse;")
      jarToScan.set(tasks.jar.flatMap { it.archiveFile })
      classpath.from(configurations.compileClasspath)
-@@ -275,3 +296,19 @@
+@@ -270,3 +291,19 @@
  tasks.check {
      dependsOn(scanJarForBadCalls)
  }
