@@ -9,6 +9,12 @@ The cactus rotation and dispenser behavior retain their LGPL-3.0-only
 source notice, based on gnembon/fabric-carpet revision
 f358000b175ddbcf1dd0bc59641c715fb0545664 (carpet.helpers.BlockRotator),
 via Lophine 0131 and 0135.
+The dragon breath dispenser behavior retains its LGPL-3.0-or-later source
+notice and attribution to Fallen_Breath and Carpet TIS Addition contributors
+(revision 62c3cb6fff26cd9c4e12aa616b403c184a4a6ca0) via Lophine 0134 and 0135.
+The clean creative removal helper retains its LGPL-3.0-or-later notice
+and attribution to Fallen_Breath and Carpet TIS Addition contributors
+(62c3cb6fff26cd9c4e12aa616b403c184a4a6ca0), via Lophine 0134 and 0135.
 The Lophine integration is distributed under GPL version 3 (see the project's
 LICENSE.md and licenses/GPL.md).
 

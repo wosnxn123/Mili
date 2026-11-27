@@ -5,9 +5,11 @@ import xml.etree.ElementTree as ET
 required = {
     'fun.bm.mili.regression.PathRecomputationTestSuite',
     'fun.bm.mili.regression.CommandTreeEnumerationTestSuite',
+    'fun.bm.mili.regression.CreativeRemovalTestSuite',
     'fun.bm.mili.update.MiliAutoUpdateTestSuite',
     'net.minecraft.world.level.block.CactusRotationTest',
     'net.minecraft.world.level.block.CarpetLargeBarrelTest',
+    'net.minecraft.core.dispenser.CarpetDispenserTest',
     'org.leavesmc.leaves.plugin.ServerFeatureManagerTest',
     'org.leavesmc.leaves.protocol.servux.litematics.LitematicaSchematicTest',
 }

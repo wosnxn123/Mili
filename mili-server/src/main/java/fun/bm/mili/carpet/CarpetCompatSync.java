@@ -102,6 +102,7 @@ public final class CarpetCompatSync {
         rules.add(CarpetServerProtocol.CarpetRule.of("carpettisaddition", "blockPlacementIgnoreEntity", GeneralCompatConfig.blockPlacementIgnoreEntity));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpettisaddition", "creativeOpenContainerForcibly", GeneralCompatConfig.creativeOpenContainerForcibly));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpetamsaddition", "creativeOneHitKill", GeneralCompatConfig.creativeOneHitKill));
+        rules.add(CarpetServerProtocol.CarpetRule.of("carpettisaddition", "creativeHitRemoveEntity", GeneralCompatConfig.creativeHitRemoveEntity));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpettisaddition", "observerNoDetection", GeneralCompatConfig.observerNoDetection));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpetamsaddition", "bambooModelNoOffset", GeneralCompatConfig.bambooModelNoOffset));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpettisaddition", "creativeNoItemCooldown", GeneralCompatConfig.creativeNoItemCooldown));
@@ -184,6 +185,8 @@ public final class CarpetCompatSync {
         rules.add(CarpetServerProtocol.CarpetRule.of("carpetamsaddition", "flippinCactusExtras", GeneralCompatConfig.flippinCactusExtras));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpetamsaddition", "flippinCactusSoundEffect", GeneralCompatConfig.flippinCactusSoundEffect));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpet", "rotatorBlock", GeneralCompatConfig.rotatorBlock));
+        rules.add(CarpetServerProtocol.CarpetRule.of("carpettisaddition", "dispensersFireDragonBreath", GeneralCompatConfig.dispensersFireDragonBreath));
+        rules.add(CarpetServerProtocol.CarpetRule.of("carpettisaddition", "dispenserNoItemCost", GeneralCompatConfig.dispenserNoItemCost));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpet", "noCreeperBlockBreaking", GeneralCompatConfig.noCreeperBlockBreaking));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpet", "noGhastBlockBreaking", GeneralCompatConfig.noGhastBlockBreaking));
         rules.add(CarpetServerProtocol.CarpetRule.of("carpet", "disableGhastFire", GeneralCompatConfig.disableGhastFire));

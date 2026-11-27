@@ -72,6 +72,9 @@ public class GeneralCompatConfig implements IConfigModule {
             蹲下时该效果扩展为小范围群体攻击。""")
     public static boolean creativeOneHitKill = false;
 
+    @ConfigInfo(name = "creativeHitRemoveEntity", comments = "创造模式命中后直接移除非玩家实体，不走死亡掉落；持剑时可横扫同一区域的目标。优先于一击击杀。")
+    public static volatile boolean creativeHitRemoveEntity = false;
+
     @ConfigInfo(name = "observerNoDetection", comments = """
             完全禁用侦测器的检测脉冲。""")
     public static boolean observerNoDetection = false;
@@ -303,6 +306,12 @@ public class GeneralCompatConfig implements IConfigModule {
 
     @ConfigInfo(name = "rotatorBlock", comments = "装有仙人掌的发射器旋转前方方块，不消耗仙人掌。")
     public static volatile boolean rotatorBlock = false;
+
+    @ConfigInfo(name = "dispensersFireDragonBreath", comments = "发射器可释放龙息云；只在目标范围的区块均已加载且由当前线程持有时生成。")
+    public static volatile boolean dispensersFireDragonBreath = false;
+
+    @ConfigInfo(name = "dispenserNoItemCost", comments = "发射器保留被选取的物品及其耐久，但仍按原有行为返还容器物品；不影响投掷器。")
+    public static volatile boolean dispenserNoItemCost = false;
 
     @ConfigInfo(name = "noCreeperBlockBreaking", comments = "苦力怕的爆炸不破坏方块，保留爆炸事件和实体伤害。")
     public static volatile boolean noCreeperBlockBreaking = false;

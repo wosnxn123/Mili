@@ -1,0 +1,90 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Carpet TIS creative hit clean entity removal
+
+Adapted from Lophine 0134/0135 at 7a51f49a512f1b5465f15a905d3704754e4bed02; originally Carpet TIS Addition (Fallen_Breath and contributors), LGPL-3.0-or-later, 62c3cb6fff26cd9c4e12aa616b403c184a4a6ca0.
+Respect Paper pre-attack cancellation, including sweep targets, and never mutate entities in a different Folia region.
+
+diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
+index cae7f14f5002ff7102e7f138b4ac48034961edd1..2a30cfa8dbc71191b80bf5044bdee898f4764846 100644
+--- a/net/minecraft/world/entity/Entity.java
++++ b/net/minecraft/world/entity/Entity.java
+@@ -700,6 +700,22 @@ public abstract class Entity
+         this.discard(null);
+     }
+ 
++    private boolean mili$cleanRemoval;
++
++    public final boolean mili$isCleanRemoval() {
++        return this.mili$cleanRemoval;
++    }
++
++    public final void mili$discardCleanly() {
++        final boolean previous = this.mili$cleanRemoval;
++        this.mili$cleanRemoval = true;
++        try {
++            this.discard(org.bukkit.event.entity.EntityRemoveEvent.Cause.PLUGIN);
++        } finally {
++            this.mili$cleanRemoval = previous;
++        }
++    }
++
+     public final void discard(org.bukkit.event.entity.EntityRemoveEvent.@Nullable Cause cause) {
+         this.remove(Entity.RemovalReason.DISCARDED, cause);
+         // CraftBukkit end
+diff --git a/net/minecraft/world/entity/monster/cubemob/AbstractCubeMob.java b/net/minecraft/world/entity/monster/cubemob/AbstractCubeMob.java
+index 54e7c0e1d3bf2d41c04d4661f48ac96bda7c1113..eb65c46fa51d5ebaed27be47379c68ae2b96fe0d 100644
+--- a/net/minecraft/world/entity/monster/cubemob/AbstractCubeMob.java
++++ b/net/minecraft/world/entity/monster/cubemob/AbstractCubeMob.java
+@@ -188,7 +188,7 @@ public abstract class AbstractCubeMob extends AgeableMob {
+     @Override
+     public void remove(final Entity.RemovalReason reason, org.bukkit.event.entity.EntityRemoveEvent.@Nullable Cause eventCause) { // CraftBukkit - add Bukkit remove cause
+         int size = this.getSize();
+-        if (!this.level().isClientSide() && size > 1 && this.isDeadOrDying()) {
++        if (!this.mili$isCleanRemoval() && !this.level().isClientSide() && size > 1 && this.isDeadOrDying()) {
+             float width = this.getDimensions(this.getPose()).width();
+             float xzCubeSpawnOffset = width / 2.0F;
+             int halfSize = size / 2;
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index 23465e0314b94047ec4d30fcb1eb15d1795ef61c..3fb9397547ad1b3abe09d797cab53b939d339574 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -1081,6 +1081,11 @@ public abstract class Player extends Avatar implements ContainerUser {
+ 
+         if (playerAttackEntityEvent.callEvent() && willAttack) { // Logic moved to willAttack local variable.
+         // Paper end - PlayerAttackEntityEvent
++            if (fun.bm.mili.carpet.config.modules.GeneralCompatConfig.creativeHitRemoveEntity
++                && this instanceof ServerPlayer serverPlayer && this.isCreative()) {
++                fun.bm.mili.carpet.CarpetEntityRemoval.onHit(serverPlayer, entity);
++                return;
++            }
+             if (this.level() instanceof ServerLevel serverLevel
+                 && fun.bm.mili.carpet.config.modules.GeneralCompatConfig.creativeOneHitKill
+                 && this.isCreative()
+diff --git a/net/minecraft/world/entity/vehicle/boat/AbstractChestBoat.java b/net/minecraft/world/entity/vehicle/boat/AbstractChestBoat.java
+index 58b99596b16e1dd8b0c9bcde5d465c6df52cc28b..1da3ef6f4cb1aad142f1d950becbc9cc9719f203 100644
+--- a/net/minecraft/world/entity/vehicle/boat/AbstractChestBoat.java
++++ b/net/minecraft/world/entity/vehicle/boat/AbstractChestBoat.java
+@@ -69,7 +69,7 @@ public abstract class AbstractChestBoat extends AbstractBoat implements HasCusto
+ 
+     @Override
+     public void remove(final Entity.RemovalReason reason, org.bukkit.event.entity.EntityRemoveEvent.@Nullable Cause cause) { // CraftBukkit - add Bukkit remove cause
+-        if (!this.level().isClientSide() && reason.shouldDestroy()) {
++        if (!this.mili$isCleanRemoval() && !this.level().isClientSide() && reason.shouldDestroy()) {
+             Containers.dropContents(this.level(), this, this);
+         }
+ 
+diff --git a/net/minecraft/world/entity/vehicle/minecart/AbstractMinecartContainer.java b/net/minecraft/world/entity/vehicle/minecart/AbstractMinecartContainer.java
+index d87dcb72fd5d2b22eafc1a444d4fc3807595b6a5..e4def287f9c4964afd572931ee88d0c5ecba0367 100644
+--- a/net/minecraft/world/entity/vehicle/minecart/AbstractMinecartContainer.java
++++ b/net/minecraft/world/entity/vehicle/minecart/AbstractMinecartContainer.java
+@@ -75,7 +75,7 @@ public abstract class AbstractMinecartContainer extends AbstractMinecart impleme
+ 
+     @Override
+     public void remove(final Entity.RemovalReason reason, org.bukkit.event.entity.EntityRemoveEvent.@Nullable Cause cause) { // CraftBukkit - add Bukkit remove cause
+-        if (!this.level().isClientSide() && reason.shouldDestroy()) {
++        if (!this.mili$isCleanRemoval() && !this.level().isClientSide() && reason.shouldDestroy()) {
+             Containers.dropContents(this.level(), this, this);
+         }
+ 

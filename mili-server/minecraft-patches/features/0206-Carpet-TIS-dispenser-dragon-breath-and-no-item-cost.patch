@@ -1,0 +1,315 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Tue, 23 Jun 2026 03:06:41 +0800
+Subject: [PATCH] Carpet TIS dispenser dragon breath and no item cost
+
+Adapted for Mili from LophineLabs/Lophine 0134 and 0135 (7a51f49a512f1b5465f15a905d3704754e4bed02).
+Retain the LGPL-3.0-or-later attribution to Fallen_Breath and Carpet TIS Addition
+contributors (62c3cb6fff26cd9c4e12aa616b403c184a4a6ca0).
+Refuse cloud targets outside loaded chunks owned by the calling region rather
+than importing Scarpet's cross-region continuation engine.
+
+diff --git a/net/minecraft/core/dispenser/DefaultDispenseItemBehavior.java b/net/minecraft/core/dispenser/DefaultDispenseItemBehavior.java
+index 71a531436d078ae91dd454aff4abf1d74fd7d832..93b42e2d3b2d94b2dfdc4329bca3e9136290e9a9 100644
+--- a/net/minecraft/core/dispenser/DefaultDispenseItemBehavior.java
++++ b/net/minecraft/core/dispenser/DefaultDispenseItemBehavior.java
+@@ -115,6 +115,13 @@
+     }
+ 
+     protected ItemStack consumeWithRemainder(final BlockSource source, final ItemStack dispensed, final ItemStack remainder) {
++        if (CarpetDispenserRules.isNoCost(source)) {
++            // The selected slot stays occupied even for the last input item.
++            if (!source.blockEntity().isRemoved()) {
++                this.addToInventoryOrDispense(source, remainder);
++            }
++            return dispensed;
++        }
+         dispensed.shrink(1);
+         if (dispensed.isEmpty()) {
+             return remainder;
+diff --git a/net/minecraft/world/level/block/DispenserBlock.java b/net/minecraft/world/level/block/DispenserBlock.java
+index 7879bafd54bb0c61e403a10deaa20d54001bcdb2..b33c428cf55eabc510fdf58ae5009fbb00fa4ec0 100644
+--- a/net/minecraft/world/level/block/DispenserBlock.java
++++ b/net/minecraft/world/level/block/DispenserBlock.java
+@@ -8,6 +8,8 @@
+ import net.minecraft.core.Position;
+ import net.minecraft.core.component.DataComponents;
+ import net.minecraft.core.dispenser.BlockSource;
++import net.minecraft.core.dispenser.CarpetDispenserRules;
++import net.minecraft.core.dispenser.CarpetDragonBreathDispenseBehavior;
+ import net.minecraft.core.dispenser.DefaultDispenseItemBehavior;
+ import net.minecraft.core.dispenser.DispenseItemBehavior;
+ import net.minecraft.core.dispenser.EquipmentDispenseItemBehavior;
+@@ -94,7 +96,12 @@
+                 DispenseItemBehavior behavior = this.getDispenseMethod(level, itemStack);
+                 if (behavior != DispenseItemBehavior.NOOP) {
+                     if (!org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockPreDispenseEvent(level, pos, itemStack, slot)) return; // Paper - Add BlockPreDispenseEvent
+-                    blockEntity.setItem(slot, behavior.dispense(source, itemStack));
++                    boolean noCost = fun.bm.mili.carpet.config.modules.GeneralCompatConfig.dispenserNoItemCost;
++                    if (noCost || behavior instanceof CarpetDragonBreathDispenseBehavior) {
++                        CarpetDispenserRules.dispenseSelected(source, slot, itemStack, behavior, noCost);
++                    } else {
++                        blockEntity.setItem(slot, behavior.dispense(source, itemStack));
++                    }
+                 }
+             }
+         }
+@@ -111,6 +118,9 @@
+             return DEFAULT_BEHAVIOR;
+         }
+ 
++        if (fun.bm.mili.carpet.config.modules.GeneralCompatConfig.dispensersFireDragonBreath && itemStack.is(net.minecraft.world.item.Items.DRAGON_BREATH)) {
++            return new CarpetDragonBreathDispenseBehavior(); // DefaultDispenseItemBehavior stores facing per activation.
++        }
+         if (fun.bm.mili.carpet.config.modules.GeneralCompatConfig.rotatorBlock && itemStack.is(net.minecraft.world.item.Items.CACTUS)) {
+             return new CarpetBlockRotator.CactusDispenserBehaviour();
+         }
+diff --git a/net/minecraft/core/dispenser/CarpetDispenserRules.java b/net/minecraft/core/dispenser/CarpetDispenserRules.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..c6d5070db4d03d65e8073bb74d5ecf9b6710ce89
+--- /dev/null
++++ b/net/minecraft/core/dispenser/CarpetDispenserRules.java
+@@ -0,0 +1,80 @@
++package net.minecraft.core.dispenser;
++
++import ca.spottedleaf.moonrise.common.util.TickThread;
++import java.util.function.BooleanSupplier;
++import net.minecraft.core.BlockPos;
++import net.minecraft.server.level.ServerLevel;
++import net.minecraft.world.item.ItemStack;
++import net.minecraft.world.level.block.DispenserBlock;
++import net.minecraft.world.level.block.state.BlockState;
++import net.minecraft.world.level.chunk.LevelChunk;
++import org.jspecify.annotations.Nullable;
++
++public final class CarpetDispenserRules {
++    private static final ThreadLocal<BlockSource> NO_COST = new ThreadLocal<>();
++
++    private CarpetDispenserRules() {
++    }
++
++    public static void dispenseSelected(final BlockSource source, final int slot, final ItemStack selected,
++                                        final DispenseItemBehavior behavior, final boolean noCost) {
++        if (!current(source) || source.blockEntity().getItem(slot) != selected || selected.isEmpty()) {
++            return;
++        }
++        if (!(behavior instanceof CarpetDragonBreathDispenseBehavior)) {
++            if (canUseDefaultTarget(source)) {
++                dispenseNoCost(source, behavior, selected);
++            }
++            return;
++        }
++
++        // Keep the original slot untouched during Bukkit callbacks. A listener
++        // that replaces it or edits it in place owns that change, not us.
++        final ItemStack snapshot = selected.copy();
++        final BooleanSupplier unchanged = () -> current(source) && source.blockEntity().getItem(slot) == selected && ItemStack.matches(snapshot, selected);
++        final var dragon = new CarpetDragonBreathDispenseBehavior(unchanged);
++        if (noCost) {
++            dispenseNoCost(source, dragon, snapshot);
++        } else {
++            final ItemStack result = dragon.dispense(source, snapshot.copy());
++            if (!ItemStack.matches(snapshot, result) && unchanged.getAsBoolean()) {
++                source.blockEntity().setItem(slot, result);
++            }
++        }
++    }
++
++    static void dispenseNoCost(final BlockSource source, final DispenseItemBehavior behavior, final ItemStack input) {
++        final BlockSource previous = NO_COST.get();
++        NO_COST.set(source);
++        try {
++            behavior.dispense(source, input.copy());
++        } finally {
++            if (previous == null) {
++                NO_COST.remove();
++            } else {
++                NO_COST.set(previous);
++            }
++        }
++    }
++
++    static boolean isNoCost(final BlockSource source) {
++        return NO_COST.get() == source;
++    }
++
++    static boolean canUseDefaultTarget(final BlockSource source) {
++        return ownedLoadedChunk(source.level(), source.pos().relative(source.state().getValue(DispenserBlock.FACING))) != null;
++    }
++
++    static boolean current(final BlockSource source) {
++        final LevelChunk chunk = ownedLoadedChunk(source.level(), source.pos());
++        if (chunk == null || chunk.getBlockEntity(source.pos()) != source.blockEntity() || source.blockEntity().isRemoved()) {
++            return false;
++        }
++        final BlockState state = chunk.getBlockState(source.pos());
++        return state.getBlock() == source.state().getBlock() && state.getValue(DispenserBlock.FACING) == source.state().getValue(DispenserBlock.FACING);
++    }
++
++    static @Nullable LevelChunk ownedLoadedChunk(final ServerLevel level, final BlockPos pos) {
++        return level.isInWorldBounds(pos) && TickThread.isTickThreadFor(level, pos) ? level.getChunkIfLoaded(pos) : null;
++    }
++}
+diff --git a/net/minecraft/core/dispenser/CarpetDragonBreathDispenseBehavior.java b/net/minecraft/core/dispenser/CarpetDragonBreathDispenseBehavior.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..f5833c3e78a56fceb4d457237e8019c9b2e587f0
+--- /dev/null
++++ b/net/minecraft/core/dispenser/CarpetDragonBreathDispenseBehavior.java
+@@ -0,0 +1,157 @@
++/*
++ * SPDX-License-Identifier: LGPL-3.0-or-later
++ * Derived from Carpet TIS Addition, Fallen_Breath and contributors.
++ * Upstream revision: 62c3cb6fff26cd9c4e12aa616b403c184a4a6ca0.
++ */
++package net.minecraft.core.dispenser;
++
++import java.util.HashSet;
++import java.util.List;
++import java.util.Set;
++import java.util.function.BooleanSupplier;
++import java.util.function.Predicate;
++import net.minecraft.core.BlockPos;
++import net.minecraft.core.Direction;
++import net.minecraft.core.particles.ParticleTypes;
++import net.minecraft.core.particles.PowerParticleOption;
++import net.minecraft.server.level.ServerLevel;
++import net.minecraft.util.Mth;
++import net.minecraft.world.effect.MobEffectInstance;
++import net.minecraft.world.effect.MobEffects;
++import net.minecraft.world.entity.AreaEffectCloud;
++import net.minecraft.world.item.ItemStack;
++import net.minecraft.world.item.Items;
++import net.minecraft.world.item.alchemy.PotionContents;
++import net.minecraft.world.level.block.DispenserBlock;
++import net.minecraft.world.level.block.LevelEvent;
++import net.minecraft.world.level.block.entity.DispenserBlockEntity;
++import net.minecraft.world.phys.Vec3;
++import org.bukkit.craftbukkit.block.CraftBlock;
++import org.bukkit.craftbukkit.inventory.CraftItemStack;
++import org.bukkit.craftbukkit.util.CraftVector;
++import org.bukkit.event.block.BlockDispenseEvent;
++
++public final class CarpetDragonBreathDispenseBehavior extends DefaultDispenseItemBehavior {
++    private static final float MAX_RADIUS = 7.0F;
++    private static final ThreadLocal<Set<DispenserBlockEntity>> ACTIVE = ThreadLocal.withInitial(HashSet::new);
++    private final BooleanSupplier selectedUnchanged;
++
++    public CarpetDragonBreathDispenseBehavior() {
++        this(() -> true);
++    }
++
++    CarpetDragonBreathDispenseBehavior(final BooleanSupplier selectedUnchanged) {
++        this.selectedUnchanged = selectedUnchanged;
++    }
++
++    @Override
++    protected ItemStack execute(final BlockSource source, final ItemStack dispensed) {
++        if (!this.isCurrent(source) || !dispensed.is(Items.DRAGON_BREATH)) {
++            return dispensed;
++        }
++        final Set<DispenserBlockEntity> active = ACTIVE.get();
++        if (!active.add(source.blockEntity())) {
++            return dispensed; // An item-replacement callback routed back to this dispenser.
++        }
++        try {
++            return this.executeCurrent(source, dispensed);
++        } finally {
++            active.remove(source.blockEntity());
++            if (active.isEmpty()) {
++                ACTIVE.remove();
++            }
++        }
++    }
++
++    private boolean isCurrent(final BlockSource source) {
++        return CarpetDispenserRules.current(source) && this.selectedUnchanged.getAsBoolean();
++    }
++
++    private ItemStack executeCurrent(final BlockSource source, final ItemStack dispensed) {
++        final ServerLevel level = source.level();
++        final Direction facing = source.state().getValue(DispenserBlock.FACING);
++        final Vec3 defaultTarget = Vec3.atCenterOf(source.pos().relative(facing));
++        final var original = CraftItemStack.asBukkitCopy(dispensed.copyWithCount(1));
++        final var event = new BlockDispenseEvent(CraftBlock.at(level, source.pos()), original.clone(), CraftVector.toBukkit(defaultTarget));
++        if (!event.callEvent() || !this.isCurrent(source)) {
++            return dispensed;
++        }
++        final ItemStack replacement = CraftItemStack.asNMSCopy(event.getItem());
++        if (replacement.isEmpty()) {
++            return dispensed;
++        }
++        if (!replacement.is(Items.DRAGON_BREATH)) {
++            final DispenseItemBehavior behavior = DispenserBlock.getDispenseBehavior(source, replacement);
++            if (behavior != DispenseItemBehavior.NOOP && CarpetDispenserRules.canUseDefaultTarget(source)) {
++                behavior.dispense(source, replacement);
++            }
++            return dispensed;
++        }
++
++        final Vec3 target = CraftVector.toVec3(event.getVelocity()); // TIS: the vector is the absolute cloud position.
++        if (!canSpawnAt(target, pos -> CarpetDispenserRules.ownedLoadedChunk(level, pos) != null)) {
++            return dispensed;
++        }
++        final boolean consume = event.getItem().equals(original);
++        return finishCloud(dispensed, consume, () -> this.spawnCloud(level, target), () -> this.isCurrent(source));
++    }
++
++    private boolean spawnCloud(final ServerLevel level, final Vec3 target) {
++        final var damage = new MobEffectInstance(MobEffects.INSTANT_DAMAGE, 1, 1);
++        final var cloud = new AreaEffectCloud(level, target.x(), target.y(), target.z());
++        cloud.setOwner(null);
++        cloud.setCustomParticle(PowerParticleOption.create(ParticleTypes.DRAGON_BREATH, 1.0F));
++        cloud.setRadius(3.0F);
++        cloud.setDuration(600);
++        cloud.setRadiusPerTick((MAX_RADIUS - cloud.getRadius()) / cloud.getDuration());
++        cloud.addEffect(damage);
++        if (!level.addFreshEntity(cloud)) {
++            return false;
++        }
++        level.levelEvent(LevelEvent.PARTICLES_INSTANT_POTION_SPLASH, BlockPos.containing(target), PotionContents.getColorOptional(List.of(damage)).orElse(0xFF385DC6));
++        return true;
++    }
++
++    static boolean canSpawnAt(final Vec3 target, final Predicate<BlockPos> ownedAndLoaded) {
++        // Reject invalid event coordinates before converting them to integer chunk coordinates.
++        if (!Double.isFinite(target.x()) || !Double.isFinite(target.y()) || !Double.isFinite(target.z())
++            || Math.abs(target.x()) >= 30_000_000 - MAX_RADIUS || Math.abs(target.z()) >= 30_000_000 - MAX_RADIUS
++            || target.y() <= Integer.MIN_VALUE || target.y() >= Integer.MAX_VALUE) {
++            return false;
++        }
++        if (!ownedAndLoaded.test(BlockPos.containing(target))) {
++            return false;
++        }
++        final int y = Mth.floor(target.y());
++        for (int x = Mth.floor(target.x() - MAX_RADIUS) >> 4; x <= Mth.floor(target.x() + MAX_RADIUS) >> 4; x++) {
++            for (int z = Mth.floor(target.z() - MAX_RADIUS) >> 4; z <= Mth.floor(target.z() + MAX_RADIUS) >> 4; z++) {
++                if (!ownedAndLoaded.test(new BlockPos(x << 4, y, z << 4))) {
++                    return false;
++                }
++            }
++        }
++        return true;
++    }
++
++    static ItemStack finishCloud(final ItemStack dispensed, final boolean consume,
++                                 final BooleanSupplier spawn, final BooleanSupplier selectedUnchanged) {
++        if (spawn.getAsBoolean() && consume && selectedUnchanged.getAsBoolean()) {
++            dispensed.shrink(1);
++        }
++        return dispensed;
++    }
++
++    @Override
++    protected void playSound(final BlockSource source) {
++        if (CarpetDispenserRules.current(source)) {
++            super.playSound(source);
++        }
++    }
++
++    @Override
++    protected void playAnimation(final BlockSource source, final Direction direction) {
++        if (CarpetDispenserRules.current(source)) {
++            super.playAnimation(source, direction);
++        }
++    }
++}
