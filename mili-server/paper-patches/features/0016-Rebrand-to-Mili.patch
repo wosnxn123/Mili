@@ -44,8 +44,8 @@ index 5dc8e9065ea1f3eeea73fcd049c1f9818f5d25d8..e01ffbc8ae4a1047cfb7fb0ab473965b
      private static final int DISTANCE_UNKNOWN = -2;
 -    private static final String DOWNLOAD_PAGE = "https://github.com/LuminolMC/Luminol"; // Luminol
 -    private static final String REPOSITORY = "LuminolMC/Luminol"; // Luminol
-+    private static final String DOWNLOAD_PAGE = "https://github.com/xucy10/Mili"; // Luminol // Lophine // Mili
-+    private static final String REPOSITORY = "xucy10/Mili"; // Luminol // Lophine // Mili
++    private static final String DOWNLOAD_PAGE = "https://github.com/wosnxn123/Mili"; // Luminol // Lophine // Mili
++    private static final String REPOSITORY = "wosnxn123/Mili"; // Luminol // Lophine // Mili
      private static final ServerBuildInfo BUILD_INFO = ServerBuildInfo.buildInfo();
      private static final String USER_AGENT = BUILD_INFO.brandName() + "/" + BUILD_INFO.asString(VERSION_SIMPLE) + " (https://papermc.io)";
      private static final Gson GSON = new Gson();
