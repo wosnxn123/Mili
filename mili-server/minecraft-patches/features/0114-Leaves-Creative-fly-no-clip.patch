@@ -18,10 +18,10 @@ index 3a594416e711fc6fdbf0ac7c3484a9830324d4d8..f6b0505f3c53196967dcf264c5e929e3
              } else {
                  this.followingPlayer = null;
 diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
-index ba319e6224fea50bc6e7370b3d2361b5773f1714..da2194fae90b0091bb11c36b22842309503a0285 100644
+index 4e7782209a054db2503e3770ecdab6d1c7f2b3c2..9266d3ab237d6a06846ec6a8f231edd27e734241 100644
 --- a/net/minecraft/world/entity/player/Player.java
 +++ b/net/minecraft/world/entity/player/Player.java
-@@ -244,8 +244,8 @@ public abstract class Player extends Avatar implements ContainerUser {
+@@ -249,8 +249,8 @@ public abstract class Player extends Avatar implements ContainerUser {
  
      @Override
      public void tick() {
@@ -32,7 +32,7 @@ index ba319e6224fea50bc6e7370b3d2361b5773f1714..da2194fae90b0091bb11c36b22842309
              this.setOnGround(false);
          }
  
-@@ -372,7 +372,7 @@ public abstract class Player extends Avatar implements ContainerUser {
+@@ -377,7 +377,7 @@ public abstract class Player extends Avatar implements ContainerUser {
          if (this.canPlayerFitWithinBlocksAndEntitiesWhen(Pose.SWIMMING)) {
              Pose desiredPose = this.getDesiredPose();
              Pose actualPose;
@@ -41,8 +41,8 @@ index ba319e6224fea50bc6e7370b3d2361b5773f1714..da2194fae90b0091bb11c36b22842309
                  actualPose = desiredPose;
              } else if (this.canPlayerFitWithinBlocksAndEntitiesWhen(Pose.CROUCHING)) {
                  actualPose = Pose.CROUCHING;
-@@ -500,7 +500,7 @@ public abstract class Player extends Avatar implements ContainerUser {
-         super.aiStep();
+@@ -506,7 +506,7 @@ public abstract class Player extends Avatar implements ContainerUser {
+         this.checkInventoryMaps(); // Paper - Rework map holder tracking - inventory and equipment have been ticked, maps that were not ticked have left the inventory
          this.yHeadRot = this.getYRot();
          this.setSpeed((float)this.getAttributeValue(Attributes.MOVEMENT_SPEED));
 -        if (this.getHealth() > 0.0F && !this.isSpectator()) {
@@ -50,7 +50,7 @@ index ba319e6224fea50bc6e7370b3d2361b5773f1714..da2194fae90b0091bb11c36b22842309
              AABB pickupArea;
              if (this.isPassenger() && !this.getVehicle().isRemoved()) {
                  pickupArea = this.getBoundingBox().minmax(this.getVehicle().getBoundingBox()).inflate(1.0, 0.0, 1.0);
-@@ -1826,6 +1826,31 @@ public abstract class Player extends Avatar implements ContainerUser {
+@@ -1864,6 +1864,31 @@ public abstract class Player extends Avatar implements ContainerUser {
          return this.gameMode() == GameType.SPECTATOR;
      }
  
@@ -112,7 +112,7 @@ index 1f17f966882320b3a2ced50b3f73925cd0dfa14c..56dd5a7095912742ab3f2902cefefc7e
  
              org.bukkit.event.block.BlockCanBuildEvent event = new org.bukkit.event.block.BlockCanBuildEvent(org.bukkit.craftbukkit.block.CraftBlock.at(context.getLevel(), pos), player, stateForPlacement.asBlockData(), defaultReturn, org.bukkit.craftbukkit.CraftEquipmentSlot.getHand(context.getHand())); // Paper - Expose hand in BlockCanBuildEvent
 diff --git a/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java b/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java
-index 3948b7a0beccb35d55cf3915e2ae431f884bdaa0..5abd613616aac5c9d152f432159db0c0369c93b6 100644
+index 2498c9f00cde43c2f0ae04ca2170493a7f512168..a190cadd1809592b9e89f6a2d89b0706e50817a9 100644
 --- a/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java
 +++ b/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java
 @@ -153,7 +153,7 @@ public class ShulkerBoxBlockEntity extends RandomizableContainerBlockEntity impl

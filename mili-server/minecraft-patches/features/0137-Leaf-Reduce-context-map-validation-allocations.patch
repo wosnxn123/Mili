@@ -1,0 +1,58 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Taiyou06 <kaandindar21@gmail.com>
+Date: Sat, 22 Mar 2025 00:08:11 +0100
+Subject: [PATCH] Leaf: Reduce context map validation allocations
+
+Test key membership directly on success. Keep the original difference views on error so both diagnostic order and key formatting stay the same.
+
+Original patch: https://github.com/Winds-Studio/Leaf/blob/06c9c91a17e61aeed16bcfc846ebe91aa70d6c84/leaf-server/minecraft-patches/features/0183-Optimize-ContextMap.create.patch
+
+Ported from Lophine (GPLv3 for its changes; see licenses/GPL.md):
+https://github.com/LophineLabs/Lophine/blob/7a51f49a512f1b5465f15a905d3704754e4bed02/lophine-server/minecraft-patches/features/0144-Leaf-Reduce-context-map-validation-allocations.patch
+Lophine patch blob: 453bfd277f3ac7321cf1e73f4abea6ed78572f3a
+https://github.com/LophineLabs/Lophine/blob/7a51f49a512f1b5465f15a905d3704754e4bed02/LICENSE.md
+
+Series copyright and original license notices: licenses/Lophine-0137-0158-NOTICE.txt
+
+diff --git a/net/minecraft/util/context/ContextMap.java b/net/minecraft/util/context/ContextMap.java
+index 86ce93af5e6d19d49e75ac59c0b522be88844025..714ed987c68dc1c8b847653c0c5837d6ce543df0 100644
+--- a/net/minecraft/util/context/ContextMap.java
++++ b/net/minecraft/util/context/ContextMap.java
+@@ -67,17 +67,28 @@ public final class ContextMap {
+         }
+ 
+         public ContextMap buildAndValidate(final ContextKeySet paramSet) {
+-            Set<ContextKey<?>> notAllowed = Sets.difference(this.params.keySet(), paramSet.allowed());
+-            if (!notAllowed.isEmpty()) {
+-                throw new IllegalArgumentException("Parameters not allowed in this parameter set: " + notAllowed);
+-            } else {
+-                Set<ContextKey<?>> missingRequired = Sets.difference(paramSet.required(), this.params.keySet());
+-                if (!missingRequired.isEmpty()) {
+-                    throw new IllegalArgumentException("Missing required parameters: " + missingRequired);
+-                } else {
+-                    return this.build();
++            // Leaf start - Optimize ContextMap.create
++            final Set<ContextKey<?>> keys = this.params.keySet();
++            final Set<ContextKey<?>> allowed = paramSet.allowed();
++
++            // Check for any parameters that are not allowed
++            for (ContextKey<?> key : keys) {
++                if (!allowed.contains(key)) {
++                    throw new IllegalArgumentException("Parameters not allowed in this parameter set: " + Sets.difference(keys, allowed));
+                 }
+             }
++
++            final Set<ContextKey<?>> required = paramSet.required();
++
++            // Check for any required parameters that are missing
++            for (ContextKey<?> key : required) {
++                if (!keys.contains(key)) {
++                    throw new IllegalArgumentException("Missing required parameters: " + Sets.difference(required, keys));
++                }
++            }
++
++            return this.build();
++            // Leaf end - Optimize ContextMap.create
+         }
+     }
+ }

@@ -5,10 +5,10 @@ Subject: [PATCH] Pufferfish: Reduce chunk loading & lookups
 
 
 diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
-index 51ead9754d81c8d371f4c303b5c8b7edfd8a5c28..82930d3a3d9a8748cd3876e6de158a68096bdf70 100644
+index 235ec80dfdb58f3cb699163b1911cee66bff4b58..e38beaa32f90b2fd34f34b77d502ee9b3bf4f357 100644
 --- a/net/minecraft/world/entity/LivingEntity.java
 +++ b/net/minecraft/world/entity/LivingEntity.java
-@@ -4560,16 +4560,21 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+@@ -4572,16 +4572,21 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
          WorldBorder worldBorder = level.getWorldBorder();
          Vec3 clamped = worldBorder.clampVec3ToBound(xx, y, zz);
          BlockPos.MutableBlockPos pos = BlockPos.containing(clamped).mutable();

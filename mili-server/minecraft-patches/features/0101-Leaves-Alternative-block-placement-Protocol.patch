@@ -5,10 +5,10 @@ Subject: [PATCH] Leaves: Alternative block placement Protocol
 
 
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index 63e1acd016612968f20e6a970420fab87aec43eb..72b9c4fd8c3ce151eff8c840673b0dc5ab0f8a00 100644
+index 756b43cbcca892d8182c24da106078043c62dbfb..41d0af2714258ebbf7ed0bb84ec3a54813ce2dbb 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-@@ -2235,7 +2235,7 @@ public class ServerGamePacketListenerImpl
+@@ -2237,7 +2237,7 @@ public class ServerGamePacketListenerImpl
                  if (ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(this.player.level(), pos.getX() >> 4, pos.getZ() >> 4, 8) &&  this.player.isWithinBlockInteractionRange(pos, 1.0)) { // Folia - do not allow players to interact with blocks outside the current region
                      Vec3 distance = location.subtract(Vec3.atCenterOf(pos));
                      double limit = 1.0000001;

@@ -6,10 +6,10 @@ Subject: [PATCH] Restore lost Leaves protocol lifecycle hooks and async
 
 
 diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
-index 75b06b60ed7359922922a876bb0ff4394f0cdf83..1991280bb1c0c807e82125545e1940ca2312b374 100644
+index 5627b78dca4244810d6ec7672da785b5d7758319..dfba93feb055389aff32c36ead6c200624e28d86 100644
 --- a/net/minecraft/server/MinecraftServer.java
 +++ b/net/minecraft/server/MinecraftServer.java
-@@ -2057,6 +2057,8 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -2059,6 +2059,8 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
              tickable.run();
          }
  
@@ -37,7 +37,7 @@ index a1fe6b35fe28384834620addb29919a76a6805a9..7f1331e390ad80f06f9169586679b9f3
          if (this.checkIfClosed(now)) {
              long currTime = System.nanoTime();
 diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
-index 983acebf846facbd5e865069601b96e1c5d9940c..7bf6b4c91b9bacc95ec63c9a71b2073652d7dbf4 100644
+index 9079277ce77687553f8f0258419daa53308039a5..d63366b9b3bb70dee11228a007f446374181e372 100644
 --- a/net/minecraft/server/players/PlayerList.java
 +++ b/net/minecraft/server/players/PlayerList.java
 @@ -365,6 +365,13 @@ public abstract class PlayerList {

@@ -1,0 +1,366 @@
+Lophine 0137–0158 — source and license notices
+==============================================
+
+Source revision: LophineLabs/Lophine@7a51f49a512f1b5465f15a905d3704754e4bed02
+https://github.com/LophineLabs/Lophine/tree/7a51f49a512f1b5465f15a905d3704754e4bed02/lophine-server/minecraft-patches/features
+https://github.com/LophineLabs/Lophine/blob/7a51f49a512f1b5465f15a905d3704754e4bed02/LICENSE.md
+
+Lophine's license defaults to GPLv3 and lists no authors opting into MIT at
+this revision. Mili's adapted patches use GPLv3 (see licenses/GPL.md). The
+licenses listed for each upstream source apply to the original material,
+not to the combined Mili patches. Each added mail
+retains the pinned Lophine author, date, subject, text and co-author trailers
+and records the source path and blob ID. Leaf references are pinned to
+Winds-Studio/Leaf@06c9c91a17e61aeed16bcfc846ebe91aa70d6c84; Leaf's patches
+are MIT by default, except where the patch headers preserve different terms:
+https://github.com/Winds-Studio/Leaf/blob/06c9c91a17e61aeed16bcfc846ebe91aa70d6c84/LICENSE.md
+
+Lophine  Mili  Original source and port status
+-------  ----  --------------------------------------------------------------
+0137     0130  Leaf 0266 (MIT). Imported: skip only unused tick and
+               damage-immunity contexts.
+0138     0131  Leaf 0310 (MIT). Imported: keep HashMap wire order, clone
+               heightmaps, retain Anti-Xray and oversized-entity handling.
+0139     0132  Leaf 0302; Lithium PistonMovingBlockEntityMixin from
+               11ea08adce6f94627d3eaaa65506a60e0451c8b6 (LGPL-3.0-only).
+               Adapted: fixed tick-offset unions stay per thread because
+               Moonrise shapes have lazy mutable caches; fractional offsets,
+               mismatched faces and no-clip retain the original path.
+0140     0133  Leaf 0216 (MIT). Adapted: cache the vanilla hash in the shared
+               WorldOptions constructor; keep Secure Seed and codec fields.
+0141     0134  Leaf 0240 (MIT). Imported: reuse the checked section reference.
+0142     0135  Leaf 0188 (MIT). Imported: read Haste and Conduit Power once.
+0143     0136  Lithium piston and redstone directions (LGPL-3.0-only);
+               Pluto's WireHandler via Leaf 0251 (GPL-3.0-only). Adapted:
+               preserve each enum's ordering and Mili's piston resolver.
+0144     0137  Leaf 0183 (MIT). Imported: produce the same Guava difference
+               diagnostics on failure, without allocating views on success.
+0145     0126  Leaf 0294 (MIT). Already present; verified reverse application
+               of the pinned diff after applying the existing Mili mail.
+0146     0138  Leaf 0266 (MIT). Imported: only internal callers use the
+               backing iterator; public entrySet remains unchanged.
+0147     0139  SparklyPaper via Leaf 0101; Mili 0052 already has the basic
+               optimization. Only the Lophine GPLv3 refinement is imported:
+               allow custom Vec3 implementations to dispatch their overrides.
+0148     0140  Leaf 0287 (MIT). Imported: delayed ID lookup remains client-only.
+0149     0127  Leaf 0291 (MIT). Already present; verified reverse application
+               of the pinned diff after applying the existing Mili mail.
+0150     0141  Leaf 0117/0150 (MIT), Lithium via Leaf 0155 (LGPL-3.0-only).
+               Mili 0085 already replaced the shape stream. Import only the
+               private enum arrays and AxisCycle mapping; retain Luminol's
+               mutable collision flag and the public axis table.
+0151     0142  Lithium CombinedHeightmapUpdate via Leaf 0232 (LGPL-3.0-only).
+               Adapted: only combine on the owning region's concrete
+               LevelChunk; preserve the sequential path for other cases.
+0152     0143  Lophine GPLv3 implementation inspired by SparklyPaper 0004.
+               Adapted: use Mili's region-owned ticker list and sleeping guard;
+               remove observed identities and nulls after traversal.
+0153     0144  Lithium game-event dispatch (LGPL-3.0-only). Imported: avoid
+               registry creation during dispatch; leave the Folia ownership
+               guard, plugin events and listener-registration paths in place.
+0154     0145  Lithium ccb7e7f433a5eaecd312cd16c63d7aaf3ce6c7c2
+               (LGPL-3.0-only). Imported: skip empty steps, preserving
+               Paper's block-position recording and handler order.
+0155     0146  Leaf 0189 (MIT). Imported: cache only owned light bytes under
+               the save monitor; invalidate on publishing a new visible state
+               and stop caching after a no-copy save exposes the array.
+0156     0147  Leaf 0295 (GPL-3.0-only with the Section 7(b) condition below).
+               Imported: bound the per-search bitmap including its halo;
+               retain packed-key set fallback and original traversal order.
+0157     0148  C2ME via Leaf 0154 (MIT at source revision 8138acfb32daf5d1b264780b6436eb8ff958c1b9).
+               Adapted: bound allocation retention per thread; clear and
+               return the lease in finally, isolate nested calls, and keep the
+               original uncached sizing for oversized requests. The current
+               upstream C2ME license is not relied on for this historical port.
+0158     0149  Carpet-Fixes via Leaf 0088 (MIT). Imported: preserve Paper's
+               last-runtime-match priority, all matches calls and their order.
+
+Validation on the 26.3 patch baseline
+-------------------------------------
+
+The affected 33 source files in the default workspace matched the canonical
+0125 replay byte for byte. The pinned donor mails matched the donor Git blobs.
+The existing 0126/0127 were replayed first. All 20 new mails applied in order
+with Git's whitespace checking, and all 31 changed Java files compiled using
+javac 25 against cached dependencies. Mail metadata and co-author trailers
+matched the donor. No Gradle, full build, or server launch was run.
+
+Focused Java checks passed for piston geometry, no-clip, mismatched bases
+and per-thread identity (0139); biome hashes and the Secure Seed constructor
+(0140); context validation and diagnostic priority (0144); axis mapping
+(0150); heightmap result parity, read counts and uneven tops on a mocked
+LevelChunk with fixture predicates (0151); copied/escaped light snapshots
+and publication (0155); POI dense/sparse selection, packing boundaries and
+visited parity (0156); nested, exceptional, oversized and cross-thread ore
+bitmap calls (0157); and recipe call order, runtime priority and empty
+input with mock recipes (0158).
+Unless listed as a focused check, each new patch was checked by source
+review, patch replay and compilation, not by a separate gameplay test.
+
+GPLv3 section 7(b) attribution for Leaf 0295 / Lophine 0156 / Mili 0147:
+Any copy or modified version containing a substantial portion of the
+original contributions in this patch must preserve the following author
+attribution in the patch header, source code, or another prominent legal
+notice accompanying the corresponding source:
+
+Original patch by HaHaWTH <102713261+HaHaWTH@users.noreply.github.com>, co-authored by MrlingXD <90316914+wling-art@users.noreply.github.com>
+
+Additional source license references:
+- Lithium: https://github.com/CaffeineMC/lithium/blob/f328cc536946a633b91788398353fbf0ac250e8b/LICENSE.md
+  GNU LGPLv3 text follows; the incorporated GNU GPLv3 is in licenses/GPL.md.
+- Pluto: https://github.com/Yive/Pluto/blob/31c64f81c327faa655f31d9ddb397ebbe221eff5/LICENSE
+  GNU GPLv3 text is in licenses/GPL.md.
+- Leaf: https://github.com/Winds-Studio/Leaf/blob/06c9c91a17e61aeed16bcfc846ebe91aa70d6c84/licenses/MIT.txt
+- C2ME: https://github.com/RelativityMC/C2ME-fabric/blob/8138acfb32daf5d1b264780b6436eb8ff958c1b9/licenses/LICENSE-MIT.txt
+- Carpet-Fixes: https://github.com/fxmorin/carpet-fixes/blob/f81ce94b58719bf20245a438173ca42723ae4a37/LICENSE
+- SparklyPaper: the pinned tree contains no separate license file or patch
+  license headers. Its README explicitly invites reuse of patches. This
+  series does not re-import the original motion diff or the ticker-list
+  implementation; it retains attribution for both.
+
+
+Leaf MIT license
+----------------
+Below is the MIT License (MIT),
+which applies only to parts of Leaf that are specifically and explicitly released under MIT.
+
+MIT License
+
+Copyright (c) 2022-2024 Respective authors of parts of Leaf, or software included therein
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+C2ME historical MIT license
+---------------------------
+The MIT License (MIT)
+
+Copyright (c) 2021-2026 ishland
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+
+Carpet-Fixes MIT license
+------------------------
+MIT License
+
+Copyright (c) 2020 Fx Morin
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+Lithium LGPLv3 license
+----------------------
+                   GNU LESSER GENERAL PUBLIC LICENSE
+                       Version 3, 29 June 2007
+
+ Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
+
+
+  This version of the GNU Lesser General Public License incorporates
+the terms and conditions of version 3 of the GNU General Public
+License, supplemented by the additional permissions listed below.
+
+  0. Additional Definitions.
+
+  As used herein, "this License" refers to version 3 of the GNU Lesser
+General Public License, and the "GNU GPL" refers to version 3 of the GNU
+General Public License.
+
+  "The Library" refers to a covered work governed by this License,
+other than an Application or a Combined Work as defined below.
+
+  An "Application" is any work that makes use of an interface provided
+by the Library, but which is not otherwise based on the Library.
+Defining a subclass of a class defined by the Library is deemed a mode
+of using an interface provided by the Library.
+
+  A "Combined Work" is a work produced by combining or linking an
+Application with the Library.  The particular version of the Library
+with which the Combined Work was made is also called the "Linked
+Version".
+
+  The "Minimal Corresponding Source" for a Combined Work means the
+Corresponding Source for the Combined Work, excluding any source code
+for portions of the Combined Work that, considered in isolation, are
+based on the Application, and not on the Linked Version.
+
+  The "Corresponding Application Code" for a Combined Work means the
+object code and/or source code for the Application, including any data
+and utility programs needed for reproducing the Combined Work from the
+Application, but excluding the System Libraries of the Combined Work.
+
+  1. Exception to Section 3 of the GNU GPL.
+
+  You may convey a covered work under sections 3 and 4 of this License
+without being bound by section 3 of the GNU GPL.
+
+  2. Conveying Modified Versions.
+
+  If you modify a copy of the Library, and, in your modifications, a
+facility refers to a function or data to be supplied by an Application
+that uses the facility (other than as an argument passed when the
+facility is invoked), then you may convey a copy of the modified
+version:
+
+   a) under this License, provided that you make a good faith effort to
+   ensure that, in the event an Application does not supply the
+   function or data, the facility still operates, and performs
+   whatever part of its purpose remains meaningful, or
+
+   b) under the GNU GPL, with none of the additional permissions of
+   this License applicable to that copy.
+
+  3. Object Code Incorporating Material from Library Header Files.
+
+  The object code form of an Application may incorporate material from
+a header file that is part of the Library.  You may convey such object
+code under terms of your choice, provided that, if the incorporated
+material is not limited to numerical parameters, data structure
+layouts and accessors, or small macros, inline functions and templates
+(ten or fewer lines in length), you do both of the following:
+
+   a) Give prominent notice with each copy of the object code that the
+   Library is used in it and that the Library and its use are
+   covered by this License.
+
+   b) Accompany the object code with a copy of the GNU GPL and this license
+   document.
+
+  4. Combined Works.
+
+  You may convey a Combined Work under terms of your choice that,
+taken together, effectively do not restrict modification of the
+portions of the Library contained in the Combined Work and reverse
+engineering for debugging such modifications, if you also do each of
+the following:
+
+   a) Give prominent notice with each copy of the Combined Work that
+   the Library is used in it and that the Library and its use are
+   covered by this License.
+
+   b) Accompany the Combined Work with a copy of the GNU GPL and this license
+   document.
+
+   c) For a Combined Work that displays copyright notices during
+   execution, include the copyright notice for the Library among
+   these notices, as well as a reference directing the user to the
+   copies of the GNU GPL and this license document.
+
+   d) Do one of the following:
+
+       0) Convey the Minimal Corresponding Source under the terms of this
+       License, and the Corresponding Application Code in a form
+       suitable for, and under terms that permit, the user to
+       recombine or relink the Application with a modified version of
+       the Linked Version to produce a modified Combined Work, in the
+       manner specified by section 6 of the GNU GPL for conveying
+       Corresponding Source.
+
+       1) Use a suitable shared library mechanism for linking with the
+       Library.  A suitable mechanism is one that (a) uses at run time
+       a copy of the Library already present on the user's computer
+       system, and (b) will operate properly with a modified version
+       of the Library that is interface-compatible with the Linked
+       Version.
+
+   e) Provide Installation Information, but only if you would otherwise
+   be required to provide such information under section 6 of the
+   GNU GPL, and only to the extent that such information is
+   necessary to install and execute a modified version of the
+   Combined Work produced by recombining or relinking the
+   Application with a modified version of the Linked Version. (If
+   you use option 4d0, the Installation Information must accompany
+   the Minimal Corresponding Source and Corresponding Application
+   Code. If you use option 4d1, you must provide the Installation
+   Information in the manner specified by section 6 of the GNU GPL
+   for conveying Corresponding Source.)
+
+  5. Combined Libraries.
+
+  You may place library facilities that are a work based on the
+Library side by side in a single library together with other library
+facilities that are not Applications and are not covered by this
+License, and convey such a combined library under terms of your
+choice, if you do both of the following:
+
+   a) Accompany the combined library with a copy of the same work based
+   on the Library, uncombined with any other library facilities,
+   conveyed under the terms of this License.
+
+   b) Give prominent notice with the combined library that part of it
+   is a work based on the Library, and explaining where to find the
+   accompanying uncombined form of the same work.
+
+  6. Revised Versions of the GNU Lesser General Public License.
+
+  The Free Software Foundation may publish revised and/or new versions
+of the GNU Lesser General Public License from time to time. Such new
+versions will be similar in spirit to the present version, but may
+differ in detail to address new problems or concerns.
+
+  Each version is given a distinguishing version number. If the
+Library as you received it specifies that a certain numbered version
+of the GNU Lesser General Public License "or any later version"
+applies to it, you have the option of following the terms and
+conditions either of that published version or of any later version
+published by the Free Software Foundation. If the Library as you
+received it does not specify a version number of the GNU Lesser
+General Public License, you may choose any version of the GNU Lesser
+General Public License ever published by the Free Software Foundation.
+
+  If the Library as you received it specifies that a proxy can decide
+whether future versions of the GNU Lesser General Public License shall
+apply, that proxy's public statement of acceptance of any version is
+permanent authorization for you to choose that version for the
+Library.

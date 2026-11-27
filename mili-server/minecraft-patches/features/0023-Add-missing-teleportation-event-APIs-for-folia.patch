@@ -5,10 +5,10 @@ Subject: [PATCH] Add missing teleportation event APIs for folia
 
 
 diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
-index 296a07c488c96d3c76f06de097067b2e2a3b3b71..5118782de18144f5257cc257916080c10c3cd24e 100644
+index 2db6c791ca7ae87c3d17ccc9964adea85937d752..2bfbb1df2019ff22d3e1e4b559b21e9f39dcc144 100644
 --- a/net/minecraft/server/level/ServerPlayer.java
 +++ b/net/minecraft/server/level/ServerPlayer.java
-@@ -1828,6 +1828,9 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+@@ -1835,6 +1835,9 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
                      if (respawnComplete != null) {
                          respawnComplete.accept(ServerPlayer.this);
                      }
@@ -19,10 +19,10 @@ index 296a07c488c96d3c76f06de097067b2e2a3b3b71..5118782de18144f5257cc257916080c1
              );
          });
 diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
-index 22183bbbffbfb5c18702c106819aa42dfa3bdeb6..b0a9efd378f7f2e3ab2b3190cc2bce09940fa50b 100644
+index eb6f03b629ec7c13f9e4a2ae148e6ddd9e9b3b18..aa822ce74ba5349678d090a7435fa23cadccaec8 100644
 --- a/net/minecraft/world/entity/Entity.java
 +++ b/net/minecraft/world/entity/Entity.java
-@@ -4608,6 +4608,31 @@ public abstract class Entity
+@@ -4613,6 +4613,31 @@ public abstract class Entity
          }
  
          // TODO any events that can modify go HERE
@@ -54,7 +54,7 @@ index 22183bbbffbfb5c18702c106819aa42dfa3bdeb6..b0a9efd378f7f2e3ab2b3190cc2bce09
  
          // check for same region
          if (destination == this.level()
-@@ -4718,6 +4743,17 @@ public abstract class Entity
+@@ -4723,6 +4748,17 @@ public abstract class Entity
              case END: {
                  if (destination.getTypeKey() == net.minecraft.world.level.dimension.LevelStem.END) {
                      BlockPos targetPos = ServerLevel.END_SPAWN_POINT;
@@ -72,7 +72,7 @@ index 22183bbbffbfb5c18702c106819aa42dfa3bdeb6..b0a9efd378f7f2e3ab2b3190cc2bce09
                      // need to load chunks so we can create the platform
                      destination.moonrise$loadChunksAsync(
                          targetPos, 16, // load 16 blocks to be safe from block physics
-@@ -4741,6 +4777,17 @@ public abstract class Entity
+@@ -4746,6 +4782,17 @@ public abstract class Entity
                      );
                  } else {
                      BlockPos spawnPos = destination.getRespawnData().pos();
@@ -90,7 +90,7 @@ index 22183bbbffbfb5c18702c106819aa42dfa3bdeb6..b0a9efd378f7f2e3ab2b3190cc2bce09
                      // need to load chunk for heightmap
                      destination.moonrise$loadChunksAsync(
                          spawnPos, 0,
-@@ -4794,7 +4841,17 @@ public abstract class Entity
+@@ -4799,7 +4846,17 @@ public abstract class Entity
                  WorldBorder destinationBorder = destination.getWorldBorder();
                  double dimensionScale = net.minecraft.world.level.dimension.DimensionType.getTeleportationScale(origin.dimensionType(), destination.dimensionType());
                  BlockPos targetPos = destination.getWorldBorder().clampToBounds(this.getX() * dimensionScale, this.getY(), this.getZ() * dimensionScale);
@@ -108,7 +108,7 @@ index 22183bbbffbfb5c18702c106819aa42dfa3bdeb6..b0a9efd378f7f2e3ab2b3190cc2bce09
                  ca.spottedleaf.concurrentutil.completable.CallbackCompletable<BlockUtil.FoundRectangle> portalFound
                      = new ca.spottedleaf.concurrentutil.completable.CallbackCompletable<>();
  
-@@ -4932,6 +4989,15 @@ public abstract class Entity
+@@ -4937,6 +4994,15 @@ public abstract class Entity
              || !this.canPortalAsync(destination, takePassengers)) {
              return false;
          }

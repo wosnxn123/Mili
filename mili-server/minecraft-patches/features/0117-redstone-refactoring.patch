@@ -5,10 +5,10 @@ Subject: [PATCH] redstone refactoring
 
 
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index d2a33406a77599e4c64f1c9e4cc892ac20587774..17d4f527e6c63db6e958466f555e90af02e82dfb 100644
+index 66aa7b0970c2bea992207efef021fb41e1f1eca8..34505a1ceb8a394b7d69b3aa1ae298241a5733e2 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-@@ -1995,7 +1995,7 @@ public class ServerGamePacketListenerImpl
+@@ -1997,7 +1997,7 @@ public class ServerGamePacketListenerImpl
              final io.papermc.paper.entity.TeleportFlag.Relative flag = org.bukkit.craftbukkit.entity.CraftEntity.deltaRelativeToAPI(relativeArgument);
              if (flag != null) relativeFlags.add(flag);
          }
@@ -17,7 +17,7 @@ index d2a33406a77599e4c64f1c9e4cc892ac20587774..17d4f527e6c63db6e958466f555e90af
          // Paper end - Teleport API
          this.cserver.getPluginManager().callEvent(event);
  
-@@ -2004,9 +2004,10 @@ public class ServerGamePacketListenerImpl
+@@ -2006,9 +2006,10 @@ public class ServerGamePacketListenerImpl
              to = event.isCancelled() ? event.getFrom() : event.getTo();
              destination = new PositionMoveRotation(CraftLocation.toVec3(to), Vec3.ZERO, to.getYaw(), to.getPitch());
          }

@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hayanesuru <hayanesuru@outlook.jp>
+Date: Sat, 9 Aug 2025 15:00:20 +0900
+Subject: [PATCH] Leaf: Optimize LevelChunk block state reads
+
+Reuse the selected section for the empty-section check and the palette read. Keep the existing section index calculation, bounds check, and local block index.
+
+Original patch: https://github.com/Winds-Studio/Leaf/blob/06c9c91a17e61aeed16bcfc846ebe91aa70d6c84/leaf-server/minecraft-patches/features/0240-optimize-LevelChunk-getBlockStateFinal.patch
+
+Ported from Lophine (GPLv3 for its changes; see licenses/GPL.md):
+https://github.com/LophineLabs/Lophine/blob/7a51f49a512f1b5465f15a905d3704754e4bed02/lophine-server/minecraft-patches/features/0141-Leaf-Optimize-LevelChunk-block-state-reads.patch
+Lophine patch blob: cbeab93c4505593ff00e197736b46a13192cf1fe
+https://github.com/LophineLabs/Lophine/blob/7a51f49a512f1b5465f15a905d3704754e4bed02/LICENSE.md
+
+Series copyright and original license notices: licenses/Lophine-0137-0158-NOTICE.txt
+
+diff --git a/net/minecraft/world/level/chunk/LevelChunk.java b/net/minecraft/world/level/chunk/LevelChunk.java
+index 0a883b52e71c13b5d0a6a6671bff1d4384dbbfbe..2f0adf76fc9ae4258f47ae391d59f2a3e3f2a8f8 100644
+--- a/net/minecraft/world/level/chunk/LevelChunk.java
++++ b/net/minecraft/world/level/chunk/LevelChunk.java
+@@ -285,12 +285,18 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+ 
+     public BlockState getBlockStateFinal(final int x, final int y, final int z) {
+         // Copied and modified from below
++        // Leaf start - optimize LevelChunk#getBlockStateFinal
+         final int sectionIndex = this.getSectionIndex(y);
+-        if (sectionIndex < 0 || sectionIndex >= this.sections.length
+-            || this.sections[sectionIndex].nonEmptyBlockCount == 0) {
+-            return Blocks.AIR.defaultBlockState();
++        if (sectionIndex < 0 || sectionIndex >= this.sections.length) {
++            return AIR_BLOCKSTATE;
+         }
+-        return this.sections[sectionIndex].getStates().get((y & 15) << 8 | (z & 15) << 4 | x & 15);
++
++        final LevelChunkSection section = this.sections[sectionIndex];
++        if (section.nonEmptyBlockCount == 0) {
++            return AIR_BLOCKSTATE;
++        }
++        return section.getStates().get((y & 15) << 8 | (z & 15) << 4 | x & 15);
++        // Leaf end - optimize LevelChunk#getBlockStateFinal
+     }
+ 
+     @Override

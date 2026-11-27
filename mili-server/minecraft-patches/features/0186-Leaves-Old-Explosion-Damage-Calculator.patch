@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Helvetica Volubi <suisuroru@blue-millennium.fun>
+Date: Mon, 7 Jul 2025 15:33:57 +0800
+Subject: [PATCH] Leaves: Old Explosion Damage Calculator
+
+Co-authored by: MC_XiaoHei <xor7xiaohei@gmail.com>
+As a part of : Leaves (https://github.com/LeavesMC/Leaves/blob/3e96b237749a960f297f211d439ffc9ea7fd2381/leaves-server/minecraft-patches/features/0134-Old-wet-tnt-explode-behavior.patch)
+Licensed under: GPL-3.0 (https://www.gnu.org/licenses/gpl-3.0.html)
+
+Ported from: https://github.com/LophineLabs/Lophine/blob/7a51f49a512f1b5465f15a905d3704754e4bed02/lophine-server/minecraft-patches/features/0098-Leaves-Old-Explosion-Damage-Calculator.patch
+
+diff --git a/net/minecraft/world/level/ServerExplosion.java b/net/minecraft/world/level/ServerExplosion.java
+index 47c32ad23ac5e28045b958dddd34f95fcc286926..c4711cb0e342d593c9057bdb98e66bce56354fb4 100644
+--- a/net/minecraft/world/level/ServerExplosion.java
++++ b/net/minecraft/world/level/ServerExplosion.java
+@@ -712,6 +712,7 @@ public class ServerExplosion implements Explosion {
+     public boolean shouldAffectBlocklikeEntities() {
+         boolean mobGriefingEnabled = this.level.getGameRules().get(GameRules.MOB_GRIEFING);
+         boolean isNotWindCharge = this.source == null || !this.source.is(EntityTypes.BREEZE_WIND_CHARGE) && !this.source.is(EntityTypes.WIND_CHARGE);
++        if (fun.bm.mili.config.modules.function.OldFeatureConfig.oldExplosionDamageCalculator || (fun.bm.mili.config.modules.function.OldFeatureConfig.tntWetExplosionNoItemDamage && this.source instanceof net.minecraft.world.entity.item.PrimedTnt)) isNotWindCharge = isNotWindCharge && (this.source == null || !this.source.isInWater()); // Leaves - Old MC TNT wet explosion no item damage
+         return mobGriefingEnabled ? isNotWindCharge : this.blockInteraction.shouldAffectBlocklikeEntities() && isNotWindCharge;
+     }
+ 

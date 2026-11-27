@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Carpet TIS turtle eggs and undead rules
+
+Adapted for Mili from LophineLabs/Lophine 0134 (7a51f49a512f1b5465f15a905d3704754e4bed02).
+See docs/upstream-carpet-26.3.md for provenance and scope.
+
+diff --git a/net/minecraft/world/entity/Mob.java b/net/minecraft/world/entity/Mob.java
+index 269cdb5cb0d5be72feb7ee9fe20b4895e821525d..efcac6b6ad2d6ddfd2e1c8203139f7b05917778b 100644
+--- a/net/minecraft/world/entity/Mob.java
++++ b/net/minecraft/world/entity/Mob.java
+@@ -600,7 +600,7 @@ public abstract class Mob extends LivingEntity implements Targeting, EquipmentUs
+                 if (sunBlocker.isDamageableItem()) {
+                     sunBlocker.hurtAndBreak(this.random.nextInt(2), this, slot);
+                 }
+-            } else {
++            } else if (!fun.bm.mili.carpet.config.modules.GeneralCompatConfig.undeadDontBurnInSunlight) {
+                 this.igniteForSeconds(8.0F);
+             }
+         }
+diff --git a/net/minecraft/world/entity/ai/goal/RemoveBlockGoal.java b/net/minecraft/world/entity/ai/goal/RemoveBlockGoal.java
+index 7f93335c30da56c913e1fbae4b8b82f3c7e051e9..d908b1009cb5367ebdac36f0c8eed667ad810967 100644
+--- a/net/minecraft/world/entity/ai/goal/RemoveBlockGoal.java
++++ b/net/minecraft/world/entity/ai/goal/RemoveBlockGoal.java
+@@ -100,6 +100,10 @@ public class RemoveBlockGoal extends MoveToBlockGoal {
+                 }
+             }
+ 
++            if (this.ticksSinceReachedGoal > 60 && this.blockToRemove == net.minecraft.world.level.block.Blocks.TURTLE_EGG
++                && fun.bm.mili.carpet.config.modules.GeneralCompatConfig.turtleEggTrampledDisabled) {
++                this.ticksSinceReachedGoal -= 30;
++            }
+             if (this.ticksSinceReachedGoal > 60) {
+                 // CraftBukkit start - Step on eggs
+                 if (!org.bukkit.craftbukkit.event.CraftEventFactory.callEntityInteractEvent(this.removerMob, org.bukkit.craftbukkit.block.CraftBlock.at(level, eatPos))) {
+diff --git a/net/minecraft/world/level/block/TurtleEggBlock.java b/net/minecraft/world/level/block/TurtleEggBlock.java
+index 47d4673aa97f2a087d3ca29498a8d1468fe9d192..d2eb4c09d62eb21e4f0fe1d9f390bd3bff5ccd21 100644
+--- a/net/minecraft/world/level/block/TurtleEggBlock.java
++++ b/net/minecraft/world/level/block/TurtleEggBlock.java
+@@ -82,6 +82,9 @@ public class TurtleEggBlock extends Block {
+                 return;
+             }
+             // CraftBukkit end
++            if (fun.bm.mili.carpet.config.modules.GeneralCompatConfig.turtleEggTrampledDisabled) {
++                return;
++            }
+             this.decreaseEggs(serverLevel, pos, state);
+         }
+     }

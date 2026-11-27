@@ -15,7 +15,9 @@ import org.leavesmc.leaves.protocol.core.ProtocolHandler;
 import org.leavesmc.leaves.protocol.core.ProtocolUtils;
 import org.slf4j.Logger;
 
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -58,7 +60,7 @@ public class CarpetServerProtocol implements LeavesProtocol {
 
     public static class CarpetRules {
 
-        private static final Map<String, CarpetRule> rules = new HashMap<>();
+        private static volatile Map<String, CarpetRule> rules = Map.of();
 
         public static void write(@NotNull CompoundTag tag) {
             CompoundTag rulesNbt = new CompoundTag();
@@ -67,12 +69,22 @@ public class CarpetServerProtocol implements LeavesProtocol {
             tag.put("Rules", rulesNbt);
         }
 
-        public static void register(CarpetRule rule) {
-            rules.put(rule.name, rule);
+        public static List<CarpetRule> snapshot() {
+            return List.copyOf(rules.values());
         }
 
-        public static void clear() {
-            rules.clear();
+        public static synchronized void register(CarpetRule rule) {
+            Map<String, CarpetRule> updated = new HashMap<>(rules);
+            updated.put(rule.name(), rule);
+            rules = Map.copyOf(updated);
+        }
+
+        public static synchronized void replace(Collection<CarpetRule> replacement) {
+            Map<String, CarpetRule> updated = new HashMap<>();
+            for (CarpetRule rule : replacement) {
+                updated.put(rule.name(), rule);
+            }
+            rules = Map.copyOf(updated);
         }
 
         public static boolean hasRules() {

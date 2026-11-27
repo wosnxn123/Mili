@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Carpet TIS breeding cooldown and snow melt rules
+
+Adapted from LophineLabs/Lophine 0134 (7a51f49a512f1b5465f15a905d3704754e4bed02).
+See docs/upstream-carpet-26.3.md for the legacy references and scope.
+
+diff --git a/net/minecraft/world/entity/AgeableMob.java b/net/minecraft/world/entity/AgeableMob.java
+index 6541fe108f60d2c55a47f0bb5ba3b17f270cd5fa..9286529b4a8978edf9e7b03635b6a03275018e10 100644
+--- a/net/minecraft/world/entity/AgeableMob.java
++++ b/net/minecraft/world/entity/AgeableMob.java
+@@ -152,6 +152,9 @@ public abstract class AgeableMob extends PathfinderMob {
+     }
+ 
+     public void setAge(final int newAge) {
++        if (fun.bm.mili.carpet.config.modules.GeneralCompatConfig.breedingCooldownDisabled && this.age == 0 && newAge > 0) {
++            return;
++        }
+         int oldAge = this.getAge();
+         this.age = newAge;
+         if (oldAge < 0 && newAge >= 0 || oldAge >= 0 && newAge < 0) {
+diff --git a/net/minecraft/world/level/block/SnowLayerBlock.java b/net/minecraft/world/level/block/SnowLayerBlock.java
+index 9a39de37601682126f4151d8c5969d188ca17476..7707764ec48ca92c4900ac6187bb2e86cf195c3a 100644
+--- a/net/minecraft/world/level/block/SnowLayerBlock.java
++++ b/net/minecraft/world/level/block/SnowLayerBlock.java
+@@ -96,7 +96,7 @@ public class SnowLayerBlock extends Block {
+ 
+     @Override
+     protected void randomTick(final BlockState state, final ServerLevel level, final BlockPos pos, final RandomSource random) {
+-        if (level.getBrightness(LightLayer.BLOCK, pos) > 11) {
++        if (level.getBrightness(LightLayer.BLOCK, pos) >= fun.bm.mili.carpet.config.modules.GeneralCompatConfig.normalizedSnowMeltMinLightLevel()) {
+             // CraftBukkit start
+             if (org.bukkit.craftbukkit.event.CraftEventFactory.callBlockFadeEvent(level, pos, Blocks.AIR.defaultBlockState()).isCancelled()) {
+                 return;

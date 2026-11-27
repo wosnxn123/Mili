@@ -1,0 +1,20 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Helvetica Volubi <suisuroru@blue-millennium.fun>
+Date: Thu, 2 Jul 2026 18:49:40 +0800
+Subject: [PATCH] Old leader zombie health logic
+
+Ported from: https://github.com/LophineLabs/Lophine/blob/7a51f49a512f1b5465f15a905d3704754e4bed02/lophine-server/minecraft-patches/features/0088-Old-leader-zombie-health-logic.patch
+
+diff --git a/net/minecraft/world/entity/monster/zombie/Zombie.java b/net/minecraft/world/entity/monster/zombie/Zombie.java
+index 9e5ff1afbb03cbce5ccb2f11d1e8b57c06521880..d19c3d3976395b19b55c5b7bae2c621965ad389a 100644
+--- a/net/minecraft/world/entity/monster/zombie/Zombie.java
++++ b/net/minecraft/world/entity/monster/zombie/Zombie.java
+@@ -573,7 +573,7 @@ public class Zombie extends Monster {
+                 .addOrReplacePermanentModifier(
+                     new AttributeModifier(LEADER_ZOMBIE_BONUS_ID, this.random.nextDouble() * 3.0 + 1.0, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL)
+                 );
+-            if (spawnReason != EntitySpawnReason.CONVERSION && spawnReason != EntitySpawnReason.LOAD && spawnReason != EntitySpawnReason.DIMENSION_TRAVEL) {
++            if (!fun.bm.mili.config.modules.function.OldFeatureConfig.oldLeaderZombieHealth && !fun.bm.mili.carpet.config.modules.GeneralCompatConfig.leaderZombieSpawnWithMaxHealthDisabled && spawnReason != EntitySpawnReason.CONVERSION && spawnReason != EntitySpawnReason.LOAD && spawnReason != EntitySpawnReason.DIMENSION_TRAVEL) { // Lophine - Configurable option to disable health boost for leader zombies
+                 this.setHealth(this.getMaxHealth());
+             }
+ 

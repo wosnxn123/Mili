@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Carpet AMS disable Enderman block pickup
+
+Adapted from LophineLabs/Lophine 0132 (7a51f49a512f1b5465f15a905d3704754e4bed02).
+See docs/upstream-carpet-26.3.md for the legacy references and scope.
+
+diff --git a/net/minecraft/world/entity/monster/Enderman.java b/net/minecraft/world/entity/monster/Enderman.java
+index 4702757c31ad97e8b278c2bff544ab7505e0f23f..eff93bb5507af21a2852fd7faec19480e5976e13 100644
+--- a/net/minecraft/world/entity/monster/Enderman.java
++++ b/net/minecraft/world/entity/monster/Enderman.java
+@@ -640,7 +640,8 @@ public class Enderman extends Monster implements NeutralMob {
+ 
+         @Override
+         public boolean canUse() {
+-            return this.enderman.getCarriedBlock() == null
++            return !fun.bm.mili.carpet.config.modules.GeneralCompatConfig.endermanPickUpDisabled
++                && this.enderman.getCarriedBlock() == null
+                 && getServerLevel(this.enderman).getGameRules().get(GameRules.MOB_GRIEFING)
+                 && this.enderman.getRandom().nextInt(reducedTickDelay(20)) == 0;
+         }

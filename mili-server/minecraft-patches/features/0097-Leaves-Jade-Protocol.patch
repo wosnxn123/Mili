@@ -5,10 +5,10 @@ Subject: [PATCH] Leaves: Jade Protocol
 
 
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index d93e8ea611e19b7fe53b661a1e97a22d867ef1b6..63e1acd016612968f20e6a970420fab87aec43eb 100644
+index 7acf5e2fd0107ab99c64a81940f1190fd2373f5b..756b43cbcca892d8182c24da106078043c62dbfb 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-@@ -3968,7 +3968,7 @@ public class ServerGamePacketListenerImpl
+@@ -3970,7 +3970,7 @@ public class ServerGamePacketListenerImpl
      }
  
      @Deprecated @io.papermc.paper.annotation.DoNotUse // Paper - Add PlayerLoadedWorldEvent

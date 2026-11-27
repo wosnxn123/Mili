@@ -5,7 +5,7 @@ Subject: [PATCH] Instant-Block-Updater
 
 
 diff --git a/io/papermc/paper/threadedregions/RegionizedWorldData.java b/io/papermc/paper/threadedregions/RegionizedWorldData.java
-index 6481eabe934b05ca52e2e96f87da3f53df41a6f5..fbf7e9389d9f6f56098ab07178a5559158050721 100644
+index f987d1b9461ecf2ed6b60b191d6d27e7dd0c6db1..e2fdfc7b27d50b01aeaada5dea79f7918f2e0bb1 100644
 --- a/io/papermc/paper/threadedregions/RegionizedWorldData.java
 +++ b/io/papermc/paper/threadedregions/RegionizedWorldData.java
 @@ -475,7 +475,7 @@ public final class RegionizedWorldData {
@@ -27,10 +27,10 @@ index 6481eabe934b05ca52e2e96f87da3f53df41a6f5..fbf7e9389d9f6f56098ab07178a55591
          this.wireHandler = new alternate.current.wire.WireHandler(world);
          this.turbo = new io.papermc.paper.redstone.RedstoneWireTurbo((RedstoneWireBlock)Blocks.REDSTONE_WIRE);
 diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
-index 429d8d2a5538579488e9afdbb1a56321eb8d6602..c20ea8ea8bf61fd7d7f90da96e7bb4b41124cc62 100644
+index 6e61f26ff74f8912ed3fdf7fceb048aab2a87f2a..f540cb1ea0317f49dafff55428783f4a15731d87 100644
 --- a/net/minecraft/server/level/ServerLevel.java
 +++ b/net/minecraft/server/level/ServerLevel.java
-@@ -986,12 +986,16 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -984,12 +984,16 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
          // Paper - rewrite chunk system
          profiler.pop();
          profiler.push("debugSynchronizers");

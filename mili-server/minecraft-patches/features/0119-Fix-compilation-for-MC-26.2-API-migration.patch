@@ -74,7 +74,7 @@ index 19caac6d353ed46962134a4e271e0e869e2844eb..97ac74f117547af8d5b6e583d2ba680a
  
      public void broadcastToAll(final DebugSubscription<?> subscription, final Packet<?> packet) {
 diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
-index 1b5fbfe75985d0f911bf15cbc7f9b69b1110b4b4..e19fc5e7c0f19b06a1a1f1407cec82a6e44b619d 100644
+index 0ba718d17f42c67cf9bda3e4f103fab3b930509d..87125caef702f0b1b9c7cebd55e8e9a34f390bee 100644
 --- a/net/minecraft/world/entity/Entity.java
 +++ b/net/minecraft/world/entity/Entity.java
 @@ -361,6 +361,7 @@ public abstract class Entity
@@ -84,8 +84,8 @@ index 1b5fbfe75985d0f911bf15cbc7f9b69b1110b4b4..e19fc5e7c0f19b06a1a1f1407cec82a6
 +    private net.minecraft.nbt.CompoundTag leavesData = new net.minecraft.nbt.CompoundTag(); // Leaves - Leaves ex data
      // CraftBukkit start
      public boolean persist = true;
-     public boolean visibleByDefault = true;
-@@ -2853,6 +2854,8 @@ public abstract class Entity
+     public volatile boolean visibleByDefault = true; // Folia - region threading - volatile
+@@ -2858,6 +2859,8 @@ public abstract class Entity
                  output.store("data", CustomData.CODEC, this.customData);
              }
  
@@ -94,7 +94,7 @@ index 1b5fbfe75985d0f911bf15cbc7f9b69b1110b4b4..e19fc5e7c0f19b06a1a1f1407cec82a6
              this.addAdditionalSaveData(output, includeAll); // CraftBukkit - pass on includeAll
              if (this.isVehicle()) {
                  ValueOutput.ValueOutputList passengersList = output.childrenList("Passengers");
-@@ -2958,6 +2961,7 @@ public abstract class Entity
+@@ -2963,6 +2966,7 @@ public abstract class Entity
                  );
                  // Paper end
                  this.customData = input.read("data", CustomData.CODEC).orElse(CustomData.EMPTY);
@@ -102,7 +102,7 @@ index 1b5fbfe75985d0f911bf15cbc7f9b69b1110b4b4..e19fc5e7c0f19b06a1a1f1407cec82a6
                  this.tags.clear();
                  input.read("Tags", TAG_LIST_CODEC).ifPresent(this.tags::addAll);
                  input.getString("Team").ifPresent(teamName -> {
-@@ -6766,4 +6770,10 @@ public abstract class Entity
+@@ -6771,4 +6775,10 @@ public abstract class Entity
      }
      // Mili end - entity culling
      public boolean shouldTickHot() { return this.tickCount > 20 * 10 && this.isAlive(); } // KioCG
@@ -114,10 +114,10 @@ index 1b5fbfe75985d0f911bf15cbc7f9b69b1110b4b4..e19fc5e7c0f19b06a1a1f1407cec82a6
 +    // Leaves end - leaves ex data
  }
 diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
-index 2af2519ea6e5dd18b1370dbfb032ea752701e2f2..7bbddf667e02942af9ef150393b1d22d7e08aaca 100644
+index bde95c194024416c8b68235076bbcadefaeac841..23465e0314b94047ec4d30fcb1eb15d1795ef61c 100644
 --- a/net/minecraft/world/entity/player/Player.java
 +++ b/net/minecraft/world/entity/player/Player.java
-@@ -1046,15 +1046,15 @@ public abstract class Player extends Avatar implements ContainerUser {
+@@ -1084,15 +1084,15 @@ public abstract class Player extends Avatar implements ContainerUser {
              if (this.level() instanceof ServerLevel serverLevel
                  && fun.bm.mili.carpet.config.modules.GeneralCompatConfig.creativeOneHitKill
                  && this.isCreative()

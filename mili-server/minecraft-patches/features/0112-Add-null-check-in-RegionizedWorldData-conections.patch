@@ -5,7 +5,7 @@ Subject: [PATCH] Add-null-check-in-RegionizedWorldData-conections
 
 
 diff --git a/io/papermc/paper/threadedregions/RegionizedWorldData.java b/io/papermc/paper/threadedregions/RegionizedWorldData.java
-index 9720d027a0479db587e9eb2b27d9a8ee6bdbc527..8ddb6dfaf8e8ffc8302e1b85af546683ce86e83c 100644
+index f344d4aada59d6aba755e9a70a615fdd9a305791..75817eef92611cebac27a3e21ce9c4a1e4e85e2d 100644
 --- a/io/papermc/paper/threadedregions/RegionizedWorldData.java
 +++ b/io/papermc/paper/threadedregions/RegionizedWorldData.java
 @@ -237,14 +237,17 @@ public final class RegionizedWorldData {

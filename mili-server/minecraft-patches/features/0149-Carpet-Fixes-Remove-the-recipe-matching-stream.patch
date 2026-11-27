@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: nostalgic853 <yuu8583@proton.me>
+Date: Tue, 25 Oct 2022 00:57:45 +0800
+Subject: [PATCH] Carpet-Fixes: Remove the recipe matching stream
+
+Keep the Paper reduction result and invoke matches on every recipe in the original order, including vanilla candidates after the first match. Leave recipe hints and the empty-input check in place.
+
+Original Leaf port: https://github.com/Winds-Studio/Leaf/blob/06c9c91a17e61aeed16bcfc846ebe91aa70d6c84/leaf-server/minecraft-patches/features/0088-Carpet-Fixes-Use-optimized-RecipeManager.patch
+Original project: https://github.com/fxmorin/carpet-fixes
+Original mixin: carpetfixes/mixins/optimizations/RecipeManager_fasterMixin.java
+License: MIT
+
+Ported from Lophine (GPLv3 for its changes; see licenses/GPL.md):
+https://github.com/LophineLabs/Lophine/blob/7a51f49a512f1b5465f15a905d3704754e4bed02/lophine-server/minecraft-patches/features/0158-Carpet-Fixes-Remove-the-recipe-matching-stream.patch
+Lophine patch blob: f230a1f1861a93d88bffdaf5ca5431a01261db53
+https://github.com/LophineLabs/Lophine/blob/7a51f49a512f1b5465f15a905d3704754e4bed02/LICENSE.md
+
+Additional pinned source references:
+https://github.com/fxmorin/carpet-fixes/blob/f81ce94b58719bf20245a438173ca42723ae4a37/src/main/java/carpetfixes/mixins/optimizations/RecipeManager_fasterMixin.java
+
+Series copyright and original license notices: licenses/Lophine-0137-0158-NOTICE.txt
+
+Co-authored-by: fxmorin <28154542+fxmorin@users.noreply.github.com>
+Co-authored-by: Dreeam <61569423+Dreeam-qwq@users.noreply.github.com>
+
+diff --git a/net/minecraft/world/item/crafting/RecipeManager.java b/net/minecraft/world/item/crafting/RecipeManager.java
+index bb0810502a91f44934819f5f9e232c2739f38fcd..3103cddd2225a16f10e3246ad008ceec59956571 100644
+--- a/net/minecraft/world/item/crafting/RecipeManager.java
++++ b/net/minecraft/world/item/crafting/RecipeManager.java
+@@ -215,7 +215,20 @@ public class RecipeManager implements RecipeAccess {
+     }
+ 
+     public <I extends RecipeInput, T extends Recipe<I>> Optional<RecipeHolder<T>> getRecipeFor(final RecipeType<T> type, final I input, final Level level) {
+-        return this.recipes.getRecipesFor(type, input, level).reduce((first, second) -> second.runtimeAddedRecipe() ? second : first); // Paper - prioritize runtime added recipes and prioritize these by insertion order.
++        // Leaf start - Carpet-Fixes - Use optimized RecipeManager - Remove streams to be faster
++        final RecipeMap recipes = this.recipes;
++        if (input.isEmpty()) {
++            return Optional.empty();
++        }
++
++        RecipeHolder<T> selected = null;
++        for (RecipeHolder<T> recipe : recipes.byType(type)) {
++            if (recipe.value().matches(input, level) && (selected == null || recipe.runtimeAddedRecipe())) { // Paper - prioritize runtime added recipes and prioritize these by insertion order.
++                selected = recipe;
++            }
++        }
++        return Optional.ofNullable(selected);
++        // Leaf end - Carpet-Fixes - Use optimized RecipeManager - Remove streams to be faster
+     }
+ 
+     public Optional<RecipeHolder<?>> byKey(final ResourceKey<Recipe<?>> recipeId) {

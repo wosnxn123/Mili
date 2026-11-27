@@ -1,0 +1,21 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Wire Carpet End spike regeneration suppression
+
+Adapted from LophineLabs/Lophine 0132 and the legacy Carpet patch (7a51f49a512f1b5465f15a905d3704754e4bed02).
+See docs/upstream-carpet-26.3.md for the legacy references and scope.
+
+diff --git a/net/minecraft/world/level/dimension/end/DragonRespawnStage.java b/net/minecraft/world/level/dimension/end/DragonRespawnStage.java
+index ffa813ad111f05716c658e3a66a9eeb9b70c5e4c..b390f7bcd34ae20e55354377848b15e86dbe6a45 100644
+--- a/net/minecraft/world/level/dimension/end/DragonRespawnStage.java
++++ b/net/minecraft/world/level/dimension/end/DragonRespawnStage.java
+@@ -52,7 +52,7 @@ public enum DragonRespawnStage implements StringRepresentable {
+                         for (EndCrystal respawnCrystal : crystals) {
+                             respawnCrystal.setBeamTarget(new BlockPos(spike.getCenterX(), spike.getHeight() + 1, spike.getCenterZ()));
+                         }
+-                    } else {
++                    } else if (!fun.bm.mili.carpet.config.modules.GeneralCompatConfig.preventEndSpikeRespawn) {
+                         int radius = 10;
+ 
+                         for (BlockPos pos : BlockPos.betweenClosed(

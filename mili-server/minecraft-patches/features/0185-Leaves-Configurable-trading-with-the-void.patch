@@ -1,0 +1,81 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Helvetica Volubi <suisuroru@blue-millennium.fun>
+Date: Wed, 29 Oct 2025 00:09:09 +0800
+Subject: [PATCH] Leaves: Configurable trading with the void
+
+Co-authored by: violetc <58360096+s-yh-china@users.noreply.github.com>
+As a part of : Leaves (https://github.com/LeavesMC/Leaves/blob/9d2bd3f7b0a48f00df7bc8c74292338ed9c3a458/leaves-server/minecraft-patches/features/0088-Configurable-trading-with-the-void.patch)
+Licensed under: GPL-3.0 (https://www.gnu.org/licenses/gpl-3.0.html)
+
+Ported from: https://github.com/LophineLabs/Lophine/blob/7a51f49a512f1b5465f15a905d3704754e4bed02/lophine-server/minecraft-patches/features/0094-Leaves-Configurable-trading-with-the-void.patch
+
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+index 1094b734f4e5503fbc30493182812757b1c76f8f..9ba99cf7914ab1bda861903394955308d675ffb9 100644
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -3421,13 +3421,15 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+             // Spigot start
+             if (entity.getBukkitEntity() instanceof org.bukkit.inventory.InventoryHolder && (!(entity instanceof ServerPlayer) || entity.getRemovalReason() != Entity.RemovalReason.KILLED)) { // SPIGOT-6876: closeInventory clears death message
+                 // Paper start - Fix merchant inventory not closing on entity removal
+-                if (entity.getBukkitEntity() instanceof org.bukkit.inventory.Merchant merchant && merchant.getTrader() != null) {
++                if (!fun.bm.mili.config.modules.function.OldFeatureConfig.villagerVoidTrade && entity.getBukkitEntity() instanceof org.bukkit.inventory.Merchant merchant && merchant.getTrader() != null) { // Leaves - Configurable trading with the void
+                     merchant.getTrader().closeInventory(org.bukkit.event.inventory.InventoryCloseEvent.Reason.UNLOADED);
+                 }
+                 // Paper end - Fix merchant inventory not closing on entity removal
+                 for (org.bukkit.entity.HumanEntity h : Lists.newArrayList(((org.bukkit.inventory.InventoryHolder) entity.getBukkitEntity()).getInventory().getViewers())) {
++                    if (entity instanceof ServerPlayer player && player.keepMerchantMenuOnRegionMigration && h == player.getBukkitEntity()) continue; // Lophine - Configurable trading with the void
+                     h.closeInventory(org.bukkit.event.inventory.InventoryCloseEvent.Reason.UNLOADED); // Paper - Inventory close reason
+                 }
++                if (entity instanceof ServerPlayer player) player.keepMerchantMenuOnRegionMigration = false; // Lophine - Configurable trading with the void
+             }
+             // Spigot end
+             ServerLevel.this.getChunkSource().removeEntity(entity);
+diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
+index e4aa4267d1be72e86e76565d33d464d24514e3e6..9ad1f4316f7d435fda5c19671176ca2b13b01ecf 100644
+--- a/net/minecraft/server/level/ServerPlayer.java
++++ b/net/minecraft/server/level/ServerPlayer.java
+@@ -449,6 +449,7 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+     public volatile boolean isTpsBarVisible = false; //Luminol - Tps bar
+     public volatile boolean isMemBarVisible = false; //Luminol - Memory bar
+     public volatile boolean isRegionBarVisible = false; //Luminol - Region bar
++    public boolean keepMerchantMenuOnRegionMigration; // Lophine - Configurable trading with the void
+     // Paper start - rewrite chunk system
+     private ca.spottedleaf.moonrise.patches.chunk_system.player.RegionizedPlayerChunkLoader.PlayerChunkLoaderData chunkLoader;
+     private final ca.spottedleaf.moonrise.patches.chunk_system.player.RegionizedPlayerChunkLoader.ViewDistanceHolder viewDistanceHolder = new ca.spottedleaf.moonrise.patches.chunk_system.player.RegionizedPlayerChunkLoader.ViewDistanceHolder();
+diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
+index 1171c3bf1ed42cbfe9c90b1e13e97fa7daa9692e..fb6640b83ebbe595a67f3291298aa212183966ac 100644
+--- a/net/minecraft/server/players/PlayerList.java
++++ b/net/minecraft/server/players/PlayerList.java
+@@ -778,7 +778,7 @@ public abstract class PlayerList {
+                 player.stopRiding();
+                 vehicle.getPassengersAndSelf().forEach(e -> {
+                     // Paper start - Fix villager boat exploit
+-                    if (e instanceof net.minecraft.world.entity.npc.villager.AbstractVillager villager) {
++                    if (!fun.bm.mili.config.modules.function.OldFeatureConfig.villagerVoidTrade && e instanceof net.minecraft.world.entity.npc.villager.AbstractVillager villager) { // Leaves - Configurable trading with the void
+                         final net.minecraft.world.entity.player.Player human = villager.getTradingPlayer();
+                         if (human != null) {
+                             villager.setTradingPlayer(null);
+diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
+index 87125caef702f0b1b9c7cebd55e8e9a34f390bee..b39b532d80e162f00cceeb78b781e36110d19637 100644
+--- a/net/minecraft/world/entity/Entity.java
++++ b/net/minecraft/world/entity/Entity.java
+@@ -4758,6 +4758,7 @@ public abstract class Entity
+         ServerLevel originWorld = (ServerLevel)this.level;
+ 
+         for (EntityTreeNode node : fullPassengerTree) {
++            if (node.root instanceof net.minecraft.server.level.ServerPlayer player) player.keepMerchantMenuOnRegionMigration = destination == originWorld && player.containerMenu instanceof net.minecraft.world.inventory.MerchantMenu && fun.bm.mili.config.modules.function.OldFeatureConfig.villagerVoidTrade; // Lophine - Configurable trading with the void
+             node.root.preChangeDimension();
+         }
+ 
+diff --git a/net/minecraft/world/inventory/MerchantMenu.java b/net/minecraft/world/inventory/MerchantMenu.java
+index 200f7b44a0677b2df08c0fafc8c15797101614b4..353046469402a5836e37f8f407563c49856b2630 100644
+--- a/net/minecraft/world/inventory/MerchantMenu.java
++++ b/net/minecraft/world/inventory/MerchantMenu.java
+@@ -79,6 +79,7 @@ public class MerchantMenu extends AbstractContainerMenu {
+ 
+     @Override
+     public boolean stillValid(final Player player) {
++        if (fun.bm.mili.config.modules.function.OldFeatureConfig.villagerVoidTrade) return this.trader.getTradingPlayer() == player; // Leaves - Configurable trading with the void
+         if (!checkReachable) return true; // Paper - checkReachable
+         return this.trader.stillValid(player);
+     }

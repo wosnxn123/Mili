@@ -6,10 +6,10 @@ Subject: [PATCH] SparklyPaper: Skip distanceToSqr call
 
 
 diff --git a/net/minecraft/server/level/ServerEntity.java b/net/minecraft/server/level/ServerEntity.java
-index 324e420900b1032845abcd4f8e26032d9e856e61..f2a07c3668d53f3d75da7d816f50dfae9524fd17 100644
+index e491fb942fe165a884f1e7a5848e68b1ffaddbbe..de68b4f29aee394652886d5b0772791f3f258112 100644
 --- a/net/minecraft/server/level/ServerEntity.java
 +++ b/net/minecraft/server/level/ServerEntity.java
-@@ -192,6 +192,8 @@ public class ServerEntity {
+@@ -195,6 +195,8 @@ public class ServerEntity {
  
                  if (this.entity.needsSync || this.trackDelta || this.entity instanceof LivingEntity livingEntity && livingEntity.isFallFlying()) {
                      Vec3 movement = this.entity.getDeltaMovement();
@@ -18,7 +18,7 @@ index 324e420900b1032845abcd4f8e26032d9e856e61..f2a07c3668d53f3d75da7d816f50dfae
                      double diff = movement.distanceToSqr(this.lastSentMovement);
                      if (diff > 1.0E-7 || diff > 0.0 && movement.lengthSqr() == 0.0) {
                          this.lastSentMovement = movement;
-@@ -209,6 +211,7 @@ public class ServerEntity {
+@@ -212,6 +214,7 @@ public class ServerEntity {
                              this.synchronizer.sendToTrackingPlayers(new ClientboundSetEntityMotionPacket(this.entity.getId(), this.lastSentMovement));
                          }
                      }

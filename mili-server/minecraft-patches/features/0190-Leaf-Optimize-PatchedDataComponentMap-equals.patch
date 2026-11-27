@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: MrHua269 <mrhua269@gmail.com>
+Date: Sat, 2 May 2026 22:26:57 +0800
+Subject: [PATCH] Leaf Optimize PatchedDataComponentMap equals
+
+This is a part of Leaf(https://github.com/Winds-Studio/Leaf/blob/db41340915c7768d726342fb29d16bc428081074/leaf-server/minecraft-patches/features/0300-Optimize-PatchedDataComponentMap-equals.patch)
+
+Original author: HaHaWTH <102713261+HaHaWTH@users.noreply.github.com>
+
+Original license: https://github.com/Winds-Studio/Leaf/blob/db41340915c7768d726342fb29d16bc428081074/LICENSE.md
+
+Ported from: https://github.com/LophineLabs/Lophine/blob/7a51f49a512f1b5465f15a905d3704754e4bed02/lophine-server/minecraft-patches/features/0051-Leaf-Optimize-PatchedDataComponentMap-equals.patch
+
+diff --git a/net/minecraft/core/component/PatchedDataComponentMap.java b/net/minecraft/core/component/PatchedDataComponentMap.java
+index 9885a91d9e7d8c29164573f412642cc610f4795b..8c399846c4d8f00e005888812864c3233e663453 100644
+--- a/net/minecraft/core/component/PatchedDataComponentMap.java
++++ b/net/minecraft/core/component/PatchedDataComponentMap.java
+@@ -220,7 +220,19 @@ public final class PatchedDataComponentMap implements DataComponentMap, org.leav
+ 
+     @Override
+     public boolean equals(final Object obj) {
+-        return this == obj || obj instanceof PatchedDataComponentMap otherMap && this.prototype.equals(otherMap.prototype) && this.patch.equals(otherMap.patch);
++        // return this == obj || obj instanceof PatchedDataComponentMap otherMap && this.prototype.equals(otherMap.prototype) && this.patch.equals(otherMap.patch); // Leaf - Optimize PatchedDataComponentMap equals
++        // Leaf start - Optimize PatchedDataComponentMap equals
++        if (this == obj) return true;
++        if (!(obj instanceof PatchedDataComponentMap that)) return false;
++        if (this.patch.size() != that.patch.size()) {
++            return false;
++        }
++        if (!this.prototype.equals(that.prototype)) {
++            return false;
++        }
++        if (this.patch == that.patch) return true;
++        return this.patch.equals(that.patch);
++        // Leaf end - Optimize PatchedDataComponentMap equals
+     }
+ 
+     @Override

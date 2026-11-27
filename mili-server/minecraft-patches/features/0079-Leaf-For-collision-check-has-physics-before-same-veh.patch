@@ -5,10 +5,10 @@ Subject: [PATCH] Leaf: For collision check has physics before same vehicle
 
 
 diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
-index 3f4ed1f3897695617f346cd5e34cdc38ef4bdb3f..810b0a160dda508b185af41a6364e95709a2fae6 100644
+index 077d3675a179944ded63233bb75156189462252d..a6b023de8915d7fabdb97e24fdc6129062de6125 100644
 --- a/net/minecraft/world/entity/Entity.java
 +++ b/net/minecraft/world/entity/Entity.java
-@@ -2486,8 +2486,8 @@ public abstract class Entity
+@@ -2491,8 +2491,8 @@ public abstract class Entity
      }
  
      public void push(final Entity entity) {

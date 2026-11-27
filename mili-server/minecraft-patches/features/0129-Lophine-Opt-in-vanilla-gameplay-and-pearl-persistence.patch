@@ -1,0 +1,449 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Wed, 24 Jun 2026 00:00:00 +0800
+Subject: [PATCH] Lophine Opt in vanilla gameplay and pearl persistence
+
+Adapted from Lophine 0136 and VanillaLikeExperienceConfig at
+7a51f49a512f1b5465f15a905d3704754e4bed02 (GPL-3.0).
+Keep Folia routing and death checks, and honor Paper legacy pearls.
+
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+index 3abc11e424c2dd915fb299fe53e06a24c494ce26..1094b734f4e5503fbc30493182812757b1c76f8f 100644
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -3402,6 +3402,9 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+             }
+             // Paper end - Entity origin API
+             new com.destroystokyo.paper.event.entity.EntityAddToWorldEvent(entity.getBukkitEntity(), ServerLevel.this.getWorld()).callEvent(); // Paper - fire while valid
++            if (entity instanceof net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownEnderpearl pearl) {
++                pearl.mili$publishPersistenceSnapshot(); // Mili - newly spawned, loaded and migrated pearls
++            }
+         }
+ 
+         @Override
+diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
+index 27d76feecd987a54fbebb5a342a73a66847b27ac..5d4da09034b2616e934fb76136b0003d2478c491 100644
+--- a/net/minecraft/server/level/ServerPlayer.java
++++ b/net/minecraft/server/level/ServerPlayer.java
+@@ -14,7 +14,6 @@ import com.mojang.serialization.MapCodec;
+ import com.mojang.serialization.codecs.RecordCodecBuilder;
+ import java.net.InetSocketAddress;
+ import java.util.Collection;
+-import java.util.HashSet;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Optional;
+@@ -280,7 +279,7 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+     private @Nullable BlockPos raidOmenPosition;
+     private Vec3 lastKnownClientMovement = Vec3.ZERO;
+     private Input lastClientInput = Input.EMPTY;
+-    private final Set<ThrownEnderpearl> enderPearls = new HashSet<>();
++    private fun.bm.mili.utils.PlayerEnderPearls mili$enderPearls = new fun.bm.mili.utils.PlayerEnderPearls(); // Mili - region-owned pearl snapshots
+     private boolean postEffectsDirty = true;
+     private long timeEntitySatOnShoulder;
+     private CompoundTag shoulderEntityLeft = new CompoundTag();
+@@ -793,24 +792,60 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+     }
+ 
+     private void saveEnderPearls(final ValueOutput playerOutput) {
+-        if (!this.enderPearls.isEmpty()) {
+-            ValueOutput.ValueOutputList pearlsOutput = playerOutput.childrenList("ender_pearls");
+-
+-            for (ThrownEnderpearl enderPearl : this.enderPearls) {
+-                if (enderPearl.level().paperConfig().misc.legacyEnderPearlBehavior) continue; // Paper - Allow using old ender pearl behavior
+-                if (enderPearl.isRemoved()) {
+-                    LOGGER.warn("Trying to save removed ender pearl, skipping");
+-                } else {
+-                    ValueOutput pearlTag = pearlsOutput.addChild();
+-                    enderPearl.save(pearlTag);
+-                    pearlTag.store("ender_pearl_dimension", Level.RESOURCE_KEY_CODEC, enderPearl.level().dimension());
+-                }
+-            }
++        // Mili - never serialize an entity from another region
++        List<CompoundTag> snapshots = this.mili$enderPearls.snapshots();
++        if (!snapshots.isEmpty()) {
++            ValueOutput.TypedOutputList<CompoundTag> pearlOutput = playerOutput.list(ENDER_PEARLS_TAG, CompoundTag.CODEC);
++            snapshots.forEach(pearlOutput::add);
+         }
+     }
+ 
+     public void loadAndSpawnEnderPearls(final ValueInput playerInput) {
+-        playerInput.childrenListOrEmpty("ender_pearls").forEach(this::loadAndSpawnEnderPearl);
++        if (!fun.bm.mili.config.modules.fixes.VanillaLikeExperienceConfig.persistentEnderPearls) {
++            playerInput.childrenListOrEmpty(ENDER_PEARLS_TAG).forEach(this::loadAndSpawnEnderPearl);
++            return;
++        }
++        playerInput.listOrEmpty(ENDER_PEARLS_TAG, CompoundTag.CODEC).forEach(this::mili$restoreEnderPearl);
++    }
++
++    private void mili$restoreEnderPearl(final CompoundTag tag) {
++        try (ProblemReporter.ScopedCollector reporter = new ProblemReporter.ScopedCollector(this.problemPath(), LOGGER)) {
++            ValueInput input = TagValueInput.create(reporter, this.registryAccess(), tag);
++            ResourceKey<Level> dimension = input.read(ENDER_PEARL_DIMENSION_TAG, Level.RESOURCE_KEY_CODEC).orElse(null);
++            ServerLevel target = dimension == null ? null : this.server.getLevel(dimension);
++            UUID id = input.read("UUID", UUIDUtil.CODEC).orElse(null);
++            Vec3 pos = input.read("Pos", Vec3.CODEC).orElse(null);
++            // Same horizontal bounds as Entity.load: a clamped entity must not be inserted from the wrong region.
++            if (target == null || id == null || pos == null || !(Math.abs(pos.x) <= 3.0000512E7)
++                || !(Math.abs(pos.z) <= 3.0000512E7) || !Double.isFinite(pos.y)) {
++                LOGGER.warn("Skipping invalid saved ender pearl in dimension {}", dimension);
++                return;
++            }
++            final fun.bm.mili.utils.PlayerEnderPearls storage = this.mili$enderPearls;
++            if (target.paperConfig().misc.legacyEnderPearlBehavior || !storage.stageRestore(id, tag)) {
++                return;
++            }
++            ChunkPos chunk = ChunkPos.containing(BlockPos.containing(pos));
++            var reporterPath = this.problemPath();
++            this.server.getPlayerList().mili$afterPearlUnload(id, () ->
++                io.papermc.paper.threadedregions.RegionizedServer.getInstance().taskQueue.queueOrExecuteTickTask(target, chunk.x(), chunk.z(), () -> {
++                if (storage.isClosing()) {
++                    return; // A quick disconnect saves the still-pending tag instead of spawning it.
++                }
++                try (ProblemReporter.ScopedCollector regionReporter = new ProblemReporter.ScopedCollector(reporterPath, LOGGER)) {
++                    ValueInput pearlInput = TagValueInput.create(regionReporter, target.registryAccess(), tag);
++                    Entity entity = EntityType.loadEntityRecursive(pearlInput, target, EntitySpawnReason.LOAD, net.minecraft.world.entity.EntityProcessor.NOP);
++                    if (entity instanceof ThrownEnderpearl pearl && pearl.mili$isOwnedBy(this) && target.addFreshEntity(pearl)) {
++                        ServerPlayer.placeEnderPearlTicket(target, pearl.chunkPosition());
++                        if (storage.isClosing() && !pearl.isRemoved()) {
++                            pearl.setRemoved(Entity.RemovalReason.UNLOADED_WITH_PLAYER, org.bukkit.event.entity.EntityRemoveEvent.Cause.PLAYER_QUIT);
++                        }
++                    }
++                } finally {
++                    storage.forget(id, null); // Keep already-published or frozen logout snapshots.
++                }
++            }));
++        }
+     }
+ 
+     private void loadAndSpawnEnderPearl(final ValueInput pearlInput) {
+@@ -2372,7 +2407,7 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+     public boolean isInvulnerableTo(final ServerLevel level, final DamageSource source) {
+         // Paper start - disable player cramming
+         return (super.isInvulnerableTo(level, source) || this.isChangingDimension() && !source.is(DamageTypes.ENDER_PEARL) || !this.connection.hasClientLoaded())
+-            || (!this.level().paperConfig().collisions.allowPlayerCrammingDamage && source.is(DamageTypes.CRAMMING));
++            || (!fun.bm.mili.config.modules.fixes.VanillaLikeExperienceConfig.enabled && !this.level().paperConfig().collisions.allowPlayerCrammingDamage && source.is(DamageTypes.CRAMMING)); // Mili - Lophine vanilla-like experience
+         // Paper end - disable player cramming
+     }
+ 
+@@ -2776,6 +2811,7 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+     }
+ 
+     public void restoreFrom(final ServerPlayer oldPlayer, final boolean restoreAll) {
++        this.mili$enderPearls = oldPlayer.mili$enderPearls; // Mili - pearls can survive player respawn
+         this.wardenSpawnTracker = oldPlayer.wardenSpawnTracker;
+         this.chatSession = oldPlayer.chatSession;
+         this.gameMode.setGameModeForPlayer(oldPlayer.gameMode.getGameModeForPlayer(), oldPlayer.gameMode.getPreviousGameModeForPlayer());
+@@ -3551,16 +3587,8 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+         return getInputVector(new Vec3(leftIntent, 0.0, forwardIntent), 1.0F, this.getYRot());
+     }
+ 
+-    public void registerEnderPearl(final ThrownEnderpearl enderPearl) {
+-        //this.enderPearls.add(enderPearl); // Folia - region threading - do not track ender pearls
+-    }
+-
+-    public void deregisterEnderPearl(final ThrownEnderpearl enderPearl) {
+-        //this.enderPearls.remove(enderPearl); // Folia - region threading - do not track ender pearls
+-    }
+-
+-    public Set<ThrownEnderpearl> getEnderPearls() {
+-        return this.enderPearls;
++    public fun.bm.mili.utils.PlayerEnderPearls mili$getEnderPearls() {
++        return this.mili$enderPearls;
+     }
+ 
+     public CompoundTag getShoulderEntityLeft() {
+@@ -3584,7 +3612,6 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+     public long registerAndUpdateEnderPearlTicket(final ThrownEnderpearl enderpearl) {
+         if (enderpearl.level() instanceof ServerLevel enderPearlLevel) {
+             ChunkPos chunkPos = enderpearl.chunkPosition();
+-            this.registerEnderPearl(enderpearl);
+             enderPearlLevel.resetEmptyTime();
+             return placeEnderPearlTicket(enderPearlLevel, chunkPos) - 1L;
+         } else {
+diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
+index d63366b9b3bb70dee11228a007f446374181e372..1171c3bf1ed42cbfe9c90b1e13e97fa7daa9692e 100644
+--- a/net/minecraft/server/players/PlayerList.java
++++ b/net/minecraft/server/players/PlayerList.java
+@@ -105,6 +105,39 @@ import org.jspecify.annotations.Nullable;
+ import org.slf4j.Logger;
+ 
+ public abstract class PlayerList {
++    // Mili - a rapid relog must wait for the old entity to leave its region before restoring the same UUID.
++    private final java.util.concurrent.ConcurrentHashMap<UUID, java.util.concurrent.CompletableFuture<Void>> mili$unloadingPearls = new java.util.concurrent.ConcurrentHashMap<>();
++
++    public void mili$afterPearlUnload(final UUID id, final Runnable enqueueRestore) {
++        java.util.concurrent.CompletableFuture<Void> unloading = this.mili$unloadingPearls.get(id);
++        if (unloading == null) {
++            enqueueRestore.run();
++        } else {
++            // Do not enqueue a chunk/region task from inside the entity scheduler's retired callback.
++            unloading.thenRunAsync(enqueueRestore);
++        }
++    }
++
++    private void mili$unloadPearl(final UUID id, final io.papermc.paper.threadedregions.EntityScheduler scheduler, final fun.bm.mili.utils.PlayerEnderPearls storage) {
++        var unloading = new java.util.concurrent.CompletableFuture<Void>();
++        this.mili$unloadingPearls.put(id, unloading);
++        Runnable done = () -> {
++            unloading.complete(null);
++            this.mili$unloadingPearls.remove(id, unloading);
++        };
++        if (!scheduler.schedule((Entity entity) -> {
++            try {
++                if (entity instanceof ThrownEnderpearl pearl) {
++                    pearl.mili$unloadOnOwnerQuit(storage);
++                }
++            } finally {
++                done.run();
++            }
++        }, ignored -> done.run(), 1L)) {
++            done.run();
++        }
++    }
++
+     public static final File USERBANLIST_FILE = new File("banned-players.json");
+     public static final File IPBANLIST_FILE = new File("banned-ips.json");
+     public static final File OPLIST_FILE = new File("ops.json");
+@@ -734,6 +767,9 @@ public abstract class PlayerList {
+             player.drop(carried, false, net.minecraft.util.Prediction.PREDICTED);
+         }
+         // Paper end - Drop carried item when player has disconnected
++        fun.bm.mili.utils.PlayerEnderPearls pearlStorage = player.mili$getEnderPearls();
++        pearlStorage.close(); // Freeze the quit snapshot before saving or dispatching removals.
++        pearlStorage.schedulers().forEach((id, scheduler) -> this.mili$unloadPearl(id, scheduler, pearlStorage));
+         this.save(player);
+         if (player.isPassenger()) {
+             Entity vehicle = player.getRootVehicle();
+@@ -756,14 +792,6 @@ public abstract class PlayerList {
+ 
+         player.unRide();
+ 
+-        for (ThrownEnderpearl enderpearl : player.getEnderPearls()) {
+-            // Paper start - Allow using old ender pearl behavior
+-            if (!enderpearl.level().paperConfig().misc.legacyEnderPearlBehavior) {
+-                enderpearl.setRemoved(Entity.RemovalReason.UNLOADED_WITH_PLAYER, org.bukkit.event.entity.EntityRemoveEvent.Cause.PLAYER_QUIT); // CraftBukkit - add Bukkit remove cause
+-            }
+-            // Paper end - Allow using old ender pearl behavior
+-        }
+-
+         level.removePlayerImmediately(player, Entity.RemovalReason.UNLOADED_WITH_PLAYER);
+         player.retireScheduler(); // Paper - Folia schedulers
+         player.getBukkitEntity().packetProcessor.close(); // Folia - region threading
+diff --git a/net/minecraft/world/entity/item/PrimedTnt.java b/net/minecraft/world/entity/item/PrimedTnt.java
+index 37b924aa730be75d84aeb1275af44cccb0610a0a..e0ba28976463905553b6d30c293aed6102d83408 100644
+--- a/net/minecraft/world/entity/item/PrimedTnt.java
++++ b/net/minecraft/world/entity/item/PrimedTnt.java
+@@ -109,7 +109,7 @@ public class PrimedTnt extends Entity implements TraceableEntity {
+ 
+     @Override
+     public void tick() {
+-        if (this.level().spigotConfig.maxTntTicksPerTick > 0 && ++this.level().getCurrentWorldData().currentPrimedTnt > this.level().spigotConfig.maxTntTicksPerTick) { return; } // Spigot // Folia - region threading
++        if (!fun.bm.mili.config.modules.fixes.VanillaLikeExperienceConfig.enabled && this.level().spigotConfig.maxTntTicksPerTick > 0 && ++this.level().getCurrentWorldData().currentPrimedTnt > this.level().spigotConfig.maxTntTicksPerTick) { return; } // Spigot // Folia - region threading
+         //this.handlePortal(); // Folia - region threading
+         this.applyGravity();
+         this.move(MoverType.SELF, this.getDeltaMovement());
+diff --git a/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java b/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
+index 850df29d2466eb6d04feba703c13fe8ec44f1ddf..40c290ec0559995af9c6fe894868d2a23e5c6a22 100644
+--- a/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
++++ b/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
+@@ -1,5 +1,8 @@
+ package net.minecraft.world.entity.projectile.throwableitemprojectile;
+ 
++import fun.bm.mili.config.modules.fixes.VanillaLikeExperienceConfig;
++import fun.bm.mili.utils.PlayerEnderPearls;
++import io.papermc.paper.threadedregions.EntityScheduler;
+ import java.util.UUID;
+ import net.minecraft.core.BlockPos;
+ import net.minecraft.core.SectionPos;
+@@ -8,6 +11,7 @@ import net.minecraft.server.level.ServerLevel;
+ import net.minecraft.server.level.ServerPlayer;
+ import net.minecraft.sounds.SoundEvents;
+ import net.minecraft.sounds.SoundSource;
++import net.minecraft.util.ProblemReporter;
+ import net.minecraft.world.Difficulty;
+ import net.minecraft.world.entity.Entity;
+ import net.minecraft.world.entity.EntityReference;
+@@ -25,13 +29,17 @@ import net.minecraft.world.level.block.Blocks;
+ import net.minecraft.world.level.block.state.BlockState;
+ import net.minecraft.world.level.gamerules.GameRules;
+ import net.minecraft.world.level.portal.TeleportTransition;
++import net.minecraft.world.level.storage.TagValueOutput;
+ import net.minecraft.world.phys.EntityHitResult;
+ import net.minecraft.world.phys.HitResult;
+ import net.minecraft.world.phys.Vec3;
+ import org.jspecify.annotations.Nullable;
+ 
+ public class ThrownEnderpearl extends ThrowableItemProjectile {
++    private static final org.slf4j.Logger MILI_LOGGER = com.mojang.logging.LogUtils.getLogger();
+     private long ticketTimer = 0L;
++    private @Nullable PlayerEnderPearls mili$pearlStorage;
++    private @Nullable EntityScheduler mili$pearlScheduler;
+ 
+     public ThrownEnderpearl(final EntityType<? extends ThrownEnderpearl> type, final Level level) {
+         super(type, level);
+@@ -48,17 +56,79 @@ public class ThrownEnderpearl extends ThrowableItemProjectile {
+ 
+     @Override
+     protected void setOwner(final @Nullable EntityReference<Entity> owner) {
+-        this.deregisterFromCurrentOwner();
++        this.mili$forgetPersistenceSnapshot();
+         super.setOwner(owner);
+-        this.registerToCurrentOwner();
++        if (this.valid) {
++            this.mili$publishPersistenceSnapshot();
++        }
+     }
+ 
+-    private void deregisterFromCurrentOwner() {
+-        // Folia - region threading - we remove the registration logic, we do not need to fetch the owner
++    public boolean mili$isOwnedBy(final ServerPlayer player) {
++        return this.ownedBy(player);
+     }
+ 
+-    private void registerToCurrentOwner() {
+-        // Folia - region threading - we remove the registration logic, we do not need to fetch the owner
++    @Override
++    public void restoreFrom(final Entity oldEntity) {
++        super.restoreFrom(oldEntity);
++        if (oldEntity instanceof ThrownEnderpearl oldPearl) {
++            // Folia has not moved us to the destination region yet. Transfer ownership metadata only.
++            this.mili$pearlStorage = oldPearl.mili$pearlStorage;
++            this.mili$pearlScheduler = oldPearl.mili$pearlScheduler;
++        }
++    }
++
++    public void mili$publishPersistenceSnapshot() {
++        if (this.mili$pearlStorage != null && this.mili$pearlStorage.isClosing()) {
++            return; // A frozen modern snapshot stays attached through a concurrent teleport.
++        }
++        if (!VanillaLikeExperienceConfig.persistentEnderPearls || this.level().paperConfig().misc.legacyEnderPearlBehavior
++            || this.owner == null || this.isRemoved() || !(this.level() instanceof ServerLevel level)) {
++            this.mili$forgetPersistenceSnapshot();
++            return;
++        }
++        ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this, "Cannot snapshot an ender pearl off its owning region");
++        ServerPlayer player = level.getServer().getPlayerList().getPlayer(this.owner.getUUID());
++        PlayerEnderPearls storage = player == null ? null : player.mili$getEnderPearls();
++        if (storage != this.mili$pearlStorage) {
++            this.mili$forgetPersistenceSnapshot();
++        }
++        if (storage == null || storage.isClosing()) {
++            return;
++        }
++        try (ProblemReporter.ScopedCollector reporter = new ProblemReporter.ScopedCollector(this.problemPath(), MILI_LOGGER)) {
++            TagValueOutput output = TagValueOutput.createWithContext(reporter, this.registryAccess());
++            if (this.save(output)) {
++                output.store(ServerPlayer.ENDER_PEARL_DIMENSION_TAG, Level.RESOURCE_KEY_CODEC, level.dimension());
++                EntityScheduler scheduler = this.getBukkitEntity().taskScheduler;
++                if (storage.publish(this.getUUID(), output.buildResult(), scheduler)) {
++                    this.mili$pearlStorage = storage;
++                    this.mili$pearlScheduler = scheduler;
++                }
++            } else {
++                this.mili$forgetPersistenceSnapshot();
++            }
++        }
++    }
++
++    private void mili$forgetPersistenceSnapshot() {
++        if (this.mili$pearlStorage != null) {
++            this.mili$pearlStorage.forget(this.getUUID(), this.mili$pearlScheduler);
++            this.mili$pearlStorage = null;
++            this.mili$pearlScheduler = null;
++        }
++    }
++
++    public void mili$unloadOnOwnerQuit(final PlayerEnderPearls storage) {
++        // A matching store means this pearl was already captured as modern at logout.
++        if (!this.isRemoved() && this.mili$pearlStorage == storage) {
++            this.setRemoved(Entity.RemovalReason.UNLOADED_WITH_PLAYER, org.bukkit.event.entity.EntityRemoveEvent.Cause.PLAYER_QUIT);
++        }
++    }
++
++    @Override
++    public boolean shouldBeSaved() {
++        // Tracked pearls belong in player data, not in both player and chunk data.
++        return this.mili$pearlStorage == null && super.shouldBeSaved();
+     }
+ 
+     @Override
+@@ -257,6 +327,12 @@ public class ThrownEnderpearl extends ThrowableItemProjectile {
+ 
+     @Override
+     public void tick() {
++        if (this.mili$pearlStorage != null && this.mili$pearlStorage.isClosing()) {
++            this.mili$unloadOnOwnerQuit(this.mili$pearlStorage);
++            if (this.isRemoved()) {
++                return;
++            }
++        }
+         if (this.level() instanceof ServerLevel serverLevel) {
+             int var7 = SectionPos.blockToSectionCoord(this.position().x());
+             int previousChunkZ = SectionPos.blockToSectionCoord(this.position().z());
+@@ -282,6 +358,7 @@ public class ThrownEnderpearl extends ThrowableItemProjectile {
+                     && owner instanceof ServerPlayer serverPlayer) {
+                     this.ticketTimer = serverPlayer.registerAndUpdateEnderPearlTicket(this);
+                 }
++                this.mili$publishPersistenceSnapshot();
+             }
+         } else {
+             super.tick();
+@@ -327,8 +404,8 @@ public class ThrownEnderpearl extends ThrowableItemProjectile {
+ 
+     @Override
+     public void onRemoval(final Entity.RemovalReason reason) {
+-        if (reason != Entity.RemovalReason.UNLOADED_WITH_PLAYER) {
+-            this.deregisterFromCurrentOwner();
++        if (reason != Entity.RemovalReason.CHANGED_DIMENSION) {
++            this.mili$forgetPersistenceSnapshot();
+         }
+ 
+         super.onRemoval(reason);
+diff --git a/net/minecraft/world/item/EnderpearlItem.java b/net/minecraft/world/item/EnderpearlItem.java
+index 98001b04d9c7b252fb9fac803ff9cdfafb838d58..da1587e6eeb2ad485ac16bf0080248bf2008f417 100644
+--- a/net/minecraft/world/item/EnderpearlItem.java
++++ b/net/minecraft/world/item/EnderpearlItem.java
+@@ -46,7 +46,6 @@ public class EnderpearlItem extends Item {
+                 player.awardStat(Stats.ITEM_USED.get(this));
+             } else {
+                 if (player instanceof net.minecraft.server.level.ServerPlayer serverPlayer) {
+-                    serverPlayer.deregisterEnderPearl(thrownEnderpearl.projectile());
+                     serverPlayer.connection.send(new net.minecraft.network.protocol.game.ClientboundCooldownPacket(player.getCooldowns().getCooldownGroup(itemStack), 0)); // prevent visual desync of cooldown on the slot
+                 }
+                 // Paper end - PlayerLaunchProjectileEvent
+diff --git a/net/minecraft/world/level/NaturalSpawner.java b/net/minecraft/world/level/NaturalSpawner.java
+index 69965b05111e3a06df5a2a6a905084a2f2fd6f21..99e44002f2f0612c18a1a84739577f330ad7714b 100644
+--- a/net/minecraft/world/level/NaturalSpawner.java
++++ b/net/minecraft/world/level/NaturalSpawner.java
+@@ -89,7 +89,7 @@ public final class NaturalSpawner {
+                 MobCategory category = entity.getType().getCategory();
+                 if (category != MobCategory.MISC) {
+                     // Paper start - Only count natural spawns
+-                    if (!fun.bm.mili.config.modules.function.TechnicalSurvivalModeConfig.enabled && !entity.level().paperConfig().entities.spawning.countAllMobsForSpawning && // Mili - mc technical survival mode
++                    if (!fun.bm.mili.config.modules.fixes.VanillaLikeExperienceConfig.enabled && !fun.bm.mili.config.modules.function.TechnicalSurvivalModeConfig.enabled && !entity.level().paperConfig().entities.spawning.countAllMobsForSpawning && // Mili - mc technical survival mode
+                         !(entity.spawnReason == org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.NATURAL ||
+                             entity.spawnReason == org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.CHUNK_GEN)) {
+                         continue;
+diff --git a/net/minecraft/world/level/block/piston/PistonBaseBlock.java b/net/minecraft/world/level/block/piston/PistonBaseBlock.java
+index 2922e72277789e16555bc5797d3b171e1d112d88..2d4bf4265103232748743dd167d5ffc0e6601277 100644
+--- a/net/minecraft/world/level/block/piston/PistonBaseBlock.java
++++ b/net/minecraft/world/level/block/piston/PistonBaseBlock.java
+@@ -141,7 +141,7 @@ public class PistonBaseBlock extends DirectionalBlock {
+         Direction direction = state.getValue(FACING);
+         // Paper start - Protect Bedrock and End Portal/Frames from being destroyed; prevent retracting when we're facing the wrong way (we were replaced before retraction could occur)
+         Direction directionQueuedAs = Direction.from3DDataValue(b1 & 7); // Paper - copied from below
+-        if (!io.papermc.paper.configuration.GlobalConfiguration.get().unsupportedSettings.allowPermanentBlockBreakExploits && direction != directionQueuedAs) {
++        if (!fun.bm.mili.config.modules.fixes.VanillaLikeExperienceConfig.enabled && !io.papermc.paper.configuration.GlobalConfiguration.get().unsupportedSettings.allowPermanentBlockBreakExploits && direction != directionQueuedAs) {
+             return false;
+         }
+         // Paper end - Protect Bedrock and End Portal/Frames from being destroyed
+@@ -225,7 +225,7 @@ public class PistonBaseBlock extends DirectionalBlock {
+             } else {
+                 // Paper start - Protect Bedrock and End Portal/Frames from being destroyed; fix headless pistons breaking blocks
+                 BlockPos headPos = pos.relative(direction);
+-                if (io.papermc.paper.configuration.GlobalConfiguration.get().unsupportedSettings.allowPermanentBlockBreakExploits || level.getBlockState(headPos) == Blocks.PISTON_HEAD.defaultBlockState().setValue(FACING, direction)) { // double check to make sure we're not a headless piston
++                if (fun.bm.mili.config.modules.fixes.VanillaLikeExperienceConfig.enabled || io.papermc.paper.configuration.GlobalConfiguration.get().unsupportedSettings.allowPermanentBlockBreakExploits || level.getBlockState(headPos) == Blocks.PISTON_HEAD.defaultBlockState().setValue(FACING, direction)) { // double check to make sure we're not a headless piston
+                     level.removeBlock(headPos, false);
+                 } else {
+                     ((ServerLevel) level).getChunkSource().blockChanged(headPos); // ... fix client desync

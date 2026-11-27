@@ -5,7 +5,7 @@ Subject: [PATCH] Pufferfish: Reduce projectile chunk loading
 
 
 diff --git a/io/papermc/paper/threadedregions/RegionizedWorldData.java b/io/papermc/paper/threadedregions/RegionizedWorldData.java
-index 88014b8c75cf4a804f11f6089ba0dbc5ad67db80..1d493cb78277844db46f9f6fc44b7997ade80afc 100644
+index d047f633c2fc8725ea8a2f6228e65d7d440df9f5..1382becfbb5d46d195c01373a02e8b4ec9489115 100644
 --- a/io/papermc/paper/threadedregions/RegionizedWorldData.java
 +++ b/io/papermc/paper/threadedregions/RegionizedWorldData.java
 @@ -323,6 +323,10 @@ public final class RegionizedWorldData {

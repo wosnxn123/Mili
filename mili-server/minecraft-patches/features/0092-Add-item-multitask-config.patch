@@ -5,10 +5,10 @@ Subject: [PATCH] Add item multitask config
 
 
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index 44bb0e734b042f14c567a85a99dc33afc89fb173..ec496c96c73d44e155cd7e70739d1e2f7ae2a881 100644
+index 2e827933600f987096046fe789ddcb7f45594e00..5fcb7e994c7677f00540a757184f7fd07d6ee023 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-@@ -2249,7 +2249,11 @@ public class ServerGamePacketListenerImpl
+@@ -2251,7 +2251,11 @@ public class ServerGamePacketListenerImpl
                                  this.player.sendSpawnProtectionMessage(pos);
                              } else if (this.awaitingPositionFromClient == null && (level.mayInteract(this.player, pos) || passthroughSignInteraction)) {
                                  // Paper end - Allow using signs inside spawn protection
@@ -21,7 +21,7 @@ index 44bb0e734b042f14c567a85a99dc33afc89fb173..ec496c96c73d44e155cd7e70739d1e2f
                                  InteractionResult interactionResult = this.player.gameMode.useItemOn(this.player, level, itemStack, hand, blockHit);
                                  if (interactionResult.consumesAction()) {
                                      CriteriaTriggers.ANY_BLOCK_USE.trigger(this.player, blockHit.getBlockPos(), itemStack);
-@@ -2447,9 +2451,13 @@ public class ServerGamePacketListenerImpl
+@@ -2449,9 +2453,13 @@ public class ServerGamePacketListenerImpl
                  return;
              }
              // CraftBukkit end

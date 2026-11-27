@@ -5,10 +5,10 @@ Subject: [PATCH] Gale: Optimize noise generation
 
 
 diff --git a/net/minecraft/world/level/levelgen/synth/PerlinNoise.java b/net/minecraft/world/level/levelgen/synth/PerlinNoise.java
-index 8e5ba8f7bed5754b6b657db30cba92fb4c7ee1b3..f320155263f69d054db14122fc37eb66a053325c 100644
+index 12be06b795343d0f61cd908dd3f62fab70592a81..baa342d76f667f38d8f010dd408406b6ff274ebf 100644
 --- a/net/minecraft/world/level/levelgen/synth/PerlinNoise.java
 +++ b/net/minecraft/world/level/levelgen/synth/PerlinNoise.java
-@@ -41,6 +41,15 @@ public class PerlinNoise extends GradientNoise implements ca.spottedleaf.moonris
+@@ -42,6 +42,15 @@ public class PerlinNoise extends GradientNoise implements ca.spottedleaf.moonris
          // Paper end - optimise chunk generation
      }
  
@@ -24,7 +24,7 @@ index 8e5ba8f7bed5754b6b657db30cba92fb4c7ee1b3..f320155263f69d054db14122fc37eb66
      @Override
      public Interval range() {
          return RANGE;
-@@ -56,12 +65,17 @@ public class PerlinNoise extends GradientNoise implements ca.spottedleaf.moonris
+@@ -57,12 +66,17 @@ public class PerlinNoise extends GradientNoise implements ca.spottedleaf.moonris
          double x = wrap(_x) + this.offsetX;
          double y = wrap(_y) + this.offsetY;
          double z = wrap(_z) + this.offsetZ;
@@ -48,7 +48,7 @@ index 8e5ba8f7bed5754b6b657db30cba92fb4c7ee1b3..f320155263f69d054db14122fc37eb66
          return this.sampleAndLerp(floorX, floorY, floorZ, relativeX, relativeY, relativeZ, relativeY);
      }
  
-@@ -69,12 +83,17 @@ public class PerlinNoise extends GradientNoise implements ca.spottedleaf.moonris
+@@ -70,12 +84,17 @@ public class PerlinNoise extends GradientNoise implements ca.spottedleaf.moonris
          double x = wrap(_x) + this.offsetX;
          double y = wrap(_y) + this.offsetY;
          double z = wrap(_z) + this.offsetZ;
@@ -73,10 +73,10 @@ index 8e5ba8f7bed5754b6b657db30cba92fb4c7ee1b3..f320155263f69d054db14122fc37eb66
      }
  
 diff --git a/net/minecraft/world/level/levelgen/synth/SmearedPerlinNoise.java b/net/minecraft/world/level/levelgen/synth/SmearedPerlinNoise.java
-index 64868bdc6554dea2b1b45fbdac8da6551f6ecc08..c5978cf2ae910ddbacde9871cb82b2db528b665d 100644
+index e8eafc7063c7563b0e97ec508dd5401efa3d2b31..dd957a7f3f2ac83f526cd8948f4cb14caa7c84dd 100644
 --- a/net/minecraft/world/level/levelgen/synth/SmearedPerlinNoise.java
 +++ b/net/minecraft/world/level/levelgen/synth/SmearedPerlinNoise.java
-@@ -37,12 +37,17 @@ public class SmearedPerlinNoise extends PerlinNoise {
+@@ -38,12 +38,17 @@ public class SmearedPerlinNoise extends PerlinNoise {
          double x = wrap(_x) + this.offsetX;
          double y = wrap(_y) + this.offsetY;
          double z = wrap(_z) + this.offsetZ;
@@ -100,7 +100,7 @@ index 64868bdc6554dea2b1b45fbdac8da6551f6ecc08..c5978cf2ae910ddbacde9871cb82b2db
          float fudgedRelativeY = (float)(relativeY - this.computeFudgeY(_y, relativeY));
          return this.sampleAndLerp(floorX, floorY, floorZ, relativeX, fudgedRelativeY, relativeZ, (float)relativeY);
      }
-@@ -55,7 +60,7 @@ public class SmearedPerlinNoise extends PerlinNoise {
+@@ -56,7 +61,7 @@ public class SmearedPerlinNoise extends PerlinNoise {
              fudgeLimit = relativeY;
          }
  

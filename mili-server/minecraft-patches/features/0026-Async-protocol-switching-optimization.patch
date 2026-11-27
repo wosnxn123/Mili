@@ -171,10 +171,10 @@ index 77c4670868a95dc7b13461dfa67af34b0a3c329a..36955ce5cbe418856f7cbcf28193994c
  
      @Override
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index e1749faead4d5c91cbefed031a6e6586517a4c39..1a9f249edfb27daf423c2e9c4f272eb8d9e56ad7 100644
+index 914a19344172621b018df01b0e964f890520f8fa..0485adf563693b4ab03abd25a55bad3b1b8d3ce3 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-@@ -2959,7 +2959,13 @@ public class ServerGamePacketListenerImpl
+@@ -2961,7 +2961,13 @@ public class ServerGamePacketListenerImpl
          } // Folia end - rewrite login process - move connection ownership to global region
          this.waitingForSwitchToConfig = true; // Folia - rewrite login process - fix bad ordering of this field write - moved down
          this.send(ClientboundStartConfigurationPacket.INSTANCE);
@@ -188,7 +188,7 @@ index e1749faead4d5c91cbefed031a6e6586517a4c39..1a9f249edfb27daf423c2e9c4f272eb8
      }
  
      @Override
-@@ -3841,12 +3847,26 @@ public class ServerGamePacketListenerImpl
+@@ -3843,12 +3849,26 @@ public class ServerGamePacketListenerImpl
          }
  
          final ServerConfigurationPacketListenerImpl listener = new ServerConfigurationPacketListenerImpl(this.server, this.connection, this.createCookie(this.player.clientInformation())); // Paper
@@ -253,7 +253,7 @@ index ffafef7eadd02b9415afb1bc54a19e1d7ce0340e..b1ab794377999988c709a4e6e7ceb1fa
  
      @Override
 diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
-index 82fb4aecffaf4ae97a9c2ab60eca2d67107de0a8..57cc03f81c3bbdf8cfe477f63de326fc6f17d0a8 100644
+index 8bc6dd5163861d2e10380acf07e6b3ed097f79b3..41e4d93b83a52fe7bc180d21ebb18942e2c27111 100644
 --- a/net/minecraft/server/players/PlayerList.java
 +++ b/net/minecraft/server/players/PlayerList.java
 @@ -239,9 +239,11 @@ public abstract class PlayerList {

@@ -5,7 +5,7 @@ Subject: [PATCH] Leaf: Replace criterion map with optimized collection
 
 
 diff --git a/net/minecraft/server/PlayerAdvancements.java b/net/minecraft/server/PlayerAdvancements.java
-index e70701663abd6f19a506690167d80f0dceab8000..960bb98fb8b408c261f5f8e49c094b680212c78e 100644
+index df4f74ccedd50fe50c857128d1cf73b92a64cda1..8ee7daef1c1a1035293b72df0efa49ee3d05010d 100644
 --- a/net/minecraft/server/PlayerAdvancements.java
 +++ b/net/minecraft/server/PlayerAdvancements.java
 @@ -60,7 +60,7 @@ public class PlayerAdvancements {

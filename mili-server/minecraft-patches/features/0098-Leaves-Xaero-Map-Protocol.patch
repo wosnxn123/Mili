@@ -8,7 +8,7 @@ As a part of : Leaves (https://github.com/LeavesMC/Leaves)
 Licensed under: GPL-3.0 (https://www.gnu.org/licenses/gpl-3.0.html)
 
 diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
-index d0d5c73327ac533ee9b32b6db472ca624e7edfac..8e94eb079321f85a2c59270eb29eb1156cad9715 100644
+index 5cb264e7d7903c6cf824b1222351f849cbd1ae67..b66ae00d4cb14fcc7965577ebf2dd14fdd3ecacd 100644
 --- a/net/minecraft/server/players/PlayerList.java
 +++ b/net/minecraft/server/players/PlayerList.java
 @@ -1133,6 +1133,7 @@ public abstract class PlayerList {

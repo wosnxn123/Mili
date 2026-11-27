@@ -1,0 +1,102 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hayanesuru <hayanesuru@outlook.jp>
+Date: Sat, 1 Aug 2026 08:56:01 +0900
+Subject: [PATCH] Leaf: Cache biome zoom seed
+
+Compute the vanilla hashed seed once per WorldOptions and reuse it for world creation, chunk generation, and player spawn info. The seed and world settings codec are unchanged.
+
+Original patch: https://github.com/Winds-Studio/Leaf/blob/06c9c91a17e61aeed16bcfc846ebe91aa70d6c84/leaf-server/minecraft-patches/features/0216-cache-biome-zoom-seed.patch
+
+Ported from Lophine (GPLv3 for its changes; see licenses/GPL.md):
+https://github.com/LophineLabs/Lophine/blob/7a51f49a512f1b5465f15a905d3704754e4bed02/lophine-server/minecraft-patches/features/0140-Leaf-Cache-biome-zoom-seed.patch
+Lophine patch blob: c897dcd4c07ac09408f482040ed646d505b2cee2
+https://github.com/LophineLabs/Lophine/blob/7a51f49a512f1b5465f15a905d3704754e4bed02/LICENSE.md
+
+Mili port: Initialize the immutable seed cache in the constructor shared by the normal and Secure Seed options.
+
+Series copyright and original license notices: licenses/Lophine-0137-0158-NOTICE.txt
+
+diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
+index dfba93feb055389aff32c36ead6c200624e28d86..feadaa9656280a74c7ff11982938bb1929a63c2a 100644
+--- a/net/minecraft/server/MinecraftServer.java
++++ b/net/minecraft/server/MinecraftServer.java
+@@ -154,7 +154,6 @@ import net.minecraft.world.level.Level;
+ import net.minecraft.world.level.LevelSettings;
+ import net.minecraft.world.level.TicketStorage;
+ import net.minecraft.world.level.WorldDataConfiguration;
+-import net.minecraft.world.level.biome.BiomeManager;
+ import net.minecraft.world.level.block.Block;
+ import net.minecraft.world.level.chunk.status.ChunkStatus;
+ import net.minecraft.world.level.chunk.storage.ChunkIOErrorReporter;
+@@ -693,8 +692,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         final ResourceKey<Level> dimensionKey = loading.info().dimensionKey();
+         final SavedDataStorage savedDataStorage = new SavedDataStorage(this.storageSource.getDimensionPath(dimensionKey).resolve(LevelResource.DATA.id()), this.getFixerUpper(), this.registryAccess());
+         savedDataStorage.set(WorldGenSettings.TYPE, new WorldGenSettings(worldDataAndGenSettings.genSettings().options(), worldDataAndGenSettings.genSettings().dimensions()));
+-        long seed = worldOptions.seed();
+-        long biomeZoomSeed = BiomeManager.obfuscateSeed(seed);
++        long biomeZoomSeed = worldOptions.biomeZoomSeed(); // Leaf - cache biome zoom seed
+         List<CustomSpawner> overworldCustomSpawners = ImmutableList.of(
+             new PhantomSpawner(), new PatrolSpawner(), new CatSpawner(), new VillageSiege(), new WanderingTraderSpawner(savedDataStorage) // Paper - save to world data
+         );
+diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
+index 5d4da09034b2616e934fb76136b0003d2478c491..3f2e2cec1a5715669a5dd5cb275fe74ee75a1478 100644
+--- a/net/minecraft/server/level/ServerPlayer.java
++++ b/net/minecraft/server/level/ServerPlayer.java
+@@ -177,7 +177,6 @@ import net.minecraft.world.item.trading.MerchantOffers;
+ import net.minecraft.world.level.ChunkPos;
+ import net.minecraft.world.level.GameType;
+ import net.minecraft.world.level.Level;
+-import net.minecraft.world.level.biome.BiomeManager;
+ import net.minecraft.world.level.block.AbstractBedBlock;
+ import net.minecraft.world.level.block.Block;
+ import net.minecraft.world.level.block.HorizontalDirectionalBlock;
+@@ -3523,7 +3522,7 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+         return new CommonPlayerSpawnInfo(
+             level.dimensionTypeRegistration(),
+             level.dimension(),
+-            BiomeManager.obfuscateSeed(level.getSeed()),
++            level.worldGenSettings.options().biomeZoomSeed(), // Leaf - cache biome zoom seed
+             this.gameMode.getGameModeForPlayer(),
+             Optional.ofNullable(this.gameMode.getPreviousGameModeForPlayer()),
+             level.isDebug(),
+diff --git a/net/minecraft/server/level/WorldGenRegion.java b/net/minecraft/server/level/WorldGenRegion.java
+index 5f9dbdc854296041d19566ec48ab9f8ac2e3ae4b..a76f0ecec6d4e16f9012fc47bcb6c4a3f28feb68 100644
+--- a/net/minecraft/server/level/WorldGenRegion.java
++++ b/net/minecraft/server/level/WorldGenRegion.java
+@@ -138,7 +138,7 @@ public class WorldGenRegion implements WorldGenLevel {
+         this.random = randomState.getOrCreateRandomFactory(WORLDGEN_REGION_RANDOM).at(this.center.getPos().getWorldPosition());
+         this.dimensionType = level.dimensionType();
+         this.uncachedBiomeResolver = level.uncachedBiomeResolver();
+-        this.biomeManager = new BiomeManager(this, BiomeManager.obfuscateSeed(this.seed));
++        this.biomeManager = new BiomeManager(this, level.worldGenSettings.options().biomeZoomSeed()); // Leaf - cache biome zoom seed
+         ChunkPos centerPos = center.getPos();
+         this.centerChunkX = centerPos.x();
+         this.centerChunkZ = centerPos.z();
+diff --git a/net/minecraft/world/level/levelgen/WorldOptions.java b/net/minecraft/world/level/levelgen/WorldOptions.java
+index 38495536001442b1591251d7625ccdad4b73caf3..e93ddb764308509f06ac8c06b653630a8f697ea8 100644
+--- a/net/minecraft/world/level/levelgen/WorldOptions.java
++++ b/net/minecraft/world/level/levelgen/WorldOptions.java
+@@ -40,6 +40,7 @@ public class WorldOptions {
+             : new WorldOptions("North Carolina".hashCode(), true, true);
+     // Leaf end - Matter - Secure Seed
+     private final long seed;
++    private final long biomeZoomSeed; // Leaf - cache biome zoom seed
+     private long[] featureSeed = su.plo.matter.Globals.createRandomWorldSeed(); // Leaf - Matter - Secure Seed
+     private final boolean generateStructures;
+     private final boolean generateBonusChest;
+@@ -83,8 +84,15 @@ public class WorldOptions {
+         this.generateStructures = generateStructures;
+         this.generateBonusChest = generateBonusChest;
+         this.legacyCustomOptions = legacyCustomOptions;
++        this.biomeZoomSeed = net.minecraft.world.level.biome.BiomeManager.obfuscateSeed(seed); // Leaf - cache biome zoom seed
+     }
+ 
++    // Leaf start - cache biome zoom seed
++    public long biomeZoomSeed() {
++        return this.biomeZoomSeed;
++    }
++    // Leaf end - cache biome zoom seed
++
+     public long seed() {
+         return this.seed;
+     }

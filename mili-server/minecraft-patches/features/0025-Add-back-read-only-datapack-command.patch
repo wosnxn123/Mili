@@ -5,10 +5,10 @@ Subject: [PATCH] Add back read-only datapack command
 
 
 diff --git a/net/minecraft/commands/Commands.java b/net/minecraft/commands/Commands.java
-index cc5c7393e054488f155f3b73136e1a22dced3aeb..ae41c57c3164b2bed06f9bbaeeee4835bfae23ed 100644
+index 77159ed69913a6b142eab5caede167a12c4cc661..20df2e44c5716223829c66e0d0c5884d1c2c2b62 100644
 --- a/net/minecraft/commands/Commands.java
 +++ b/net/minecraft/commands/Commands.java
-@@ -208,7 +208,7 @@ public class Commands {
+@@ -214,7 +214,7 @@ public class Commands {
          if(me.earthme.luminol.config.modules.experiment.CommandConfig.data) { // Luminol - Config for data command
          DataCommands.register(this.dispatcher, context); // Folia - region threading - TODO // Luminol - Config for data command
          } // Luminol - Config for data command

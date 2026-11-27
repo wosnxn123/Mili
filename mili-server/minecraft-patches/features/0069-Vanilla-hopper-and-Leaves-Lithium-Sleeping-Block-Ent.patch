@@ -5,7 +5,7 @@ Subject: [PATCH] Vanilla hopper and Leaves Lithium Sleeping Block Entity
 
 
 diff --git a/io/papermc/paper/threadedregions/RegionizedWorldData.java b/io/papermc/paper/threadedregions/RegionizedWorldData.java
-index 1d493cb78277844db46f9f6fc44b7997ade80afc..ac3c28011e53cd841c9ef6bcfd28fd082ae7e9bd 100644
+index 1382becfbb5d46d195c01373a02e8b4ec9489115..0e7107ad89f24446ed640fa6c6ea7957d50c23a7 100644
 --- a/io/papermc/paper/threadedregions/RegionizedWorldData.java
 +++ b/io/papermc/paper/threadedregions/RegionizedWorldData.java
 @@ -65,6 +65,10 @@ import java.util.Set;
@@ -236,7 +236,7 @@ index 6e08d50794c4af4405f3e164a3fd46f376b3f78f..dd2d0940eece3e85078e574f66f71a4c
  
      int getContainerSize();
 diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
-index 5a92da4c0ce837a67ecc893201b6fbbde473c708..bdcad4ec117d1b87028572aeb3dfdb9321aa4603 100644
+index 354981d39d1473e04f948c529277309e212d8a3b..4e2d4edd173a646951d6665c62febe6ce6408af7 100644
 --- a/net/minecraft/world/entity/Entity.java
 +++ b/net/minecraft/world/entity/Entity.java
 @@ -327,7 +327,7 @@ public abstract class Entity
@@ -248,7 +248,7 @@ index 5a92da4c0ce837a67ecc893201b6fbbde473c708..bdcad4ec117d1b87028572aeb3dfdb93
      private final VecDeltaCodec packetPositionCodec = new VecDeltaCodec();
      public boolean needsSync;
      public boolean syncPosition;
-@@ -4572,11 +4572,13 @@ public abstract class Entity
+@@ -4577,11 +4577,13 @@ public abstract class Entity
      }
  
      protected Entity transformForAsyncTeleport(ServerLevel destination, Vec3 pos, Float yaw, Float pitch, Vec3 velocity) {
@@ -262,7 +262,7 @@ index 5a92da4c0ce837a67ecc893201b6fbbde473c708..bdcad4ec117d1b87028572aeb3dfdb93
          // vanilla code used to call remove _after_ copying, and some stuff is required to be after copy - so add hook here
          // for example, clearing of inventory after switching dimensions
          this.postRemoveAfterChangingDimensions();
-@@ -6248,8 +6250,29 @@ public abstract class Entity
+@@ -6253,8 +6255,29 @@ public abstract class Entity
              this.setBoundingBox(this.makeBoundingBox());
          }
          // Paper end - Block invalid positions and bounding box
@@ -454,7 +454,7 @@ index bb584da75d693254a9843fc1c856bacfcdd7d149..0b5c0fa8e49673bdf8a952c51b98c3db
              ItemStack itemStack = container.getItem(i);
              if (!itemStack.isEmpty()) {
 diff --git a/net/minecraft/world/item/ItemStack.java b/net/minecraft/world/item/ItemStack.java
-index 34e2f33709007a821025c4efcc25c71bb7210b74..cfae6b4265f866f95007d8e359df56963e738992 100644
+index 9581ea1ea59af5e04dc32470ddf4cef9b62e4d97..31e10ccd3093d80ad4da07f3893e2037f1f56495 100644
 --- a/net/minecraft/world/item/ItemStack.java
 +++ b/net/minecraft/world/item/ItemStack.java
 @@ -99,8 +99,12 @@ import org.apache.commons.lang3.function.TriConsumer;
@@ -471,7 +471,7 @@ index 34e2f33709007a821025c4efcc25c71bb7210b74..cfae6b4265f866f95007d8e359df5696
      private static final List<Component> OP_NBT_WARNING = List.of(
          Component.translatable("item.op_warning.line1").withStyle(ChatFormatting.RED, ChatFormatting.BOLD),
          Component.translatable("item.op_warning.line2").withStyle(ChatFormatting.RED),
-@@ -971,6 +975,7 @@ public final class ItemStack implements DataComponentHolder, ItemInstance {
+@@ -972,6 +976,7 @@ public final class ItemStack implements DataComponentHolder, ItemInstance {
      // CraftBukkit end
  
      public <T> @Nullable T set(final DataComponentType<T> type, final @Nullable T value) {
@@ -479,7 +479,7 @@ index 34e2f33709007a821025c4efcc25c71bb7210b74..cfae6b4265f866f95007d8e359df5696
          return this.components.set(type, value);
      }
  
-@@ -1304,6 +1309,23 @@ public final class ItemStack implements DataComponentHolder, ItemInstance {
+@@ -1305,6 +1310,23 @@ public final class ItemStack implements DataComponentHolder, ItemInstance {
      }
  
      public void setCount(final int count) {
@@ -503,7 +503,7 @@ index 34e2f33709007a821025c4efcc25c71bb7210b74..cfae6b4265f866f95007d8e359df5696
          this.count = count;
      }
  
-@@ -1371,4 +1393,90 @@ public final class ItemStack implements DataComponentHolder, ItemInstance {
+@@ -1372,4 +1394,90 @@ public final class ItemStack implements DataComponentHolder, ItemInstance {
              .or(() -> Optional.ofNullable(this.getItem().getItemDamageSource(attacker)))
              .orElseGet(attacker::createDamageSource);
      }
@@ -595,7 +595,7 @@ index 34e2f33709007a821025c4efcc25c71bb7210b74..cfae6b4265f866f95007d8e359df5696
 +    // Leaves end - Lithium Sleeping Block Entity
  }
 diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
-index 5a2fb4db69514149fadbec85124cfc1061c4fa03..6a46234a8533a718e440dfc256dac1a1aff61859 100644
+index 6a891691bbdc8a110984a318c481fb6c224f4eb6..c26650ddf627d55d5fd750d59fd902138ebb7c11 100644
 --- a/net/minecraft/world/level/Level.java
 +++ b/net/minecraft/world/level/Level.java
 @@ -1555,7 +1555,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
@@ -1004,7 +1004,7 @@ index c2f8479eef826efca3ed2993973b2cfc2c51ed00..191a43ce6c98583b4cc1ed2b5d5f0897
 +    // Leaves end - Lithium Sleeping Block Entity
  }
 diff --git a/net/minecraft/world/level/block/entity/BlockEntity.java b/net/minecraft/world/level/block/entity/BlockEntity.java
-index cc6258e1edc9f0a746e9298feac273d8b8f958e9..16cd9e2ace00fd7e76324a97a34e23c6d60ce9d3 100644
+index 531f5224717d7dd9fddbf721811ebf1a0d9af423..514a37cc759c229e04d347329e713cb0f794456f 100644
 --- a/net/minecraft/world/level/block/entity/BlockEntity.java
 +++ b/net/minecraft/world/level/block/entity/BlockEntity.java
 @@ -37,8 +37,16 @@ import net.minecraft.world.level.storage.ValueInput;
@@ -1026,7 +1026,7 @@ index cc6258e1edc9f0a746e9298feac273d8b8f958e9..16cd9e2ace00fd7e76324a97a34e23c6
      static final ThreadLocal<Boolean> IGNORE_TILE_UPDATES = ThreadLocal.withInitial(() -> Boolean.FALSE); // Paper - Perf: Optimize Hoppers // Folia - region threading
      // CraftBukkit start - data containers
      private static final org.bukkit.craftbukkit.persistence.CraftPersistentDataTypeRegistry DATA_TYPE_REGISTRY = new org.bukkit.craftbukkit.persistence.CraftPersistentDataTypeRegistry();
-@@ -65,6 +73,7 @@ public abstract class BlockEntity implements DebugValueSource, TypedInstance<Blo
+@@ -66,6 +74,7 @@ public abstract class BlockEntity implements DebugValueSource, TypedInstance<Blo
          this.validateBlockState(blockState);
          this.blockState = blockState;
          this.persistentDataContainer = new org.bukkit.craftbukkit.persistence.CraftPersistentDataContainer(DATA_TYPE_REGISTRY); // Paper - always init
@@ -1034,15 +1034,15 @@ index cc6258e1edc9f0a746e9298feac273d8b8f958e9..16cd9e2ace00fd7e76324a97a34e23c6
      }
  
      private void validateBlockState(final BlockState blockState) {
-@@ -218,6 +227,7 @@ public abstract class BlockEntity implements DebugValueSource, TypedInstance<Blo
-         if (this.level != null) {
+@@ -219,6 +228,7 @@ public abstract class BlockEntity implements DebugValueSource, TypedInstance<Blo
+         if (this.level != null && this.real) { // Paper - don't broadcast for fake block entities
              if (IGNORE_TILE_UPDATES.get().booleanValue()) return; // Paper - Perf: Optimize Hoppers // Folia - region threading
              setChanged(this.level, this.worldPosition, this.blockState);
 +            if (me.earthme.luminol.config.modules.optimizations.LeavesSleepingBlockEntityConfig.enabled) lithium$handleSetChanged(); // Leaves - Lithium Sleeping Block Entity
          }
      }
  
-@@ -249,7 +259,9 @@ public abstract class BlockEntity implements DebugValueSource, TypedInstance<Blo
+@@ -250,7 +260,9 @@ public abstract class BlockEntity implements DebugValueSource, TypedInstance<Blo
      }
  
      public void setRemoved() {
@@ -1052,7 +1052,7 @@ index cc6258e1edc9f0a746e9298feac273d8b8f958e9..16cd9e2ace00fd7e76324a97a34e23c6
      }
  
      public void clearRemoved() {
-@@ -294,6 +306,7 @@ public abstract class BlockEntity implements DebugValueSource, TypedInstance<Blo
+@@ -295,6 +307,7 @@ public abstract class BlockEntity implements DebugValueSource, TypedInstance<Blo
      public void setBlockState(final BlockState blockState) {
          this.validateBlockState(blockState);
          this.blockState = blockState;
@@ -1060,7 +1060,7 @@ index cc6258e1edc9f0a746e9298feac273d8b8f958e9..16cd9e2ace00fd7e76324a97a34e23c6
      }
  
      protected void applyImplicitComponents(final DataComponentGetter components) {
-@@ -396,4 +409,32 @@ public abstract class BlockEntity implements DebugValueSource, TypedInstance<Blo
+@@ -397,4 +410,32 @@ public abstract class BlockEntity implements DebugValueSource, TypedInstance<Blo
              return this.blockEntity.getNameForReporting() + "@" + this.blockEntity.getBlockPos();
          }
      }
@@ -1280,7 +1280,7 @@ index 3bd910ae83694a6d19f53dcc4b74598ec0b62b17..52212fd787cc7530f7e2d402217d2cb1
 +    // Leaves end - Lithium Sleeping Block Entity
  }
 diff --git a/net/minecraft/world/level/block/entity/ChestBlockEntity.java b/net/minecraft/world/level/block/entity/ChestBlockEntity.java
-index c1cdced85052cbc600cf8f9d81e38ab37817a14a..55ffd227effdf73cab736834056b09db4c9fd8cd 100644
+index fcf53c938d985c14c775a84e48ed29291fc410b9..2d9666dd57911cd46c02174e0b892717c61798fe 100644
 --- a/net/minecraft/world/level/block/entity/ChestBlockEntity.java
 +++ b/net/minecraft/world/level/block/entity/ChestBlockEntity.java
 @@ -25,7 +25,7 @@ import net.minecraft.world.level.block.state.properties.ChestType;
@@ -1308,7 +1308,7 @@ index c1cdced85052cbc600cf8f9d81e38ab37817a14a..55ffd227effdf73cab736834056b09db
              this.chestLidController.shouldBeOpen(b1 > 0);
              return true;
          } else {
-@@ -198,6 +200,7 @@ public class ChestBlockEntity extends RandomizableContainerBlockEntity implement
+@@ -200,6 +202,7 @@ public class ChestBlockEntity extends RandomizableContainerBlockEntity implement
      @Override
      protected void setItems(final NonNullList<ItemStack> items) {
          this.items = items;
@@ -1316,7 +1316,7 @@ index c1cdced85052cbc600cf8f9d81e38ab37817a14a..55ffd227effdf73cab736834056b09db
      }
  
      @Override
-@@ -233,4 +236,52 @@ public class ChestBlockEntity extends RandomizableContainerBlockEntity implement
+@@ -235,4 +238,52 @@ public class ChestBlockEntity extends RandomizableContainerBlockEntity implement
          Block block = blockState.getBlock();
          level.blockEvent(pos, block, EVENT_SET_OPEN_COUNT, current);
      }
@@ -1390,7 +1390,7 @@ index 8967c271678a8ee8d4f79fb40eeaf646af192010..d2f1916f0d7a2c2319d05f71b341acfd
 +    @Override public boolean lithium$itemInsertionTestRequiresStackSize1() {return true;} // Leaves - Lithium Sleeping Block Entity
  }
 diff --git a/net/minecraft/world/level/block/entity/CrafterBlockEntity.java b/net/minecraft/world/level/block/entity/CrafterBlockEntity.java
-index 6ad1e1113f78a4e3fe03a08e9f6c18241aa6f124..ddebddef3ad8a2a86b1b372f756a1f29c21d0271 100644
+index ff6d53c2c2c3b98e35d873b59814532bb13e789c..5a2bb3f1f7267fbdfd7ce9aa580bd7edff6ae77b 100644
 --- a/net/minecraft/world/level/block/entity/CrafterBlockEntity.java
 +++ b/net/minecraft/world/level/block/entity/CrafterBlockEntity.java
 @@ -22,7 +22,7 @@ import net.minecraft.world.level.block.state.BlockState;
@@ -1402,7 +1402,7 @@ index 6ad1e1113f78a4e3fe03a08e9f6c18241aa6f124..ddebddef3ad8a2a86b1b372f756a1f29
      public static final int CONTAINER_WIDTH = 3;
      public static final int CONTAINER_HEIGHT = 3;
      public static final int CONTAINER_SIZE = 9;
-@@ -170,6 +170,7 @@ public class CrafterBlockEntity extends RandomizableContainerBlockEntity impleme
+@@ -181,6 +181,7 @@ public class CrafterBlockEntity extends RandomizableContainerBlockEntity impleme
              }
          });
          this.containerData.set(9, input.getIntOr("triggered", 0));
@@ -1410,7 +1410,7 @@ index 6ad1e1113f78a4e3fe03a08e9f6c18241aa6f124..ddebddef3ad8a2a86b1b372f756a1f29
      }
  
      @Override
-@@ -279,10 +280,12 @@ public class CrafterBlockEntity extends RandomizableContainerBlockEntity impleme
+@@ -290,10 +291,12 @@ public class CrafterBlockEntity extends RandomizableContainerBlockEntity impleme
                  level.setBlockAndUpdate(blockPos, blockState.setValue(CrafterBlock.CRAFTING, false));
              }
          }
@@ -1423,7 +1423,7 @@ index 6ad1e1113f78a4e3fe03a08e9f6c18241aa6f124..ddebddef3ad8a2a86b1b372f756a1f29
      }
  
      public int getRedstoneSignal() {
-@@ -301,4 +304,43 @@ public class CrafterBlockEntity extends RandomizableContainerBlockEntity impleme
+@@ -312,4 +315,43 @@ public class CrafterBlockEntity extends RandomizableContainerBlockEntity impleme
      private boolean slotCanBeDisabled(final int slotId) {
          return slotId > -1 && slotId < 9 && this.items.get(slotId).isEmpty();
      }
@@ -2626,7 +2626,7 @@ index bdfce5533041d609f6ee94c888a6298a138a4e92..b8d12de063866e104f11df02c5905f03
 +    // Leaves end - Lithium Sleeping Block Entity
  }
 diff --git a/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java b/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java
-index c0ec84f3366297b72a12b1f534fd29226165034f..3948b7a0beccb35d55cf3915e2ae431f884bdaa0 100644
+index 0723a7bb0338c6fd3475f60a1e5938e813c31f98..2498c9f00cde43c2f0ae04ca2170493a7f512168 100644
 --- a/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java
 +++ b/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java
 @@ -32,7 +32,7 @@ import net.minecraft.world.phys.AABB;

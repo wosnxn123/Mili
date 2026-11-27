@@ -5,10 +5,10 @@ Subject: [PATCH] Fix entity portal-teleport speed
 
 
 diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
-index 6f789b49f15c3c5a4c4501dcec93d919ea3f0732..522535a9344682cfe369d8c540096b2903cdf6e0 100644
+index 4b45993b3b1ffea09a94326a33d26c0a002478ca..517c12e92f98d5732c9dff90da79794b494fc10f 100644
 --- a/net/minecraft/server/level/ServerLevel.java
 +++ b/net/minecraft/server/level/ServerLevel.java
-@@ -1510,7 +1510,27 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -1509,7 +1509,27 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
          foliaProfiler.startTimer(timerId);
          try {
          // Folia end - profiler
@@ -36,7 +36,7 @@ index 6f789b49f15c3c5a4c4501dcec93d919ea3f0732..522535a9344682cfe369d8c540096b29
          entity.tick();
          // Folia start - region threading
          if (!ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(entity)) {
-@@ -1521,6 +1541,8 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -1520,6 +1540,8 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
              // portalled
              return;
          }
@@ -46,7 +46,7 @@ index 6f789b49f15c3c5a4c4501dcec93d919ea3f0732..522535a9344682cfe369d8c540096b29
          } else {entity.inactiveTick();} // Paper - EAR 2
          profiler.pop();
 diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
-index e6f34c1d334dceeb385075a979b289581c75e0d3..b1954215fdb14e1a0b07131f5c63a68ab2f3d092 100644
+index 8feb33db11aab6a3804216f3a214b78850d85bce..c677c7fd6cd6108a9e7c726ca600dfa9112a7917 100644
 --- a/net/minecraft/world/entity/Entity.java
 +++ b/net/minecraft/world/entity/Entity.java
 @@ -393,6 +393,7 @@ public abstract class Entity
@@ -57,7 +57,7 @@ index e6f34c1d334dceeb385075a979b289581c75e0d3..b1954215fdb14e1a0b07131f5c63a68a
  
      public void inactiveTick() {
      }
-@@ -3694,6 +3695,7 @@ public abstract class Entity
+@@ -3699,6 +3700,7 @@ public abstract class Entity
          } else {
              if (this.portalProcess == null || !this.portalProcess.isSamePortal(portal)) {
                  this.portalProcess = new PortalProcessor(portal, pos.immutable());

@@ -1,0 +1,66 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Carpet fluid and fungus rules
+
+Adapted for Mili from LophineLabs/Lophine 0131 (7a51f49a512f1b5465f15a905d3704754e4bed02).
+See docs/upstream-carpet-26.3.md for provenance and scope.
+
+diff --git a/net/minecraft/world/level/block/LiquidBlock.java b/net/minecraft/world/level/block/LiquidBlock.java
+index 68f70d191418a3c0cde55d419aef38c0df27ee69..9f09de4fb17601a36f36e8a2d6c64297c9f4339d 100644
+--- a/net/minecraft/world/level/block/LiquidBlock.java
++++ b/net/minecraft/world/level/block/LiquidBlock.java
+@@ -239,6 +239,18 @@ public class LiquidBlock extends Block implements BucketPickup {
+                     return false;
+                 }
+             }
++            // Mili start - Carpet features
++            if (fun.bm.mili.carpet.config.modules.GeneralCompatConfig.renewableBlackstone) {
++                for (Direction direction : POSSIBLE_FLOW_DIRECTIONS) {
++                    if (level.getBlockState(pos.relative(direction.getOpposite())).is(Blocks.BLUE_ICE)) {
++                        if (org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFormEvent(level, pos, Blocks.BLACKSTONE.defaultBlockState(), Block.UPDATE_ALL)) {
++                            this.fizz(level, pos);
++                        }
++                        return false;
++                    }
++                }
++            }
++            // Mili end - Carpet features
+         }
+ 
+         return true;
+diff --git a/net/minecraft/world/level/levelgen/feature/HugeFungusFeature.java b/net/minecraft/world/level/levelgen/feature/HugeFungusFeature.java
+index fc971440b99d6bacb5f5b8f0fbda67aebd237763..704db4b98567f79d776c10e892ca383330934841 100644
+--- a/net/minecraft/world/level/levelgen/feature/HugeFungusFeature.java
++++ b/net/minecraft/world/level/levelgen/feature/HugeFungusFeature.java
+@@ -63,7 +63,13 @@ public record HugeFungusFeature(
+             }
+         }
+ 
+-        boolean isHuge = !this.planted() && random.nextFloat() < 0.06F;
++        boolean isHuge;
++        if (this.planted()) {
++            String carpetGrowth = fun.bm.mili.carpet.config.modules.GeneralCompatConfig.thickFungusGrowth;
++            isHuge = "all".equalsIgnoreCase(carpetGrowth) || "random".equalsIgnoreCase(carpetGrowth) && random.nextFloat() < 0.06F;
++        } else {
++            isHuge = random.nextFloat() < 0.06F;
++        }
+         level.setBlock(origin, Blocks.AIR.defaultBlockState(), Block.UPDATE_NONE);
+         this.placeStem(level, random, newOrigin, totalHeight, isHuge);
+         this.placeHat(level, random, newOrigin, totalHeight, isHuge);
+diff --git a/net/minecraft/world/level/material/FlowingFluid.java b/net/minecraft/world/level/material/FlowingFluid.java
+index 660a8785fca8dd885318e05cb19255fa493151d0..5e6c328c259b70295a72dec35c4f6a3f5b50bbe9 100644
+--- a/net/minecraft/world/level/material/FlowingFluid.java
++++ b/net/minecraft/world/level/material/FlowingFluid.java
+@@ -464,6 +464,11 @@ public abstract class FlowingFluid extends Fluid {
+ 
+     private static boolean canHoldAnyFluid(final BlockState state) {
+         Block block = state.getBlock();
++        // Mili start - Carpet features
++        if (fun.bm.mili.carpet.config.modules.GeneralCompatConfig.liquidDamageDisabled) {
++            return block instanceof LiquidBlockContainer || state.isAir() || state.is(Blocks.WATER) || state.is(Blocks.LAVA);
++        }
++        // Mili end - Carpet features
+         return block instanceof LiquidBlockContainer || state.is(BlockTags.WASHED_AWAY_BY_FLUIDS);
+     }
+ 

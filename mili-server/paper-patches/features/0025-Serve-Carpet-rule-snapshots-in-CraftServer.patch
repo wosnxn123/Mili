@@ -1,0 +1,24 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Tue, 3 Nov 2026 17:04:59 +0800
+Subject: [PATCH] Serve Carpet rule snapshots in CraftServer
+
+Adapt the read-only entry point from LophineLabs/Lophine Paper-server 0025 (7a51f49a512f1b5465f15a905d3704754e4bed02).
+Mutation and Scarpet registration need a separate runtime integration.
+
+diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+index 3cce04d67fccaa5e2d64609bf2ee96a49c79a223..98fc44f3d451cc8d1cc4ba7de9cd6da0e346ff61 100644
+--- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
++++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+@@ -3139,4 +3139,11 @@
+         return org.leavesmc.leaves.bytebuf.internal.InternalBytebufHandler.allocator();
+     }
+     // Leaves end - Bytebuf API
++
++    // Mili start - Carpet rule API
++    @Override
++    public fun.bm.mili.api.carpet.CarpetApi getCarpet() {
++        return fun.bm.mili.carpet.MiliCarpetApi.INSTANCE;
++    }
++    // Mili end - Carpet rule API
+ }

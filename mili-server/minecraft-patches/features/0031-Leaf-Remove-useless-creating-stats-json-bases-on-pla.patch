@@ -6,7 +6,7 @@ Subject: [PATCH] Leaf: Remove useless creating stats json bases on player
 
 
 diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
-index 57cc03f81c3bbdf8cfe477f63de326fc6f17d0a8..e424f981c02929239c7aecd3e30797b3a5dd6cb7 100644
+index 41e4d93b83a52fe7bc180d21ebb18942e2c27111..bbfbd191f2801536c171f85391ea13b8e71a288c 100644
 --- a/net/minecraft/server/players/PlayerList.java
 +++ b/net/minecraft/server/players/PlayerList.java
 @@ -1300,6 +1300,8 @@ public abstract class PlayerList {

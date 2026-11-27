@@ -5,7 +5,7 @@ Subject: [PATCH] Portal rate limiter
 
 
 diff --git a/io/papermc/paper/threadedregions/RegionizedWorldData.java b/io/papermc/paper/threadedregions/RegionizedWorldData.java
-index ac3c28011e53cd841c9ef6bcfd28fd082ae7e9bd..a1511b1bf0a1a92df6eccb128e213c4ba5ce840c 100644
+index 0e7107ad89f24446ed640fa6c6ea7957d50c23a7..5af4a5041f2ce92714ea07bce0b69e9ea2e359b8 100644
 --- a/io/papermc/paper/threadedregions/RegionizedWorldData.java
 +++ b/io/papermc/paper/threadedregions/RegionizedWorldData.java
 @@ -79,6 +79,10 @@ public final class RegionizedWorldData {
@@ -69,10 +69,10 @@ index ac3c28011e53cd841c9ef6bcfd28fd082ae7e9bd..a1511b1bf0a1a92df6eccb128e213c4b
      public final TickRegions.TickRegionData regionData;
  
 diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
-index d743d1be9ac04975132d444a77c8ea1ab337a94e..67c178704c82e0796216ffdec00678abd3fdc673 100644
+index de3d95ba9622291b34f3574752045a4c2ce10319..244079f23a31abd8390d6891f7c666f793121571 100644
 --- a/net/minecraft/server/MinecraftServer.java
 +++ b/net/minecraft/server/MinecraftServer.java
-@@ -1974,6 +1974,9 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -1976,6 +1976,9 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
              //net.minecraft.world.level.block.entity.HopperBlockEntity.skipHopperEvents = level.paperConfig().hopper.disableMoveEvent || org.bukkit.event.inventory.InventoryMoveItemEvent.getHandlerList().getRegisteredListeners().length == 0; // Paper - Perf: Optimize Hoppers // Folia - region threading
              profiler.push(() -> level + " " + level.dimension().identifier());
              profiler.push("tick");
@@ -82,7 +82,7 @@ index d743d1be9ac04975132d444a77c8ea1ab337a94e..67c178704c82e0796216ffdec00678ab
  
              try {
                  foliaProfiler.startTimer(level.tickTimerId); try { // Folia - profiler
-@@ -1988,6 +1991,9 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -1990,6 +1993,9 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
              profiler.pop();
              profiler.pop();
              regionizedWorldData.explosionDensityCache.clear(); // Paper - Optimize explosions // Folia - region threading
@@ -93,10 +93,10 @@ index d743d1be9ac04975132d444a77c8ea1ab337a94e..67c178704c82e0796216ffdec00678ab
          //this.isIteratingOverLevels = false; // Paper - Throw exception on world create while being ticked // Folia - region threading
  
 diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
-index f8a11617b48874555caa450f9e07d1002ab6bd27..7050db567cdb5a26ce059e4673aa7fdfa30c31ec 100644
+index 1f22e81c68bd6ec42dd1b64eb6f2c5eed873d088..d52f537905f5ec4a0b4bed49ebd62a47a442ee64 100644
 --- a/net/minecraft/server/level/ServerLevel.java
 +++ b/net/minecraft/server/level/ServerLevel.java
-@@ -1520,7 +1520,14 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -1519,7 +1519,14 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
                  if (!ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(entity)) {
                      return;
                  }
@@ -111,7 +111,7 @@ index f8a11617b48874555caa450f9e07d1002ab6bd27..7050db567cdb5a26ce059e4673aa7fdf
                      return;
                  }
              } else if (!(entity instanceof Player) && entity.teleportTickType == 1) { // Luminol - portal teleport only
-@@ -1528,7 +1535,14 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -1527,7 +1534,14 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
                  if (!ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(entity)) {
                      return;
                  }
@@ -126,7 +126,7 @@ index f8a11617b48874555caa450f9e07d1002ab6bd27..7050db567cdb5a26ce059e4673aa7fdf
                      return;
                  }
              } else {
-@@ -1538,8 +1552,15 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -1537,8 +1551,15 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
              // removed from region while ticking
              return;
          }
@@ -142,7 +142,7 @@ index f8a11617b48874555caa450f9e07d1002ab6bd27..7050db567cdb5a26ce059e4673aa7fdf
              return;
          }
          }
-@@ -1584,8 +1605,15 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -1583,8 +1604,15 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
                  // removed from region while ticking
                  return;
              }

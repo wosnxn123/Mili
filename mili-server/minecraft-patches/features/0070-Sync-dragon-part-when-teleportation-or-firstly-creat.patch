@@ -17,10 +17,10 @@ index aa53138b3670a8337b639472a6ab5ce46702ff76..ed27b73e787782f328906b2a061feeca
      }
  
 diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
-index bdcad4ec117d1b87028572aeb3dfdb9321aa4603..859c6af6133a8261efbb72cbf8cc49662fb65621 100644
+index 4e2d4edd173a646951d6665c62febe6ce6408af7..bed96fc7042728632ead3e0e495f559f631b27f6 100644
 --- a/net/minecraft/world/entity/Entity.java
 +++ b/net/minecraft/world/entity/Entity.java
-@@ -4578,6 +4578,7 @@ public abstract class Entity
+@@ -4583,6 +4583,7 @@ public abstract class Entity
          Entity copy = this.getType().create(destination, EntitySpawnReason.DIMENSION_TRAVEL);
          copy.restoreFrom(this);
          copy.transform(pos, yaw, pitch, velocity);
@@ -29,10 +29,10 @@ index bdcad4ec117d1b87028572aeb3dfdb9321aa4603..859c6af6133a8261efbb72cbf8cc4966
          // vanilla code used to call remove _after_ copying, and some stuff is required to be after copy - so add hook here
          // for example, clearing of inventory after switching dimensions
 diff --git a/net/minecraft/world/entity/boss/enderdragon/EnderDragon.java b/net/minecraft/world/entity/boss/enderdragon/EnderDragon.java
-index f852126b179dc0c5dab3dbd22d3bfb8b73a5dba8..de96c272fbdd70602b12a1684563185e8f0bda95 100644
+index c5a2c7654c4b59733971ec0210b7125d739c25d9..2e288011da6ebde11d7e911fb0e79a1ed8ab0f72 100644
 --- a/net/minecraft/world/entity/boss/enderdragon/EnderDragon.java
 +++ b/net/minecraft/world/entity/boss/enderdragon/EnderDragon.java
-@@ -1017,4 +1017,12 @@ public class EnderDragon extends Mob implements Enemy {
+@@ -1026,4 +1026,12 @@ public class EnderDragon extends Mob implements Enemy {
          return 500;
      }
      // Paper end - init expToDrop for already dying spawned dragon

@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Wire Carpet farmland trample protection
+
+Adapted from LophineLabs/Lophine 0134 and the legacy Carpet patch (7a51f49a512f1b5465f15a905d3704754e4bed02).
+See docs/upstream-carpet-26.3.md for the legacy references and scope.
+
+diff --git a/net/minecraft/world/level/block/FarmlandBlock.java b/net/minecraft/world/level/block/FarmlandBlock.java
+index 69373d905f4263b75b562b56abf37c6ac8a54ca6..474de5f511d72805eea93cd3bcb5786c235c542d 100644
+--- a/net/minecraft/world/level/block/FarmlandBlock.java
++++ b/net/minecraft/world/level/block/FarmlandBlock.java
+@@ -127,7 +127,9 @@ public class FarmlandBlock extends Block {
+                     return;
+                 }
+                 // CraftBukkit end
+-                this.turnToBaseBlock(entity, state, level, pos);
++                if (!fun.bm.mili.carpet.config.modules.GeneralCompatConfig.farmlandTrampledDisabled) {
++                    this.turnToBaseBlock(entity, state, level, pos);
++                }
+             }
+         }
+ 

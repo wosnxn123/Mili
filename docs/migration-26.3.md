@@ -6,6 +6,8 @@
 
 本轮基线为 Folia 26.3 [Build 28](https://fill.papermc.io/v3/projects/folia/versions/26.3/builds/28) `b5c780830a3987889675871592c76668f37d88cb`，采用它指定的 Paper `827eeeb9077c4cc7231eaacb7ffcf597d4fedd9f`、Mache `26.3+build.2`，保持 Java 25 和 Paperweight beta.24。上游修复了玩家和地图自动保存、传送票和调度问题。上游的 STABLE 不代表本 fork 已经完成验收。普通 CI 不发 Release；正式包必须来自同一成功运行的 artifact，以完整提交和 JAR SHA-256 核验。
 
+同类上游功能、默认开关和未覆盖的边界见[补丁同步记录](upstream-sync-26.3.md)；Carpet 家族另有[逐项规则表](upstream-carpet-26.3.md)。
+
 ## 首次迁移的上游基线（历史）
 
 - 发布分支：`ver/26.3`，基于仓库原来的 26.2 `master`；目标仓库 `wosnxn123/Mili`。本地迁移最初在 `ver/26.3.x` 进行。

@@ -1,0 +1,66 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Helvetica Volubi <suisuroru@blue-millennium.fun>
+Date: Fri, 15 Aug 2025 02:29:30 +0800
+Subject: [PATCH] Compatibility fix for Raid Revert and Cross Region Damage
+ Trace
+
+Ported from: https://github.com/LophineLabs/Lophine/blob/7a51f49a512f1b5465f15a905d3704754e4bed02/lophine-server/minecraft-patches/features/0092-Compatibility-fix-for-Raid-Revert-and-Cross-Region-D.patch
+
+diff --git a/net/minecraft/world/entity/raid/Raider.java b/net/minecraft/world/entity/raid/Raider.java
+index d4d065d8f418fa4faab81ee56b13e43dc7602b10..a9537a708d6b3191628e5dc661ed9b3e708a872c 100644
+--- a/net/minecraft/world/entity/raid/Raider.java
++++ b/net/minecraft/world/entity/raid/Raider.java
+@@ -137,7 +137,7 @@ public abstract class Raider extends PatrollingMonster {
+                 net.minecraft.world.entity.player.Player entityhuman = null;
+                 if (killerEntity instanceof net.minecraft.world.entity.player.Player player) {
+                     entityhuman = player;
+-                } else if (killerEntity instanceof net.minecraft.world.entity.animal.wolf.Wolf wolf) {
++                } else if (killerEntity instanceof net.minecraft.world.entity.animal.wolf.Wolf wolf && ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(wolf)) {
+                     LivingEntity entityliving = wolf.getOwner();
+                     if (wolf.isTame() && entityliving instanceof net.minecraft.world.entity.player.Player player) {
+                         entityhuman = player;
+@@ -145,21 +145,14 @@ public abstract class Raider extends PatrollingMonster {
+                 }
+ 
+                 if (entityhuman != null && !itemstack.isEmpty() && this.isPatrolLeader()) {
+-                    net.minecraft.world.effect.MobEffectInstance mobeffect = entityhuman.getEffect(net.minecraft.world.effect.MobEffects.BAD_OMEN);
+-                    int amp = 1;
+-
+-                    if (mobeffect != null) {
+-                        amp += mobeffect.getAmplifier();
+-                        entityhuman.removeEffectNoUpdate(net.minecraft.world.effect.MobEffects.BAD_OMEN);
+-                    } else {
+-                        --amp;
+-                    }
+-
+-                    amp = net.minecraft.util.Mth.clamp(amp, 0, 4);
+-                    net.minecraft.world.effect.MobEffectInstance mobeffect1 = new net.minecraft.world.effect.MobEffectInstance(net.minecraft.world.effect.MobEffects.BAD_OMEN, 120000, amp, false, false, true);
+-
+                     if (serverLevel.getGameRules().get(net.minecraft.world.level.gamerules.GameRules.RAIDS)) {
+-                        entityhuman.addEffect(mobeffect1, org.bukkit.event.entity.EntityPotionEffectEvent.Cause.PATROL_CAPTAIN); // CraftBukkit
++                        if (ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(entityhuman)) {
++                            mili$givePatrolOmen(entityhuman);
++                        } else if (fun.bm.mili.config.modules.experiment.EntityDamageSourceTraceConfig.enabled) {
++                            entityhuman.getBukkitEntity().taskScheduler.schedule(entity -> {
++                                if (entity instanceof net.minecraft.world.entity.player.Player recipient && recipient.isAlive()) mili$givePatrolOmen(recipient);
++                            }, null, 1L);
++                        }
+                     }
+                     this.setPatrolLeader(false);
+                 }
+@@ -170,6 +163,15 @@ public abstract class Raider extends PatrollingMonster {
+         super.die(source);
+     }
+ 
++    // 整个状态效果读改写在接收玩家所属区域执行，不只延后最后一次写入。
++    private static void mili$givePatrolOmen(final net.minecraft.world.entity.player.Player player) {
++        final var previous = player.getEffect(net.minecraft.world.effect.MobEffects.BAD_OMEN);
++        final int amplifier = previous == null ? 0 : net.minecraft.util.Mth.clamp(previous.getAmplifier() + 1, 0, 4);
++        if (previous != null) player.removeEffectNoUpdate(net.minecraft.world.effect.MobEffects.BAD_OMEN);
++        player.addEffect(new net.minecraft.world.effect.MobEffectInstance(net.minecraft.world.effect.MobEffects.BAD_OMEN,
++            120000, amplifier, false, false, true), org.bukkit.event.entity.EntityPotionEffectEvent.Cause.PATROL_CAPTAIN);
++    }
++
+     @Override
+     public boolean canJoinPatrol() {
+         return !this.hasActiveRaid();

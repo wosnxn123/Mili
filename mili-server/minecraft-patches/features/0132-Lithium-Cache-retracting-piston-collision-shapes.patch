@@ -1,0 +1,82 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: HaHaWTH <102713261+HaHaWTH@users.noreply.github.com>
+Date: Sat, 21 Nov 2026 20:32:26 +0800
+Subject: [PATCH] Lithium: Cache retracting piston collision shapes
+
+Adapt Leaf 0302, itself based on Lithium by 2No2Name <2No2Name@web.de> (LGPL-3.0-only), revision 11ea08adce6f94627d3eaaa65506a60e0451c8b6.
+
+Share immutable built-in base and head shapes across all matching retractions. Use the precomputed unions at tick progress values and preserve the original geometry composition at other offsets. Keep the original path for no-clip, mismatched bases and other blocks.
+
+https://github.com/Winds-Studio/Leaf/blob/06c9c91a17e61aeed16bcfc846ebe91aa70d6c84/leaf-server/minecraft-patches/features/0302-Lithium-Cache-retracting-piston-collision-shapes.patch
+
+Ported from Lophine (GPLv3 for its changes; see licenses/GPL.md):
+https://github.com/LophineLabs/Lophine/blob/7a51f49a512f1b5465f15a905d3704754e4bed02/lophine-server/minecraft-patches/features/0139-Lithium-Cache-retracting-piston-collision-shapes.patch
+Lophine patch blob: b76b06fd2d0f3b358415b646bfb9c74872d9243d
+https://github.com/LophineLabs/Lophine/blob/7a51f49a512f1b5465f15a905d3704754e4bed02/LICENSE.md
+
+Mili port: Keep the three tick-offset unions per thread: Moonrise shape caches are mutable. Use the original path for fractional offsets, no-clip, and nonmatching bases.
+
+Additional pinned source references:
+https://github.com/CaffeineMC/lithium/blob/11ea08adce6f94627d3eaaa65506a60e0451c8b6/common/src/main/java/net/caffeinemc/mods/lithium/mixin/block/moving_block_shapes/PistonMovingBlockEntityMixin.java
+
+Series copyright and original license notices: licenses/Lophine-0137-0158-NOTICE.txt
+
+diff --git a/net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java b/net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java
+index 454c3707c025e8e44293dad9dccddfd6fb414561..102712014d9b7338a621b9d72e7fbd29ddc95dbf 100644
+--- a/net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java
++++ b/net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java
+@@ -363,6 +363,18 @@ public class PistonMovingBlockEntity extends BlockEntity {
+     }
+ 
+     public VoxelShape getCollisionShape(final BlockGetter level, final BlockPos pos) {
++        // Leaf start - Lithium - cache retracting piston collision shapes
++        if (!this.extending && this.isSourcePiston
++            && (this.movedState.is(Blocks.PISTON) || this.movedState.is(Blocks.STICKY_PISTON))
++            && this.movedState.getValue(PistonBaseBlock.FACING) == this.direction
++            && !(this.progress < 1.0F && NOCLIP.get() == this.getMovementDirection())) {
++            final float offset = 1.0F - this.progress;
++            if (offset == 0.0F || offset == 0.5F || offset == 1.0F) {
++                return RetractingShapes.BY_THREAD.get()[this.direction.get3DDataValue()][(int)(2.0F * offset)];
++            }
++        }
++        // Leaf end - Lithium - cache retracting piston collision shapes
++
+         VoxelShape pistonHeadShape;
+         if (!this.extending && this.isSourcePiston && this.movedState.getBlock() instanceof PistonBaseBlock) {
+             pistonHeadShape = this.movedState.setValue(PistonBaseBlock.EXTENDED, true).getCollisionShape(level, pos);
+@@ -392,6 +404,35 @@ public class PistonMovingBlockEntity extends BlockEntity {
+         return Shapes.or(pistonHeadShape, blockState.getCollisionShape(level, pos).move(dx, dy, dz));
+     }
+ 
++    // Leaf start - Lithium - cache retracting piston collision shapes
++    private static final class RetractingShapes {
++        // Moonrise's VoxelShape has lazy mutable caches. Do not publish new unions across region threads.
++        private static final ThreadLocal<VoxelShape[][]> BY_THREAD = ThreadLocal.withInitial(RetractingShapes::create);
++
++        private static VoxelShape[][] create() {
++            final Direction[] directions = Direction.values();
++            final VoxelShape[][] shapes = new VoxelShape[directions.length][3];
++            final var level = net.minecraft.world.level.EmptyBlockGetter.INSTANCE;
++            for (Direction direction : directions) {
++                final VoxelShape base = Blocks.PISTON.defaultBlockState()
++                    .setValue(PistonBaseBlock.EXTENDED, true)
++                    .setValue(PistonBaseBlock.FACING, direction)
++                    .getCollisionShape(level, BlockPos.ZERO);
++                final BlockState head = Blocks.PISTON_HEAD.defaultBlockState().setValue(PistonHeadBlock.FACING, direction);
++                final VoxelShape[] offsets = shapes[direction.get3DDataValue()];
++                for (int index = 0; index < offsets.length; ++index) {
++                    final float offset = index * 0.5F;
++                    final VoxelShape headShape = head.setValue(PistonHeadBlock.SHORT, offset < 0.25F).getCollisionShape(level, BlockPos.ZERO);
++                    offsets[index] = Shapes.or(base, headShape.move(
++                        direction.getStepX() * offset, direction.getStepY() * offset, direction.getStepZ() * offset
++                    ));
++                }
++            }
++            return shapes;
++        }
++    }
++    // Leaf end - Lithium - cache retracting piston collision shapes
++
+     public long getLastTicked() {
+         return this.lastTicked;
+     }

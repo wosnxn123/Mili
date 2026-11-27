@@ -83,10 +83,10 @@ index 6c05b9276bdc267a36376f6c64592a50e4b2b36e..21d2c97b3d1e1d29c9de02b6acd58985
                      result.add(player);
                      if (result.size() >= limit) {
 diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
-index bb13a849a5248fe06057c2302a7dceadcf522102..53dbcde6f22a2f7aa4166a0886899aed6e0d2dce 100644
+index 578e0f8e53e0ccbe58ffc78584f66434bbf48e5a..a8235ccbcb47f8e3e735ab2303889e924ba452a3 100644
 --- a/net/minecraft/server/MinecraftServer.java
 +++ b/net/minecraft/server/MinecraftServer.java
-@@ -1899,7 +1899,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -1901,7 +1901,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
      }
  
      private ServerStatus.Players buildPlayerStatus() {
@@ -95,7 +95,7 @@ index bb13a849a5248fe06057c2302a7dceadcf522102..53dbcde6f22a2f7aa4166a0886899aed
          int maxPlayers = this.getMaxPlayers();
          if (this.hidesOnlinePlayers()) {
              return new ServerStatus.Players(maxPlayers, players.size(), List.of());
-@@ -2132,7 +2132,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -2134,7 +2134,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
  
      @Override
      public int getPlayerCount() {
@@ -104,7 +104,7 @@ index bb13a849a5248fe06057c2302a7dceadcf522102..53dbcde6f22a2f7aa4166a0886899aed
      }
  
      public String[] getPlayerNames() {
-@@ -2354,7 +2354,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -2356,7 +2356,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
  
          int count = 0;
  
@@ -113,7 +113,7 @@ index bb13a849a5248fe06057c2302a7dceadcf522102..53dbcde6f22a2f7aa4166a0886899aed
              player.getBukkitEntity().taskScheduler.schedule((ServerPlayer updatedPlayer) -> { // Folia - region threading
              // Paper start - Expand PlayerGameModeChangeEvent
              org.bukkit.event.player.PlayerGameModeChangeEvent event = updatedPlayer.setGameMode(gameType, org.bukkit.event.player.PlayerGameModeChangeEvent.Cause.DEFAULT_GAMEMODE, null); // Folia - region threading
-@@ -2534,7 +2534,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -2537,7 +2537,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
                  if (Thread.currentThread() != this.serverThread) return; // Paper
                  // Paper start - we don't need to save everything, just advancements
                  // this.getPlayerList().saveAll();
@@ -122,7 +122,7 @@ index bb13a849a5248fe06057c2302a7dceadcf522102..53dbcde6f22a2f7aa4166a0886899aed
                      player.getAdvancements().save();
                  }
                  // Paper end - we don't need to save everything, just advancements
-@@ -2669,7 +2669,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -2672,7 +2672,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
              PlayerList playerList = this.getPlayerList();
              UserWhiteList whiteList = playerList.getWhiteList();
  
@@ -132,7 +132,7 @@ index bb13a849a5248fe06057c2302a7dceadcf522102..53dbcde6f22a2f7aa4166a0886899aed
                      player.connection.disconnect(net.kyori.adventure.text.Component.text(org.spigotmc.SpigotConfig.whitelistMessage), org.bukkit.event.player.PlayerKickEvent.Cause.WHITELIST); // Paper - use configurable message & kick event cause
                  }
 diff --git a/net/minecraft/server/PlayerAdvancements.java b/net/minecraft/server/PlayerAdvancements.java
-index 008dd0dc7c7d0a60ded16c814fe1ea77dae0f0c1..c3e1b18d6c3a4a99354b76d2565a192d1f14a0f2 100644
+index 79097c774b23a83bad48b443f15ea57555a42157..95b7ae82abfc564f656d96155ab338e59a0ca943 100644
 --- a/net/minecraft/server/PlayerAdvancements.java
 +++ b/net/minecraft/server/PlayerAdvancements.java
 @@ -168,7 +168,7 @@ public class PlayerAdvancements {
@@ -284,10 +284,10 @@ index 37c9f983ae89c497f44a1b7967d741abf909e0a0..d7fb2505f2a86ca0d81f144624ef2e1a
  
              this.setListData(players);
 diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
-index 355105362a37750dc41f45a843f86dd62a258f64..63c2b462cc43695ca409a9b8d6925e5e093f9919 100644
+index fd975ec1d97645859e824aca551b40723c61574a..b9e89919af1e99b91d06822e7c0d8b5b194ae58c 100644
 --- a/net/minecraft/server/level/ServerLevel.java
 +++ b/net/minecraft/server/level/ServerLevel.java
-@@ -3350,7 +3350,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -3325,7 +3325,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
              if (entity instanceof ServerPlayer player) {
                  ServerLevel.this.players.add(player);
                  // Leaves start - skip
@@ -296,7 +296,7 @@ index 355105362a37750dc41f45a843f86dd62a258f64..63c2b462cc43695ca409a9b8d6925e5e
                      ServerLevel.this.realPlayers.add(player);
                  }
                  // Leaves end - skip
-@@ -3435,7 +3435,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -3400,7 +3400,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
              if (entity instanceof ServerPlayer player) {
                  ServerLevel.this.players.remove(player);
                  // Leaves start - skip
@@ -306,7 +306,7 @@ index 355105362a37750dc41f45a843f86dd62a258f64..63c2b462cc43695ca409a9b8d6925e5e
                  }
                  // Leaves end - skip
 diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
-index 8e94eb079321f85a2c59270eb29eb1156cad9715..bd4ed9274ce12f5bc214b44a520c1fec8aa92eb2 100644
+index b66ae00d4cb14fcc7965577ebf2dd14fdd3ecacd..da40b25610d8719a460dca7664dd558cb3e3ea17 100644
 --- a/net/minecraft/server/players/PlayerList.java
 +++ b/net/minecraft/server/players/PlayerList.java
 @@ -131,6 +131,7 @@ public abstract class PlayerList {
@@ -546,7 +546,7 @@ index 8e94eb079321f85a2c59270eb29eb1156cad9715..bd4ed9274ce12f5bc214b44a520c1fec
          // Leaves end - fakeplayer support
  
 diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
-index 5860d1f259986c1d44b4b3a10755a79d84f64051..c4b732c66cd9169098d3db7e1f47595038a881c0 100644
+index 2a832cbce85f21e56e66857803a274852b19627e..ca10416e25ac1167066093b3d96e8811c49e2189 100644
 --- a/net/minecraft/world/entity/LivingEntity.java
 +++ b/net/minecraft/world/entity/LivingEntity.java
 @@ -276,7 +276,7 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin

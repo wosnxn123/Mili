@@ -7,6 +7,7 @@ Keep Folia's dimension-change exclusion. A temporarily removed, healthy
 owner is not dead while its entity scheduler can still resume it.
 
 diff --git a/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java b/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
+index 0d6739bfc20a93367944eeca3a23b381da27aebe..850df29d2466eb6d04feba703c13fe8ec44f1ddf 100644
 --- a/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
 +++ b/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
 @@ -263,7 +263,8 @@ public class ThrownEnderpearl extends ThrowableItemProjectile {

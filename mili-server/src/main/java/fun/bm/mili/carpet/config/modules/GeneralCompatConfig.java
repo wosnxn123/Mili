@@ -159,7 +159,7 @@ public class GeneralCompatConfig implements IConfigModule {
 
     @ConfigInfo(name = "farmlandTrampledDisabled", comments = """
             阻止耕地在实体落地时变为泥土。""")
-    public static boolean farmlandTrampledDisabled = false;
+    public static volatile boolean farmlandTrampledDisabled = false;
 
     @ConfigInfo(name = "shulkerGolem", comments = """
             允许在潜影盒上方放置雕刻南瓜来召唤潜影贝。""")
@@ -167,7 +167,7 @@ public class GeneralCompatConfig implements IConfigModule {
 
     @ConfigInfo(name = "preventEndSpikeRespawn", comments = """
             在末影龙重生时跳过黑曜石柱的重新生成。""")
-    public static boolean preventEndSpikeRespawn = false;
+    public static volatile boolean preventEndSpikeRespawn = false;
 
     @ConfigInfo(name = "yeetOutOfOrderChatKick", comments = """
             忽略乱序安全聊天链检查，而非使聊天会话失效。""")
@@ -231,6 +231,70 @@ public class GeneralCompatConfig implements IConfigModule {
             Carpet 风格的玩家默认日志订阅。
             示例：["tps", "mob_caps", "counter white"]""")
     public static List<String> defaultLoggers = List.of();
+
+    @ConfigInfo(name = "renewableBlackstone", comments = "熔岩在上方或水平相邻有蓝冰时形成黑石；原版水和玄武岩优先。")
+    public static volatile boolean renewableBlackstone = false;
+
+    @ConfigInfo(name = "liquidDamageDisabled", comments = "禁止水和熔岩冲毁普通方块；仍允许流入空气、液体和可含液体的方块。")
+    public static volatile boolean liquidDamageDisabled = false;
+
+    @ConfigInfo(name = "thickFungusGrowth", comments = "人工种植巨型菌的粗柄模式：false（原版）、random（6%）或 all（总是）。")
+    public static volatile String thickFungusGrowth = "false";
+
+    @ConfigInfo(name = "extinguishedCampfire", comments = "放置营火时不点燃（不影响放置之后手动点燃）。")
+    public static volatile boolean extinguishedCampfire = false;
+
+    @ConfigInfo(name = "easyCompost", comments = "可堆肥物品默认每次增加一级，仍触发 Paper 堆肥事件。")
+    public static volatile boolean easyCompost = false;
+
+    @ConfigInfo(name = "undyingCoral", comments = "珊瑚块、珊瑚、珊瑚扇和墙上的珊瑚扇离水后不死亡。")
+    public static volatile boolean undyingCoral = false;
+
+    @ConfigInfo(name = "endermanTeleportRandomlyDisabled", comments = "禁用末影人的无指定目标随机传送，不禁用带目标的传送。")
+    public static volatile boolean endermanTeleportRandomlyDisabled = false;
+
+    @ConfigInfo(name = "disableBatCanSpawn", comments = "禁用蝙蝠的自然生成判定，不影响命令等直接生成。")
+    public static volatile boolean disableBatCanSpawn = false;
+
+    @ConfigInfo(name = "disableWaterFreezes", comments = "禁用生物群系的自然结冰判定，不影响冰霜行者。")
+    public static volatile boolean disableWaterFreezes = false;
+
+    @ConfigInfo(name = "reusableSmithingTemplate", comments = "false（原版）、upgrade（只保留下界合金升级模板）或 true（所有锻造模板均可重复使用）。")
+    public static volatile String reusableSmithingTemplate = "false";
+
+    @ConfigInfo(name = "disableFurnaceDropExperience", comments = "禁止熔炉默认掉落经验；插件仍可通过原有事件自定义掉落。")
+    public static volatile boolean disableFurnaceDropExperience = false;
+
+    @ConfigInfo(name = "staringEndermanNotAngry", comments = "末影人默认不会因被凝视而发怒；插件仍可通过 Paper 事件覆盖。")
+    public static volatile boolean staringEndermanNotAngry = false;
+
+    @ConfigInfo(name = "turtleEggTrampledDisabled", comments = "阻止实体踩碎海龟蛋，包括僵尸主动破坏海龟蛋；不影响玩家正常挖掘。")
+    public static volatile boolean turtleEggTrampledDisabled = false;
+
+    @ConfigInfo(name = "undeadDontBurnInSunlight", comments = "禁用亡灵生物因日照起火；不影响其他来源点燃。")
+    public static volatile boolean undeadDontBurnInSunlight = false;
+
+    @ConfigInfo(name = "leaderZombieSpawnWithMaxHealthDisabled", comments = "首领僵尸生成时不自动补满额外生命值；保留最大生命属性加成。")
+    public static volatile boolean leaderZombieSpawnWithMaxHealthDisabled = false;
+
+    @ConfigInfo(name = "endPortalOpenedSoundDisabled", comments = "禁用打开末地传送门时的广播音效；不影响生成传送门。")
+    public static volatile boolean endPortalOpenedSoundDisabled = false;
+
+    @ConfigInfo(name = "toughWitherRose", comments = "允许凋零玫瑰在任意支撑材质上存活。")
+    public static volatile boolean toughWitherRose = false;
+
+    @ConfigInfo(name = "endermanPickUpDisabled", comments = "禁止末影人主动拾取方块，不影响已持有方块的放置。")
+    public static volatile boolean endermanPickUpDisabled = false;
+
+    @ConfigInfo(name = "breedingCooldownDisabled", comments = "禁止成年生物进入繁殖冷却，不影响幼年生长。")
+    public static volatile boolean breedingCooldownDisabled = false;
+
+    @ConfigInfo(name = "snowMeltMinLightLevel", comments = "雪层融化所需最低方块光照。12 为原版，16 禁用光照融化。")
+    public static volatile int snowMeltMinLightLevel = 12;
+
+    public static int normalizedSnowMeltMinLightLevel() {
+        return Math.clamp(snowMeltMinLightLevel, 0, 16);
+    }
 
     public static int normalizedTntFuseDuration() {
         return Math.clamp(tntFuseDuration, 0, Short.MAX_VALUE);

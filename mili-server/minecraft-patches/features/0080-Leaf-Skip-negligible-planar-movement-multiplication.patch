@@ -5,7 +5,7 @@ Subject: [PATCH] Leaf: Skip negligible planar movement multiplication
 
 
 diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
-index 810b0a160dda508b185af41a6364e95709a2fae6..c090aea3b02d09a706533a7ed27c17314ac78f4c 100644
+index a6b023de8915d7fabdb97e24fdc6129062de6125..af4409abdebdbe9fbcd55f241f6907830fbd4dd1 100644
 --- a/net/minecraft/world/entity/Entity.java
 +++ b/net/minecraft/world/entity/Entity.java
 @@ -1329,8 +1329,18 @@ public abstract class Entity

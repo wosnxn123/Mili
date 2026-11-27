@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: MrlingXD <90316914+wling-art@users.noreply.github.com>
+Date: Tue, 23 Jun 2026 08:40:09 +0800
+Subject: [PATCH] Leaf: Skip unused delayed leash holder lookups
+
+Only resolve a nonzero delayed leash holder ID on the client. Retain the existing resolution and current-holder return behavior.
+
+Original patch: https://github.com/Winds-Studio/Leaf/blob/06c9c91a17e61aeed16bcfc846ebe91aa70d6c84/leaf-server/minecraft-patches/features/0287-Optimize-getLeashHolder.patch
+
+Ported from Lophine (GPLv3 for its changes; see licenses/GPL.md):
+https://github.com/LophineLabs/Lophine/blob/7a51f49a512f1b5465f15a905d3704754e4bed02/lophine-server/minecraft-patches/features/0148-Leaf-Skip-unused-delayed-leash-holder-lookups.patch
+Lophine patch blob: dd768e4505498e418db742cd5860f518d7a0146d
+https://github.com/LophineLabs/Lophine/blob/7a51f49a512f1b5465f15a905d3704754e4bed02/LICENSE.md
+
+Series copyright and original license notices: licenses/Lophine-0137-0158-NOTICE.txt
+
+diff --git a/net/minecraft/world/entity/Leashable.java b/net/minecraft/world/entity/Leashable.java
+index 514488de76d6d3d35b82bcc201a7f2e1bde3cb27..93a4625e43f5bbb3d67727dc1ec9fb34112e14f0 100644
+--- a/net/minecraft/world/entity/Leashable.java
++++ b/net/minecraft/world/entity/Leashable.java
+@@ -379,10 +379,15 @@ public interface Leashable {
+             return null;
+         }
+ 
+-        Entity ntt = entity.level().getEntity(leashData.delayedLeashHolderId);
+-        if (leashData.delayedLeashHolderId != 0 && entity.level().isClientSide() && ntt != null) {
+-            leashData.setLeashHolder(ntt);
++        // Leaf start - Optimize getLeashHolder - only resolve delayed leash holders on the client
++        final Level level = entity.level();
++        if (leashData.delayedLeashHolderId != 0 && level.isClientSide()) {
++            final Entity holder = level.getEntity(leashData.delayedLeashHolderId);
++            if (holder != null) {
++                leashData.setLeashHolder(holder);
++            }
+         }
++        // Leaf end - Optimize getLeashHolder
+ 
+         return leashData.leashHolder;
+     }

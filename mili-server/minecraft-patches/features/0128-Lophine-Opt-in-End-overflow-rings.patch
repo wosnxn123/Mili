@@ -1,0 +1,61 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Helvetica Volubi <suisuroru@blue-millennium.fun>
+Date: Tue, 22 Sep 2026 17:28:04 +0800
+Subject: [PATCH] Lophine Opt in End overflow rings
+
+Adapted from Lophine 0117 at 7a51f49a512f1b5465f15a905d3704754e4bed02 (GPL-3.0).
+Keep the 26.3 density and chunk behavior when disabled.
+
+diff --git a/net/minecraft/world/level/levelgen/NoiseBasedChunkGenerator.java b/net/minecraft/world/level/levelgen/NoiseBasedChunkGenerator.java
+index f0529d233b791e226cec469b2efebcffd02c6d58..1a95422659f0bb9c69662671eaa0efecd2ae6f08 100644
+--- a/net/minecraft/world/level/levelgen/NoiseBasedChunkGenerator.java
++++ b/net/minecraft/world/level/levelgen/NoiseBasedChunkGenerator.java
+@@ -429,6 +429,10 @@ public final class NoiseBasedChunkGenerator extends ChunkGenerator {
+                     if (customGenerator == null || customGenerator.shouldGenerateCaves(chunk)) // Paper - Bukkit chunk generator callbacks
+                     this.generateCarvers(chunk, blender, noiseChunk, randomState, biomeManager, carverBiomeRegion, materialRule);
+                 }
++                // Mili - clip overflow cells after vanilla carving, before the Bukkit carver callback
++                if (fun.bm.mili.config.modules.function.OldFeatureConfig.shouldGenerateEndRing && structureManager.level.getMinecraftWorld().dimensionType().hasEnderDragonFight()) {
++                    fun.bm.mili.utils.EndIslandGenerator.clearOverflowBlocks(chunk);
++                }
+                 if (customGenerator != null) customGenerator.applyCarvers(chunk); // Paper - Bukkit chunk generator callbacks
+ 
+                 return chunk;
+diff --git a/net/minecraft/world/level/levelgen/densityfunction/generator/EndIslandFunction.java b/net/minecraft/world/level/levelgen/densityfunction/generator/EndIslandFunction.java
+index 04060959dc10bae58d39d41c3d30138e1eecc36d..5042d149994f83b2931d1aa266f851d1574bc96d 100644
+--- a/net/minecraft/world/level/levelgen/densityfunction/generator/EndIslandFunction.java
++++ b/net/minecraft/world/level/levelgen/densityfunction/generator/EndIslandFunction.java
+@@ -21,7 +21,10 @@ public record EndIslandFunction() implements DensityFunction {
+         int chunkZ = sectionZ / 2;
+         int subSectionX = sectionX % 2;
+         int subSectionZ = sectionZ % 2;
+-        float doffs = -100.0F;
++        float doffs = fun.bm.mili.config.modules.function.OldFeatureConfig.shouldGenerateEndRing ? fun.bm.mili.utils.EndIslandGenerator.initialDensityOffset(sectionX, sectionZ) : -100.0F; // Mili - Lophine End rings
++        if (Float.isNaN(doffs)) {
++            return doffs;
++        }
+ 
+         for (int xo = -12; xo <= 12; xo++) {
+             for (int zo = -12; zo <= 12; zo++) {
+diff --git a/net/minecraft/world/level/levelgen/feature/EndIslandFeature.java b/net/minecraft/world/level/levelgen/feature/EndIslandFeature.java
+index eadcfa9c95923f100a7a1636a3b5489051dcc561..34eb2349c18d1e5fd0760bfb607e60d3917b73d9 100644
+--- a/net/minecraft/world/level/levelgen/feature/EndIslandFeature.java
++++ b/net/minecraft/world/level/levelgen/feature/EndIslandFeature.java
+@@ -19,12 +19,16 @@ public record EndIslandFeature() implements Feature {
+     @Override
+     public boolean place(final WorldGenLevel level, final ChunkGenerator chunkGenerator, final RandomSource random, final BlockPos origin) {
+         float size = random.nextInt(3) + 4.0F;
++        boolean generateRing = fun.bm.mili.config.modules.function.OldFeatureConfig.shouldGenerateEndRing; // Mili - Lophine End rings
+ 
+         for (int y = 0; size > 0.5F; y--) {
+             for (int x = Mth.floor(-size); x <= Mth.ceil(size); x++) {
+                 for (int z = Mth.floor(-size); z <= Mth.ceil(size); z++) {
+                     if (x * x + z * z <= (size + 1.0F) * (size + 1.0F)) {
+-                        this.setBlock(level, origin.offset(x, y, z), Blocks.END_STONE.defaultBlockState());
++                        BlockPos pos = origin.offset(x, y, z);
++                        if (!generateRing || !fun.bm.mili.utils.EndIslandGenerator.isInEndRing(pos.getX() >> 3, pos.getZ() >> 3)) {
++                            this.setBlock(level, pos, Blocks.END_STONE.defaultBlockState());
++                        }
+                     }
+                 }
+             }

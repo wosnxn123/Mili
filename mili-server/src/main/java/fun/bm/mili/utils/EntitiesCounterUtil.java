@@ -4,6 +4,7 @@ import ca.spottedleaf.moonrise.common.list.ReferenceList;
 import ca.spottedleaf.moonrise.common.misc.PositionCountingAreaMap;
 import com.mojang.logging.LogUtils;
 import fun.bm.mili.config.modules.experiment.GlobalEntitiesCounter;
+import fun.bm.mili.config.modules.fixes.VanillaLikeExperienceConfig;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -74,7 +75,7 @@ public class EntitiesCounterUtil {
             if (entity == null || entity.isRemoved() || !entity.isAlive()) continue;
             MobCategory category = entity.getType().getCategory();
             if (category != MobCategory.MISC) {
-                if (!entity.level().paperConfig().entities.spawning.countAllMobsForSpawning &&
+                if (!VanillaLikeExperienceConfig.enabled && !entity.level().paperConfig().entities.spawning.countAllMobsForSpawning &&
                         !(entity.spawnReason == CreatureSpawnEvent.SpawnReason.NATURAL ||
                                 entity.spawnReason == CreatureSpawnEvent.SpawnReason.CHUNK_GEN)) {
                     continue;
@@ -117,7 +118,7 @@ public class EntitiesCounterUtil {
         for (Entity entity : entities) {
             if (entity == null || entity.isRemoved() || !entity.isAlive()) continue;
             // Paper start - Only count natural spawns
-            if (!entity.level().paperConfig().entities.spawning.countAllMobsForSpawning &&
+            if (!VanillaLikeExperienceConfig.enabled && !entity.level().paperConfig().entities.spawning.countAllMobsForSpawning &&
                     !(entity.spawnReason == CreatureSpawnEvent.SpawnReason.NATURAL ||
                             entity.spawnReason == CreatureSpawnEvent.SpawnReason.CHUNK_GEN)) {
                 continue;

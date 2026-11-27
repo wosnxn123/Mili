@@ -1,0 +1,105 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Carpet AMS campfire compost and coral rules
+
+Adapted for Mili from LophineLabs/Lophine 0132 (7a51f49a512f1b5465f15a905d3704754e4bed02).
+See docs/upstream-carpet-26.3.md for provenance and scope.
+
+diff --git a/net/minecraft/world/level/block/BaseCoralPlantTypeBlock.java b/net/minecraft/world/level/block/BaseCoralPlantTypeBlock.java
+index b9ee73d8670c11dc0d62282eead1872647fb3881..3036c856286f3c8d707a05e38d5c6d2de9b66aa5 100644
+--- a/net/minecraft/world/level/block/BaseCoralPlantTypeBlock.java
++++ b/net/minecraft/world/level/block/BaseCoralPlantTypeBlock.java
+@@ -31,6 +31,11 @@ public abstract class BaseCoralPlantTypeBlock extends Block implements SimpleWat
+     protected void tryScheduleDieTick(
+         final BlockState state, final BlockGetter level, final ScheduledTickAccess ticks, final RandomSource random, final BlockPos pos
+     ) {
++        // Mili start - Carpet features
++        if (fun.bm.mili.carpet.config.modules.GeneralCompatConfig.undyingCoral) {
++            return;
++        }
++        // Mili end - Carpet features
+         if (!scanForWater(state, level, pos)) {
+             ticks.scheduleTick(pos, this, 60 + random.nextInt(40));
+         }
+diff --git a/net/minecraft/world/level/block/CampfireBlock.java b/net/minecraft/world/level/block/CampfireBlock.java
+index fabf3dca600862410aa0cafd396dbf1905975b83..627bded6b1ad3433795e792edaddac6bf7f636f8 100644
+--- a/net/minecraft/world/level/block/CampfireBlock.java
++++ b/net/minecraft/world/level/block/CampfireBlock.java
+@@ -148,7 +148,7 @@ public class CampfireBlock extends BaseEntityBlock implements SimpleWaterloggedB
+         return this.defaultBlockState()
+             .setValue(WATERLOGGED, replacedWater)
+             .setValue(SIGNAL_FIRE, this.isSmokeSource(level.getBlockState(pos.below())))
+-            .setValue(LIT, !replacedWater)
++            .setValue(LIT, !replacedWater && !fun.bm.mili.carpet.config.modules.GeneralCompatConfig.extinguishedCampfire) // Mili - Carpet features
+             .setValue(FACING, context.getHorizontalDirection());
+     }
+ 
+diff --git a/net/minecraft/world/level/block/ComposterBlock.java b/net/minecraft/world/level/block/ComposterBlock.java
+index efc2c315340d76cfc6959e6710b64108b03902d1..e541e986fdb3627caa5a35b0f8653274140573cf 100644
+--- a/net/minecraft/world/level/block/ComposterBlock.java
++++ b/net/minecraft/world/level/block/ComposterBlock.java
+@@ -214,7 +214,7 @@ public class ComposterBlock extends Block implements WorldlyContainerHolder {
+                     .create(LootContextParamSets.BLOCK_INTERACT)
+             )
+             .create(Optional.empty());
+-        int layersToAdd = compostable.layers().get(lootContext, 0);
++        int layersToAdd = fun.bm.mili.carpet.config.modules.GeneralCompatConfig.easyCompost ? 1 : compostable.layers().get(lootContext, 0);
+         // Paper start - call compost events
+         final io.papermc.paper.event.block.CompostItemEvent event;
+         if (sourceEntity == null) {
+diff --git a/net/minecraft/world/level/block/CoralBlock.java b/net/minecraft/world/level/block/CoralBlock.java
+index ff0a318ff6c0e2f22a807dd32306f5c5d0bdcaab..33c8c9281f7fb3f49037f08b1588ae13c4e37b3e 100644
+--- a/net/minecraft/world/level/block/CoralBlock.java
++++ b/net/minecraft/world/level/block/CoralBlock.java
+@@ -53,6 +53,11 @@ public class CoralBlock extends Block {
+     }
+ 
+     protected boolean scanForWater(final BlockGetter level, final BlockPos blockPos) {
++        // Mili start - Carpet features
++        if (fun.bm.mili.carpet.config.modules.GeneralCompatConfig.undyingCoral) {
++            return true;
++        }
++        // Mili end - Carpet features
+         for (Direction direction : Direction.values()) {
+             FluidState fluidState = level.getFluidState(blockPos.relative(direction));
+             if (fluidState.is(FluidTags.WATER)) {
+diff --git a/net/minecraft/world/level/block/CoralFanBlock.java b/net/minecraft/world/level/block/CoralFanBlock.java
+index b9db4321f1f206dc2d3b223d50518fbe74351d65..c5f3b5ac8344d036a789f399d7fbb24554c89746 100644
+--- a/net/minecraft/world/level/block/CoralFanBlock.java
++++ b/net/minecraft/world/level/block/CoralFanBlock.java
+@@ -26,7 +26,7 @@ public class CoralFanBlock extends BaseCoralFanBlock {
+ 
+     @Override
+     protected void tick(final BlockState state, final ServerLevel level, final BlockPos pos, final RandomSource random) {
+-        if (!scanForWater(state, level, pos)) {
++        if (!fun.bm.mili.carpet.config.modules.GeneralCompatConfig.undyingCoral && !scanForWater(state, level, pos)) {
+             // CraftBukkit start
+             if (org.bukkit.craftbukkit.event.CraftEventFactory.callBlockFadeEvent(level, pos, this.deadBlock.defaultBlockState().setValue(CoralFanBlock.WATERLOGGED, false)).isCancelled()) {
+                 return;
+diff --git a/net/minecraft/world/level/block/CoralPlantBlock.java b/net/minecraft/world/level/block/CoralPlantBlock.java
+index 9a17b41db60be75f2d7dce7fb184249061fb0436..c39ab29b466c7cfbdf533bf166d7cf3bf620b746 100644
+--- a/net/minecraft/world/level/block/CoralPlantBlock.java
++++ b/net/minecraft/world/level/block/CoralPlantBlock.java
+@@ -30,7 +30,7 @@ public class CoralPlantBlock extends BaseCoralPlantTypeBlock {
+ 
+     @Override
+     protected void tick(final BlockState state, final ServerLevel level, final BlockPos pos, final RandomSource random) {
+-        if (!scanForWater(state, level, pos)) {
++        if (!fun.bm.mili.carpet.config.modules.GeneralCompatConfig.undyingCoral && !scanForWater(state, level, pos)) {
+             // CraftBukkit start
+             if (org.bukkit.craftbukkit.event.CraftEventFactory.callBlockFadeEvent(level, pos, this.deadBlock.defaultBlockState().setValue(CoralPlantBlock.WATERLOGGED, false)).isCancelled()) {
+                 return;
+diff --git a/net/minecraft/world/level/block/CoralWallFanBlock.java b/net/minecraft/world/level/block/CoralWallFanBlock.java
+index 90d09065fd946ba882cd7421f29ba25b39a4fc22..dc57a378474b350a18548da270c962f7c836be09 100644
+--- a/net/minecraft/world/level/block/CoralWallFanBlock.java
++++ b/net/minecraft/world/level/block/CoralWallFanBlock.java
+@@ -26,7 +26,7 @@ public class CoralWallFanBlock extends BaseCoralWallFanBlock {
+ 
+     @Override
+     protected void tick(final BlockState state, final ServerLevel level, final BlockPos pos, final RandomSource random) {
+-        if (!scanForWater(state, level, pos)) {
++        if (!fun.bm.mili.carpet.config.modules.GeneralCompatConfig.undyingCoral && !scanForWater(state, level, pos)) {
+             // CraftBukkit start
+             if (org.bukkit.craftbukkit.event.CraftEventFactory.callBlockFadeEvent(level, pos, this.deadBlock.defaultBlockState().setValue(CoralWallFanBlock.WATERLOGGED, false).setValue(CoralWallFanBlock.FACING, state.getValue(CoralWallFanBlock.FACING))).isCancelled()) {
+                 return;

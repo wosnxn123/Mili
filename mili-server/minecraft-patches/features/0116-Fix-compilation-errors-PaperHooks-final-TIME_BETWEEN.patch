@@ -8,10 +8,10 @@ Subject: [PATCH] Fix compilation errors: PaperHooks final, TIME_BETWEEN_TICKS
 
 
 diff --git a/ca/spottedleaf/moonrise/paper/PaperHooks.java b/ca/spottedleaf/moonrise/paper/PaperHooks.java
-index a18c44332b6f2db441575b8f3cfb9045a65062d5..03085e7ff54e70302ced15a62ea1586c9ac90348 100644
+index da6537b74798778cfacdefa13c4f26c8ebf6c338..95022f109f495277d4915a6ae8b4a569c1d830fa 100644
 --- a/ca/spottedleaf/moonrise/paper/PaperHooks.java
 +++ b/ca/spottedleaf/moonrise/paper/PaperHooks.java
-@@ -29,7 +29,7 @@ import net.minecraft.world.phys.AABB;
+@@ -30,7 +30,7 @@ import net.minecraft.world.phys.AABB;
  import java.util.List;
  import java.util.function.Predicate;
  
@@ -85,7 +85,7 @@ index 299991905c24a7018f8ac60d0c16e56fa43cd710..fe34c097584a105fef585e7ecce55771
          dispatcher.register(
              Commands.literal("save-all")
 diff --git a/net/minecraft/world/entity/EntityType.java b/net/minecraft/world/entity/EntityType.java
-index 996679150fbd51ce8fdef4ec72ea2c9b6daec208..202e4fba9b25ef80e1c0a72405925d7313e6d2ab 100644
+index 140866de69fb9ad894c486c96e0c4dca280bf111..2bf7eab85661a485a4f35008be19575b1761891d 100644
 --- a/net/minecraft/world/entity/EntityType.java
 +++ b/net/minecraft/world/entity/EntityType.java
 @@ -58,6 +58,7 @@ public class EntityType<T extends Entity> implements EntityTypeTest<Entity, T>,

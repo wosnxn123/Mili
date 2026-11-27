@@ -1,0 +1,20 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Helvetica Volubi <suisuroru@blue-millennium.fun>
+Date: Mon, 19 May 2025 00:42:17 +0800
+Subject: [PATCH] Old zombie reinforcement
+
+Ported from: https://github.com/LophineLabs/Lophine/blob/7a51f49a512f1b5465f15a905d3704754e4bed02/lophine-server/minecraft-patches/features/0087-Old-zombie-reinforcement.patch
+
+diff --git a/net/minecraft/world/entity/monster/zombie/Zombie.java b/net/minecraft/world/entity/monster/zombie/Zombie.java
+index 7814cfd5d78e374ae162473fee2ea8c9e2629184..9e5ff1afbb03cbce5ccb2f11d1e8b57c06521880 100644
+--- a/net/minecraft/world/entity/monster/zombie/Zombie.java
++++ b/net/minecraft/world/entity/monster/zombie/Zombie.java
+@@ -302,7 +302,7 @@ public class Zombie extends Monster {
+             int x = Mth.floor(this.getX());
+             int y = Mth.floor(this.getY());
+             int z = Mth.floor(this.getZ());
+-            EntityType<? extends Zombie> type = this.getType();
++            EntityType<? extends Zombie> type = fun.bm.mili.config.modules.function.OldFeatureConfig.oldZombieReinforcement ? EntityTypes.ZOMBIE : this.getType(); // Lophine - old zombie reinforcement
+             Zombie reinforcement = type.create(level, EntitySpawnReason.REINFORCEMENT);
+             if (reinforcement == null) {
+                 return true;

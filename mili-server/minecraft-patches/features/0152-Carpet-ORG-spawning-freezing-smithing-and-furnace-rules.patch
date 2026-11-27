@@ -1,0 +1,80 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Carpet ORG spawning freezing smithing and furnace rules
+
+Adapted for Mili from LophineLabs/Lophine 0133 (7a51f49a512f1b5465f15a905d3704754e4bed02).
+See docs/upstream-carpet-26.3.md for provenance and scope.
+
+diff --git a/net/minecraft/world/entity/ambient/Bat.java b/net/minecraft/world/entity/ambient/Bat.java
+index 5dd0c83e44eb68d90cda5743bc24d97044a02f6e..3019e1f988f3325022f2f4e75705540c77ce0fb5 100644
+--- a/net/minecraft/world/entity/ambient/Bat.java
++++ b/net/minecraft/world/entity/ambient/Bat.java
+@@ -223,6 +223,11 @@ public class Bat extends AmbientCreature {
+     public static boolean checkBatSpawnRules(
+         final EntityType<Bat> type, final LevelAccessor level, final EntitySpawnReason spawnReason, final BlockPos pos, final RandomSource random
+     ) {
++        // Mili start - Carpet features
++        if (fun.bm.mili.carpet.config.modules.GeneralCompatConfig.disableBatCanSpawn) {
++            return false;
++        }
++        // Mili end - Carpet features
+         return pos.getY() < level.getHeightmapPos(Heightmap.Types.WORLD_SURFACE, pos).getY()
+             && !random.nextBoolean()
+             && level.getMaxLocalRawBrightness(pos) <= random.nextInt(4)
+diff --git a/net/minecraft/world/inventory/SmithingMenu.java b/net/minecraft/world/inventory/SmithingMenu.java
+index 98dbb4e4cb5e234ddc24449071806e805b50c5bc..576f2833841a2ea8f6d1930ca5da77f5d86beec3 100644
+--- a/net/minecraft/world/inventory/SmithingMenu.java
++++ b/net/minecraft/world/inventory/SmithingMenu.java
+@@ -91,6 +91,13 @@ public class SmithingMenu extends ItemCombinerMenu {
+ 
+     private void shrinkStackInSlot(final int slot) {
+         ItemStack stack = this.inputSlots.getItem(slot);
++        if (slot == 0) {
++            String mode = fun.bm.mili.carpet.config.modules.GeneralCompatConfig.reusableSmithingTemplate;
++            if ("true".equalsIgnoreCase(mode)
++                || "upgrade".equalsIgnoreCase(mode) && stack.is(net.minecraft.world.item.Items.NETHERITE_UPGRADE_SMITHING_TEMPLATE)) {
++                return;
++            }
++        }
+         if (!stack.isEmpty()) {
+             stack.shrink(1);
+             this.inputSlots.setItem(slot, stack);
+diff --git a/net/minecraft/world/level/biome/Biome.java b/net/minecraft/world/level/biome/Biome.java
+index 63d05bee70be495a3ec993fae6c2b42b7da6f5e5..ab49d41daa8d77708864225ca98059aab84522cf 100644
+--- a/net/minecraft/world/level/biome/Biome.java
++++ b/net/minecraft/world/level/biome/Biome.java
+@@ -130,6 +130,11 @@ public final class Biome {
+     }
+ 
+     public boolean shouldFreeze(final LevelReader level, final BlockPos pos, final boolean checkNeighbors) {
++        // Mili start - Carpet features
++        if (fun.bm.mili.carpet.config.modules.GeneralCompatConfig.disableWaterFreezes) {
++            return false;
++        }
++        // Mili end - Carpet features
+         if (this.warmEnoughToRain(pos, level.getSeaLevel())) {
+             return false;
+         }
+diff --git a/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java b/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
+index b1f3e1141aea75e76ddfd2bb2ed9a5106f11b650..c67b2d4a93a7a97fbd03d09b3ccbb4ece98e3fbf 100644
+--- a/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
+@@ -497,10 +497,13 @@ public abstract class AbstractFurnaceBlockEntity extends BaseContainerBlockEntit
+     }
+ 
+     private static void createExperience(final ServerLevel level, final Vec3 position, final int amount, final float value, final BlockPos blockPos, final ServerPlayer player, final ItemStack itemStack, final int removeCount) {
+-        int xpReward = Mth.floor(amount * value);
+-        float xpFraction = Mth.frac(amount * value);
+-        if (xpFraction != 0.0F && level.getRandom().nextFloat() < xpFraction) {
+-            xpReward++;
++        int xpReward = 0;
++        if (!fun.bm.mili.carpet.config.modules.GeneralCompatConfig.disableFurnaceDropExperience) {
++            xpReward = Mth.floor(amount * value);
++            float xpFraction = Mth.frac(amount * value);
++            if (xpFraction != 0.0F && level.getRandom().nextFloat() < xpFraction) {
++                xpReward++;
++            }
+         }
+ 
+         // CraftBukkit start - fire FurnaceExtractEvent / BlockExpEvent

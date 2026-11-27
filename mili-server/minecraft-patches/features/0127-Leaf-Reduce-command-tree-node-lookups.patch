@@ -46,7 +46,7 @@ index d2585a69b978e00cf3b9e8829807d63128fc0b55..1261171a83e9f3112d507eb7662287a3
 --- a/net/minecraft/network/protocol/game/ClientboundCommandsPacket.java
 +++ b/net/minecraft/network/protocol/game/ClientboundCommandsPacket.java
 @@ -84,14 +84,16 @@ public class ClientboundCommandsPacket implements Packet<ClientGamePacketListene
-
+ 
          CommandNode<S> node;
          while ((node = queue.poll()) != null) {
 -            if (!nodeToId.containsKey(node)) {
@@ -63,5 +63,5 @@ index d2585a69b978e00cf3b9e8829807d63128fc0b55..1261171a83e9f3112d507eb7662287a3
              }
 +            // Leaf end - optimize ClientboundCommandsPacket#enumerateNodes
          }
-
+ 
          return nodeToId;

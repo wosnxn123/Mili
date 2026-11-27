@@ -1,0 +1,84 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Tue, 3 Nov 2026 17:11:31 +0800
+Subject: [PATCH] Expose read-only Carpet rules
+
+Adapt the read-only entry point from LophineLabs/Lophine API 0015 (7a51f49a512f1b5465f15a905d3704754e4bed02).
+Mutation and Scarpet registration need a separate runtime integration.
+
+diff --git a/src/main/java/fun/bm/mili/api/carpet/CarpetApi.java b/src/main/java/fun/bm/mili/api/carpet/CarpetApi.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..7f588c728ee6e72248f592e51bac45e2aeec17a6
+--- /dev/null
++++ b/src/main/java/fun/bm/mili/api/carpet/CarpetApi.java
+@@ -0,0 +1,52 @@
++package fun.bm.mili.api.carpet;
++
++import org.bukkit.Bukkit;
++
++import java.util.List;
++import java.util.Objects;
++import java.util.Optional;
++
++/**
++ * Read-only view of the rule values Mili publishes to Carpet clients. Calling
++ * these methods is safe from any thread and does not confer region ownership.
++ * This API cannot change rules, execute commands or register Scarpet functions.
++ */
++public interface CarpetApi {
++    /**
++     * Returns the current server's Carpet API.
++     *
++     * @return Carpet compatibility rule API
++     */
++    static CarpetApi get() {
++        return Bukkit.getServer().getCarpet();
++    }
++
++    /**
++     * Returns an immutable point-in-time snapshot of advertised rule values,
++     * sorted by rule name. Rules not advertised by Mili are not present.
++     *
++     * @return immutable rules in name order
++     */
++    List<Rule> rules();
++
++    /**
++     * Looks up an advertised rule by its case-sensitive name.
++     *
++     * @param name case-sensitive Carpet rule name
++     * @return the snapshot value, or empty for an unknown rule
++     */
++    default Optional<Rule> rule(String name) {
++        Objects.requireNonNull(name, "name");
++        return rules().stream().filter(rule -> rule.name().equals(name)).findFirst();
++    }
++
++    /**
++     * A published rule value, not a handle to a live setting.
++     *
++     * @param manager the Carpet protocol rule manager
++     * @param name the case-sensitive rule name
++     * @param value its published string value
++     */
++    record Rule(String manager, String name, String value) {
++    }
++}
+diff --git a/src/main/java/org/bukkit/Server.java b/src/main/java/org/bukkit/Server.java
+index 584cad36df3855d55b8f9c2eff80dc7a639bae1a..24d5682685882521f0a592401221eedec2479303 100644
+--- a/src/main/java/org/bukkit/Server.java
++++ b/src/main/java/org/bukkit/Server.java
+@@ -2897,4 +2897,13 @@
+     // Leaves start - Bytebuf API
+     org.leavesmc.leaves.bytebuf.BytebufAllocator getBytebufAllocator();
+     // Leaves end - Bytebuf API
++
++    // Mili start - Carpet rule API
++    /**
++     * Returns a read-only view of this server's Carpet compatibility rules.
++     *
++     * @return Carpet compatibility rule API
++     */
++    @NotNull fun.bm.mili.api.carpet.CarpetApi getCarpet();
++    // Mili end - Carpet rule API
+ }

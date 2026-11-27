@@ -16,6 +16,9 @@ public class OldFeatureConfig implements IConfigModule {
     @ConfigInfo(name = "old_zombie_reinforcement")
     public static boolean oldZombieReinforcement = false;
 
+    @ConfigInfo(name = "old_leader_zombie_health", comments = "使用旧版领袖僵尸生成时的生命值处理。")
+    public static boolean oldLeaderZombieHealth = false;
+
     @TransformedConfig(name = "old_explosion_damage_calculator", directory = {"misc", "old-feature"})
     @ConfigInfo(name = "old_explosion_damage_calculator")
     public static boolean oldExplosionDamageCalculator = false;
@@ -24,6 +27,9 @@ public class OldFeatureConfig implements IConfigModule {
     @TransformedConfig(name = "give_bad_omen_when_kill_raid_captain", directory = {"misc", "revert_raid_changes"}, transformComments = false)
     @ConfigInfo(name = "old_raid_behavior")
     public static boolean oldRaidBehavior = false;
+
+    @ConfigInfo(name = "should_generate_end_ring", comments = "恢复末地地形溢出环带，仅影响新生成区块。请在启动前配置。")
+    public static volatile boolean shouldGenerateEndRing = false;
 
     @TransformedConfig(name = "villager-infinite-trade", directory = {"function", "villager"}, transformComments = false)
     @TransformedConfig(name = "villager-infinite-trade", directory = {"misc", "villager"}, transformComments = false)

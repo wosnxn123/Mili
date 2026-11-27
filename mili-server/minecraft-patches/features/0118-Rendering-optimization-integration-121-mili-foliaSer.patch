@@ -6,10 +6,10 @@ Subject: [PATCH] Rendering optimization integration 121 mili foliaServer File
 
 
 diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
-index f100d8084ea2a19c9a0deb0e931d02f49c8b39a5..75b06b60ed7359922922a876bb0ff4394f0cdf83 100644
+index eb08729adb6a74eff0f0d61318041f3143156865..5627b78dca4244810d6ec7672da785b5d7758319 100644
 --- a/net/minecraft/server/MinecraftServer.java
 +++ b/net/minecraft/server/MinecraftServer.java
-@@ -1776,6 +1776,15 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -1778,6 +1778,15 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
          }
          //KioCG end
          this.tickChildren(haveTime, region); // Folia - region threading
@@ -87,10 +87,10 @@ index f4244f447fe8490020cc6b6916d496c5b0cd5b32..c5e4eb733cdd6b3d05c2953cea7b0a12
          } finally { profiler.stopTimer(ca.spottedleaf.leafprofiler.LProfilerRegistry.ENTITY_TRACKER_TICK); } // Folia - profiler
      }
 diff --git a/net/minecraft/server/level/ServerEntity.java b/net/minecraft/server/level/ServerEntity.java
-index f2a07c3668d53f3d75da7d816f50dfae9524fd17..b48a3585094a490d9a3479270c34be058f728ca4 100644
+index de68b4f29aee394652886d5b0772791f3f258112..b82e6e6cfa706a6a6b28e8fd68641c659cf7250c 100644
 --- a/net/minecraft/server/level/ServerEntity.java
 +++ b/net/minecraft/server/level/ServerEntity.java
-@@ -110,6 +110,12 @@ public class ServerEntity {
+@@ -114,6 +114,12 @@ public class ServerEntity {
      // Paper end - fix desync when a player is added to the tracker
  
      public void sendChanges() {
@@ -133,10 +133,10 @@ index 010180899d69d0457dcc9feee4f1c062c5354995..e8c02d10901514da1fb2019218a7cc2d
              bridge.removeChannel(channel);
          }
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index 17d4f527e6c63db6e958466f555e90af02e82dfb..c853d3edf68f95a4743669e737e2481ae5bb6fd0 100644
+index 34505a1ceb8a394b7d69b3aa1ae298241a5733e2..3aec8dd8f590a3bc373f3d58f2bdc6504a828f1e 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-@@ -3320,7 +3320,7 @@ public class ServerGamePacketListenerImpl
+@@ -3322,7 +3322,7 @@ public class ServerGamePacketListenerImpl
                                              } else if (slot.mayPlace(cursor)) {
                                                  if (ItemStack.isSameItemSameComponents(clickedItem, cursor)) {
                                                      int toPlace = packet.buttonNum() == 0 ? cursor.getCount() : 1;
@@ -145,7 +145,7 @@ index 17d4f527e6c63db6e958466f555e90af02e82dfb..c853d3edf68f95a4743669e737e2481a
                                                      toPlace = Math.min(toPlace, slot.container.getMaxStackSize() - clickedItem.getCount());
                                                      if (toPlace == 1) {
                                                          action = InventoryAction.PLACE_ONE;
-@@ -3356,7 +3356,7 @@ public class ServerGamePacketListenerImpl
+@@ -3358,7 +3358,7 @@ public class ServerGamePacketListenerImpl
                                                  }
                                              } else if (ItemStack.isSameItemSameComponents(cursor, clickedItem)) {
                                                  if (clickedItem.getCount() >= 0) {
@@ -154,7 +154,7 @@ index 17d4f527e6c63db6e958466f555e90af02e82dfb..c853d3edf68f95a4743669e737e2481a
                                                          // As of 1.5, this is result slots only
                                                          action = InventoryAction.PICKUP_ALL;
                                                      }
-@@ -3573,6 +3573,7 @@ public class ServerGamePacketListenerImpl
+@@ -3575,6 +3575,7 @@ public class ServerGamePacketListenerImpl
                          this.player.containerMenu.broadcastFullState();
                      } else {
                          this.player.containerMenu.broadcastChanges();
@@ -163,7 +163,7 @@ index 17d4f527e6c63db6e958466f555e90af02e82dfb..c853d3edf68f95a4743669e737e2481a
                      if (packet.buttonNum() == Inventory.SLOT_OFFHAND && this.player.containerMenu != this.player.inventoryMenu) this.player.containerSynchronizer.sendOffHandSlotChange(); // Paper - update offhand data when the player is clicking in an inventory not their own as the sychronizer does not include offhand slots
                      if (io.papermc.paper.configuration.GlobalConfiguration.get().unsupportedSettings.updateEquipmentOnPlayerActions) this.player.detectEquipmentUpdates(); // Paper - Force update attributes.
 diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
-index 9d1e9d4fe73dc1d790d01235382d737ee83d475e..983acebf846facbd5e865069601b96e1c5d9940c 100644
+index 9c912cdc1bf5c6d3c7613f9dfd25f16d8d86a1bc..9079277ce77687553f8f0258419daa53308039a5 100644
 --- a/net/minecraft/server/players/PlayerList.java
 +++ b/net/minecraft/server/players/PlayerList.java
 @@ -782,7 +782,14 @@ public abstract class PlayerList {
@@ -208,7 +208,7 @@ index ffbc6e6b88336e692c94586de8181a8c33b002f3..19caac6d353ed46962134a4e271e0e86
  import net.minecraft.network.protocol.Packet;
  import net.minecraft.server.MinecraftServer;
 diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
-index 7febd25b9ab5fa42b8c475c36b3bc4ffad90aa22..1b5fbfe75985d0f911bf15cbc7f9b69b1110b4b4 100644
+index 34057c41a14519d5d109915f7c83fa51e7d0584f..0ba718d17f42c67cf9bda3e4f103fab3b930509d 100644
 --- a/net/minecraft/world/entity/Entity.java
 +++ b/net/minecraft/world/entity/Entity.java
 @@ -166,7 +166,7 @@ public abstract class Entity
@@ -220,7 +220,7 @@ index 7febd25b9ab5fa42b8c475c36b3bc4ffad90aa22..1b5fbfe75985d0f911bf15cbc7f9b69b
      // CraftBukkit start
      private static final int CURRENT_LEVEL = 2;
      static boolean isLevelAtLeast(ValueInput input, int level) {
-@@ -6729,5 +6729,41 @@ public abstract class Entity
+@@ -6734,5 +6734,41 @@ public abstract class Entity
      }
      // Paper end
  

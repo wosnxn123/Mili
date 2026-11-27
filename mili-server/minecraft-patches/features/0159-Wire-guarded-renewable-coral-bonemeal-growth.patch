@@ -1,0 +1,196 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bacteriawa <A3167717663@hotmail.com>
+Date: Sun, 22 Mar 2026 01:39:15 +0800
+Subject: [PATCH] Wire guarded renewable coral bonemeal growth
+
+Adapted from LophineLabs/Lophine 0131 and LGPL-3.0-or-later 0135 helper (7a51f49a512f1b5465f15a905d3704754e4bed02).
+See docs/upstream-carpet-26.3.md for the legacy references and scope.
+
+diff --git a/net/minecraft/world/level/block/CarpetFertilizableCoral.java b/net/minecraft/world/level/block/CarpetFertilizableCoral.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..517027ecb1e498fcf9076e10a4ade496b8788490
+--- /dev/null
++++ b/net/minecraft/world/level/block/CarpetFertilizableCoral.java
+@@ -0,0 +1,143 @@
++/*
++ * SPDX-License-Identifier: LGPL-3.0-or-later
++ * Adapted from Fabric Carpet's FertilizableCoral and FeatureGenerator.
++ * Source: gnembon/fabric-carpet, revision f358000b175ddbcf1dd0bc59641c715fb0545664.
++ */
++package net.minecraft.world.level.block;
++
++import java.util.Optional;
++import ca.spottedleaf.moonrise.common.util.TickThread;
++import net.minecraft.core.BlockPos;
++import net.minecraft.core.Direction;
++import net.minecraft.core.Holder;
++import net.minecraft.core.HolderGetter;
++import net.minecraft.core.HolderSet;
++import net.minecraft.core.registries.Registries;
++import net.minecraft.data.worldgen.placement.PlacementUtils;
++import net.minecraft.server.level.ServerLevel;
++import net.minecraft.tags.BlockTags;
++import net.minecraft.tags.FluidTags;
++import net.minecraft.util.RandomSource;
++import net.minecraft.util.random.Weighted;
++import net.minecraft.util.random.WeightedList;
++import net.minecraft.util.valueproviders.UniformInt;
++import net.minecraft.world.level.Level;
++import net.minecraft.world.level.LevelReader;
++import net.minecraft.world.level.block.state.BlockState;
++import net.minecraft.world.level.block.state.properties.BlockStateProperties;
++import net.minecraft.world.level.levelgen.blockpredicates.BlockPredicate;
++import net.minecraft.world.level.levelgen.feature.CoralClawFeature;
++import net.minecraft.world.level.levelgen.feature.CoralTreeFeature;
++import net.minecraft.world.level.levelgen.feature.CuboidPlacement;
++import net.minecraft.world.level.levelgen.feature.Feature;
++import net.minecraft.world.level.levelgen.feature.NoOpFeature;
++import net.minecraft.world.level.levelgen.feature.OverlayFeature;
++import net.minecraft.world.level.levelgen.feature.SimpleBlockFeature;
++import net.minecraft.world.level.levelgen.feature.SimpleRandomSelectorFeature;
++import net.minecraft.world.level.levelgen.feature.WeightedRandomSelectorFeature;
++import net.minecraft.world.level.levelgen.feature.stateproviders.BlockStateProvider;
++import net.minecraft.world.level.levelgen.feature.stateproviders.RandomBlockProvider;
++import net.minecraft.world.level.levelgen.feature.stateproviders.RandomizedIntStateProvider;
++import net.minecraft.world.level.levelgen.feature.stateproviders.RotatedBlockProvider;
++import net.minecraft.world.level.levelgen.placement.BlockPredicateFilter;
++import net.minecraft.world.level.levelgen.placement.OffsetPlacement;
++import net.minecraft.world.level.levelgen.placement.PlacedFeature;
++import net.minecraft.world.level.levelgen.placement.RandomChancePlacement;
++import net.minecraft.world.level.material.MapColor;
++
++public interface CarpetFertilizableCoral extends BonemealableBlock {
++    @Override
++    default boolean isValidBonemealTarget(final LevelReader level, final BlockPos pos, final BlockState state, final BonemealSource source) {
++        String mode = fun.bm.mili.config.modules.function.OldFeatureConfig.renewableCoral;
++        boolean enabled = "expanded".equalsIgnoreCase(mode) || this instanceof CoralPlantBlock && "true".equalsIgnoreCase(mode);
++        return enabled && state.getValue(BaseCoralPlantTypeBlock.WATERLOGGED)
++            && level instanceof ServerLevel serverLevel && ownsGrowthArea(serverLevel, pos)
++            && level.getFluidState(pos.above()).is(FluidTags.WATER);
++    }
++
++    @Override
++    default boolean isBonemealSuccess(final Level level, final RandomSource random, final BlockPos pos, final BlockState state, final BonemealSource source) {
++        return random.nextFloat() < 0.15D;
++    }
++
++    @Override
++    default void performBonemeal(final ServerLevel level, final RandomSource random, final BlockPos pos, final BlockState original, final BonemealSource source) {
++        if (!ownsGrowthArea(level, pos)) {
++            return;
++        }
++        MapColor color = original.getMapColor(level, pos);
++        BlockState proper = null;
++        var blocks = level.registryAccess().lookupOrThrow(Registries.BLOCK);
++        for (Holder<Block> block : blocks.getOrThrow(BlockTags.CORAL_BLOCKS)) {
++            BlockState candidate = block.value().defaultBlockState();
++            if (candidate.getMapColor(level, pos) == color) {
++                proper = candidate;
++                break;
++            }
++        }
++
++        if (proper == null) {
++            return;
++        }
++        Feature coral = coralFeature(blocks, proper.getBlock());
++        BlockPredicateFilter placement = BlockPredicateFilter.forPredicate(BlockPredicate.allOf(
++            BlockPredicate.anyOf(BlockPredicate.matchesBlocks(Blocks.WATER), BlockPredicate.matchesTag(BlockTags.CORALS)),
++            BlockPredicate.matchesBlocks(Direction.UP, Blocks.WATER)
++        ));
++        Holder<PlacedFeature> coralPlaced = PlacementUtils.inlinePlaced(coral, placement);
++        Feature growth = new SimpleRandomSelectorFeature(HolderSet.direct(
++            PlacementUtils.inlinePlaced(new CoralTreeFeature(coralPlaced)),
++            PlacementUtils.inlinePlaced(new CoralClawFeature(coralPlaced)),
++            PlacementUtils.inlinePlaced(coral, OffsetPlacement.vertical(UniformInt.of(-3, -1)),
++                new CuboidPlacement(UniformInt.of(3, 5), UniformInt.of(3, 5), false, false),
++                new RandomChancePlacement(0.9F), placement)
++        ));
++        if (!level.setBlock(pos, Blocks.WATER.defaultBlockState(), Block.UPDATE_NONE)) {
++            return;
++        }
++        if (!growth.place(level, level.getChunkSource().getGenerator(), random, pos)) {
++            level.setBlock(pos, original, Block.UPDATE_ALL);
++        } else if (level.getRandom().nextInt(10) == 0) {
++            BlockPos spongePos = pos.offset(random.nextInt(16) - 8, random.nextInt(8), random.nextInt(16) - 8);
++            if (level.getBlockState(spongePos).is(BlockTags.CORAL_BLOCKS)) {
++                level.setBlock(spongePos, Blocks.WET_SPONGE.defaultBlockState(), Block.UPDATE_ALL);
++            }
++        }
++    }
++
++    private static boolean ownsGrowthArea(final ServerLevel level, final BlockPos pos) {
++        // Sponge placement can reach eight blocks; tree/claw/cuboid and their
++        // decorations are smaller. Leave an extra margin for neighbor updates.
++        final int radius = 10;
++        for (int x = (pos.getX() - radius) >> 4; x <= (pos.getX() + radius) >> 4; x++) {
++            for (int z = (pos.getZ() - radius) >> 4; z <= (pos.getZ() + radius) >> 4; z++) {
++                if (!TickThread.isTickThreadFor(level, x, z) || level.getChunkIfLoaded(x, z) == null) {
++                    return false;
++                }
++            }
++        }
++        return true;
++    }
++
++    private static Feature coralFeature(final HolderGetter<Block> blocks, final Block block) {
++        return new OverlayFeature(HolderSet.direct(
++            PlacementUtils.inlinePlaced(new SimpleBlockFeature(BlockStateProvider.of(block))),
++            PlacementUtils.inlinePlaced(new WeightedRandomSelectorFeature(WeightedList.of(
++                new Weighted<>(PlacementUtils.inlinePlaced(new SimpleBlockFeature(new RandomBlockProvider(blocks.getOrThrow(BlockTags.CORALS)))), 20),
++                new Weighted<>(PlacementUtils.inlinePlaced(new SimpleBlockFeature(new RandomizedIntStateProvider(
++                    BlockStateProvider.of(Blocks.SEA_PICKLE), BlockStateProperties.PICKLES, UniformInt.of(1, 4)))), 3),
++                new Weighted<>(PlacementUtils.inlinePlaced(new NoOpFeature()), 57)
++            )), OffsetPlacement.above()),
++            wallCoral(blocks, Direction.NORTH), wallCoral(blocks, Direction.EAST),
++            wallCoral(blocks, Direction.SOUTH), wallCoral(blocks, Direction.WEST)
++        ));
++    }
++
++    private static Holder<PlacedFeature> wallCoral(final HolderGetter<Block> blocks, final Direction direction) {
++        return PlacementUtils.inlinePlaced(
++            new SimpleBlockFeature(new RotatedBlockProvider(Holder.direct(new RandomBlockProvider(blocks.getOrThrow(BlockTags.WALL_CORALS))), Optional.of(direction))),
++            new RandomChancePlacement(0.2F), OffsetPlacement.of(direction),
++            BlockPredicateFilter.forPredicate(BlockPredicate.matchesBlocks(Blocks.WATER))
++        );
++    }
++}
+diff --git a/net/minecraft/world/level/block/CoralFanBlock.java b/net/minecraft/world/level/block/CoralFanBlock.java
+index c5f3b5ac8344d036a789f399d7fbb24554c89746..791005874ac16d9bdf79cccc79cccf37049a14d2 100644
+--- a/net/minecraft/world/level/block/CoralFanBlock.java
++++ b/net/minecraft/world/level/block/CoralFanBlock.java
+@@ -11,7 +11,7 @@ import net.minecraft.world.level.block.state.BlockBehaviour;
+ import net.minecraft.world.level.block.state.BlockState;
+ import net.minecraft.world.level.material.Fluids;
+ 
+-public class CoralFanBlock extends BaseCoralFanBlock {
++public class CoralFanBlock extends BaseCoralFanBlock implements CarpetFertilizableCoral {
+     private final Block deadBlock;
+ 
+     protected CoralFanBlock(final Block deadBlock, final BlockBehaviour.Properties properties) {
+diff --git a/net/minecraft/world/level/block/CoralPlantBlock.java b/net/minecraft/world/level/block/CoralPlantBlock.java
+index c39ab29b466c7cfbdf533bf166d7cf3bf620b746..27dd87ecbccdd1f547e8a8249c7da61c71a4fc7f 100644
+--- a/net/minecraft/world/level/block/CoralPlantBlock.java
++++ b/net/minecraft/world/level/block/CoralPlantBlock.java
+@@ -14,7 +14,7 @@ import net.minecraft.world.level.material.Fluids;
+ import net.minecraft.world.phys.shapes.CollisionContext;
+ import net.minecraft.world.phys.shapes.VoxelShape;
+ 
+-public class CoralPlantBlock extends BaseCoralPlantTypeBlock {
++public class CoralPlantBlock extends BaseCoralPlantTypeBlock implements CarpetFertilizableCoral {
+     private final Block deadBlock;
+     private static final VoxelShape SHAPE = Block.column(12.0, 0.0, 15.0);
+ 
+diff --git a/net/minecraft/world/level/block/CoralWallFanBlock.java b/net/minecraft/world/level/block/CoralWallFanBlock.java
+index dc57a378474b350a18548da270c962f7c836be09..f7b9cf4963c9ae1dc2dbdb9c6ab8ed10cb89f410 100644
+--- a/net/minecraft/world/level/block/CoralWallFanBlock.java
++++ b/net/minecraft/world/level/block/CoralWallFanBlock.java
+@@ -11,7 +11,7 @@ import net.minecraft.world.level.block.state.BlockBehaviour;
+ import net.minecraft.world.level.block.state.BlockState;
+ import net.minecraft.world.level.material.Fluids;
+ 
+-public class CoralWallFanBlock extends BaseCoralWallFanBlock {
++public class CoralWallFanBlock extends BaseCoralWallFanBlock implements CarpetFertilizableCoral {
+     private final Block deadBlock;
+ 
+     protected CoralWallFanBlock(final Block deadBlock, final BlockBehaviour.Properties properties) {

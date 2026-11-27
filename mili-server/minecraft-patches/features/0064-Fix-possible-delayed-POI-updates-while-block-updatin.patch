@@ -5,10 +5,10 @@ Subject: [PATCH] Fix possible delayed POI updates while block updating
 
 
 diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
-index 522535a9344682cfe369d8c540096b2903cdf6e0..3d6163d5b42534fb272748fd73220f22a6a59623 100644
+index 517c12e92f98d5732c9dff90da79794b494fc10f..49ae5dbfb232c5d38836ba72df5cc9cf7a3ce45b 100644
 --- a/net/minecraft/server/level/ServerLevel.java
 +++ b/net/minecraft/server/level/ServerLevel.java
-@@ -2845,11 +2845,12 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -2820,11 +2820,12 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
          Optional<Holder<PoiType>> newType = PoiTypes.forState(newState);
          if (!Objects.equals(oldType, newType)) {
              BlockPos immutable = pos.immutable();

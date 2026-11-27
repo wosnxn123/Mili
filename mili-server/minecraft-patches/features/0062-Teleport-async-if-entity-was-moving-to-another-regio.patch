@@ -5,7 +5,7 @@ Subject: [PATCH] Teleport async if entity was moving to another region at once
 
 
 diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
-index f288602a316f0706389c3a4fd7114bbe7167efe1..5a92da4c0ce837a67ecc893201b6fbbde473c708 100644
+index 07435b25947b6872cd67bfd884991c07bfc7baae..354981d39d1473e04f948c529277309e212d8a3b 100644
 --- a/net/minecraft/world/entity/Entity.java
 +++ b/net/minecraft/world/entity/Entity.java
 @@ -1197,6 +1197,19 @@ public abstract class Entity
@@ -29,7 +29,7 @@ index f288602a316f0706389c3a4fd7114bbe7167efe1..5a92da4c0ce837a67ecc893201b6fbbd
          // Paper end - detailed watchdog information
          if (this.noPhysics) {
 diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
-index 4fddaf85f143a9421c0cbd972d6ade27ab59c551..5a2fb4db69514149fadbec85124cfc1061c4fa03 100644
+index 0566fd267f1ce6cecb1630b2ee90103d886966b2..6a891691bbdc8a110984a318c481fb6c224f4eb6 100644
 --- a/net/minecraft/world/level/Level.java
 +++ b/net/minecraft/world/level/Level.java
 @@ -1573,6 +1573,25 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
