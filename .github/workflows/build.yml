@@ -2,28 +2,13 @@ name: mili CI
 
 on:
   push:
-    branches:
-      - "**"
+    branches: ['**']
   pull_request:
-    branches:
-      - "**"
   workflow_dispatch:
-    inputs:
-      force-release:
-        description: "Force release control"
-        required: false
-        default: ""
-      force-push:
-        description: "Force push control"
-        required: false
-        default: ""
-      comments:
-        description: "Add comments to release"
-        required: false
-        default: ""
 
+# 普通构建只产出候选包，没有创建 tag 或 Release 的权限。
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -35,292 +20,104 @@ jobs:
     timeout-minutes: 120
     env:
       RUST_TARGETS: x86_64-pc-windows-gnu,x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          # folia-server is Paperweight's generated output, not an input checkout.
-          # Upstream sources are fetched using the pinned foliaRef.
           submodules: false
-
-      - name: Set up JDK
-        uses: actions/setup-java@v6
+          persist-credentials: false
+      - uses: actions/setup-java@v6
         with:
           distribution: zulu
           java-version: 25
-
-      # Minecraft 26.3 uses Folia's published Paperweight; the custom launcher
-      # remains necessary for staged updates and the optional Mixin bootstrap.
-      - name: Download and verify launcher
-        run: python3 scripts/download_launcher.py
-
-      - name: Set up Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: 校验启动器
+        run: python3 -I scripts/download_launcher.py
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-gnu,x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu
-
-      - name: Install Zig
-        uses: goto-bus-stop/setup-zig@v2
+      - uses: goto-bus-stop/setup-zig@v2
         with:
           version: 0.13.0
-
-      - name: Install system cross toolchains and build deps
+      - name: 准备交叉编译器
         run: |
           sudo apt-get update
-          sudo apt-get install -y mingw-w64
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-          sudo apt-get install -y clang lld build-essential pkg-config curl git
-          sudo apt-get install -y libssl-dev zlib1g-dev
-
-      - name: Install cargo-zigbuild
-        run: |
+          sudo apt-get install -y mingw-w64 gcc-aarch64-linux-gnu g++-aarch64-linux-gnu clang lld build-essential pkg-config libssl-dev zlib1g-dev
           cargo install cargo-zigbuild --locked
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-
-      - name: Verify toolchain and linkers
-        run: |
-          rustc --version
-          cargo --version
-          zig version
-          if command -v cargo-zigbuild >/dev/null 2>&1; then
-            cargo-zigbuild --version
-          else
-            echo "WARN: cargo-zigbuild not available"
-          fi
-          which x86_64-w64-mingw32-gcc || echo "mingw not found in PATH"
-          which aarch64-linux-gnu-gcc || echo "aarch64 cross-gcc not found in PATH"
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
-      - name: Configure Git User Details
-        run: |
-          git config --global user.email "noreply@github.com"
-          git config --global user.name "Mili CI"
-          git config --global advice.mergeConflict false
-          git config --global init.defaultBranch main
-
-      - name: Clean build artifacts
-        run: |
-          rm -rf mili-server/build mili-api/build
-          rm -rf mili-server/src/minecraft folia-server
-          rm -rf .gradle/caches/paperweight
-          rm -rf .gradle/configuration-cache
-
-      - name: Build Rust Optimizer (cross targets)
-        env:
-          RUST_TARGETS: x86_64-pc-windows-gnu,x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-        run: |
-          set -eux
-          export PATH="$PATH:$HOME/.cargo/bin"
-          export CC_x86_64_pc_windows_gnu=x86_64-w64-mingw32-gcc
-          export CXX_x86_64_pc_windows_gnu=x86_64-w64-mingw32-g++
-          ./gradlew :mili-rust:stageRustBinary --no-configuration-cache
-
-      - name: Verify all Rust Optimizer Binaries
-        run: |
-          set -euo pipefail
-          verify_native() {
-            local target="$1" built="$2" staged="$3"
-            local source="mili-rust/build/cargo-target/$target/release/$built"
-            local destination="mili-rust/build/rust/$staged"
-            test -s "$source"
-            test -s "$destination"
-            cmp "$source" "$destination"
-            echo "OK: $target -> $staged"
-          }
-          verify_native x86_64-pc-windows-gnu mili_optimizer.dll mili_optimizer.dll
-          verify_native x86_64-unknown-linux-gnu libmili_optimizer.so libmili_optimizer.so
-          verify_native aarch64-unknown-linux-gnu libmili_optimizer.so libmili_optimizer_aarch64.so
-          ls -la mili-rust/build/rust/
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v6
+          command -v x86_64-w64-mingw32-gcc
+          command -v aarch64-linux-gnu-gcc
+      - uses: gradle/actions/setup-gradle@v6
         with:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY || '' }}
           gradle-home-cache-cleanup: true
           cache-exclude: |
             **/paperweight/**
-            **/caches/paperweight/**
-
-      - name: Apply All Patches
-        run: ./gradlew applyAllPatches --no-configuration-cache
-
-      - name: Verify Generated Source
+      - name: 设置补丁工作树提交身份
         run: |
-          echo "=== Checking generated API source dirs ==="
-          for d in paper-api folia-api mili-api paper-server folia-server mili-server; do
-            if [ -d "$d" ] && [ "$(ls -A $d 2>/dev/null)" ]; then
-              echo "OK: $d/ exists ($(find $d -name '*.java' | wc -l) java files)"
-            else
-              echo "MISSING: $d/"
-            fi
-          done
-
-      - name: Inject Kotlin Config
-        run: python3 scripts/inject_kotlin.py
-
-      - name: Kaiiju Entity Throttle Validation
+          git config --global user.email 'noreply@github.com'
+          git config --global user.name 'Mili CI'
+          git config --global init.defaultBranch main
+          chmod +x gradlew
+      - name: 执行 Rust 测试及三目标构建
+        env:
+          CC_x86_64_pc_windows_gnu: x86_64-w64-mingw32-gcc
+          CXX_x86_64_pc_windows_gnu: x86_64-w64-mingw32-g++
         run: |
-          echo "=== Kaiiju Port: verifying entity throttler ==="
-          for f in "MiliEntityThrottler.java" "MiliEntityLimitsConfig.java" "AsyncPathfindingExecutor.java"; do
-            path="mili-server/src/main/java/fun/bm/mili/kaiiju/$f"
-            if [ -f "$path" ]; then
-              echo "OK: $f ($(wc -l < $path) lines)"
-            else
-              echo "WARN: $f not found"
-            fi
-          done
-
-      - name: Verify CIS Source Files
+          cargo test --locked --release --manifest-path mili-rust/src/rust/Cargo.toml
+          ./gradlew :mili-rust:stageRustBinary --no-configuration-cache
+          verify_native() {
+            local source="mili-rust/build/cargo-target/$1/release/$2" destination="mili-rust/build/rust/$3"
+            test -s "$source" && test -s "$destination" && cmp "$source" "$destination"
+          }
+          verify_native x86_64-pc-windows-gnu mili_optimizer.dll mili_optimizer.dll
+          verify_native x86_64-unknown-linux-gnu libmili_optimizer.so libmili_optimizer.so
+          verify_native aarch64-unknown-linux-gnu libmili_optimizer.so libmili_optimizer_aarch64.so
+      - name: 在干净基线上应用所有补丁
         run: |
-          CIS_DIR="mili-server/src/main/java/fun/bm/mili/scheduler"
-          COUNT=0
-          for f in "$CIS_DIR"/*.java "$CIS_DIR"/border/*.java "$CIS_DIR"/group/*.java; do
-            if [ -f "$f" ]; then
-              LINES=$(wc -l < "$f")
-              echo "  CIS: $(basename $f) (${LINES} lines)"
-              COUNT=$((COUNT + 1))
-            fi
-          done
-          echo "Total CIS source files: ${COUNT}"
-
-      - name: Build Paperclip Jar
-        run: ./gradlew :mili-server:createPaperclipJar --no-configuration-cache -PbstatsPluginId=${{ secrets.BSTATS_PLUGIN_ID }}
-
-      # Exercise the real launcher without starting Minecraft or accepting the EULA.
-      # A fresh cache plus output hashes catches missing/misread patch payloads.
-      - name: Verify launcher patch application
+          ./gradlew applyAllPatches --no-configuration-cache
+          for dir in paper-api paper-server folia-server mili-server/src/minecraft/java; do test -d "$dir"; done
+          test -s mili-server/src/main/java/dev/kaiijumc/kaiiju/KaiijuEntityThrottler.java
+          test -s mili-server/src/minecraft/java/net/minecraft/server/MinecraftServer.java
+          python3 -I scripts/inject_kotlin.py
+      - name: 执行 API、服务端及启动器测试
         run: |
-          python3 -I scripts/smoke_test_launcher.py \
-            mili-server/build/libs/*-paperclip-*.jar
-
-      - name: Post-Build CIS Smoke Test
+          ./gradlew :mili-api:test :mili-server:test :mili-server:verifyLauncherPatch --no-configuration-cache
+          python3 -I scripts/verify_test_results.py
+      - name: 打包并在空缓存重放发行补丁
+        env:
+          BSTATS_ID: ${{ secrets.BSTATS_PLUGIN_ID }}
         run: |
-          JAR_PATH="mili-server/build/libs"
-          echo "=== CIS Smoke Test ==="
-          if ls "$JAR_PATH"/*-paperclip-*.jar 1>/dev/null 2>&1; then
-            JAR=$(ls "$JAR_PATH"/*-paperclip-*.jar | head -1)
-            JAR_SIZE=$(stat -c%s "$JAR" 2>/dev/null || stat --format=%s "$JAR" 2>/dev/null || echo "unknown")
-            echo "OK: JAR built — $JAR (${JAR_SIZE} bytes)"
-            echo ""
-            echo "=== Available Feature Flags (config-driven) ==="
-            echo "  CIS:               ChunkIndependentConfig.enabled"
-            echo "  Kaiiju Throttler:  MiliEntityLimitsConfig.enabled"
-            echo "  Async Pathfinding: ChunkIndependentConfig.enabled"
-            echo ""
-          else
-            echo "WARN: No paperclip JAR found at $JAR_PATH"
-          fi
-
-      - name: Check for Pending Patch Rebuild
-        run: |
-          # Patched sources under mili-server/src/minecraft are untracked in the main repo,
-          # so plain `git diff` never reports them; check untracked files too.
-          if git status --porcelain --untracked-files=all -- mili-server/src/minecraft/ | grep -q "mili-server/src/minecraft/"; then
-            echo "WARN: Patched source has uncommitted changes — run 'rebuildPatches' to generate patch files"
-            git status --porcelain --untracked-files=all -- mili-server/src/minecraft/ | head -50
-          else
-            echo "OK: No pending patch rebuild needed"
-          fi
-
-      - name: Upload a Build Artifact
-        uses: actions/upload-artifact@v7
+          ./gradlew :mili-server:createPaperclipJar --no-configuration-cache "-PbstatsPluginId=$BSTATS_ID"
+          python3 -I scripts/smoke_test_launcher.py mili-server/build/libs/*-paperclip-*.jar
+          sh scripts/SetENV.sh
+      - uses: actions/upload-artifact@v7
         with:
-          name: ${{ env.project_id_b || 'Mili' }} CI Artifacts
-          path: mili-server/build/libs/*-paperclip-*.jar
+          name: mili-candidate-${{ github.sha }}
+          path: ${{ runner.temp }}/mili-candidate/
           if-no-files-found: error
           retention-days: 14
-          compression-level: 9
-          overwrite: true
-          include-hidden-files: false
+          compression-level: 0
 
-      - name: Set Environment
-        if: github.event_name != 'pull_request'
-        run: sh scripts/SetENV.sh
-
-      - name: Check If Release Exists
-        if: github.event_name != 'pull_request' && env.flag_release == 'true'
-        run: |
-          git fetch --tags
-          if [ -n "$(git tag -l "${{ env.tag }}")" ]; then
-            echo "Release already exists"
-            release_exists=true
-          else
-            echo "Release does not exist"
-            release_exists=false
-          fi
-          if [ "$release_exists" == "true" ]; then
-            counter=1
-            while [ -n "$(git tag -l "${{ env.tag }}-${counter}")" ]; do
-              counter=$((counter + 1))
-            done
-            echo "tag=${{ env.tag }}-${counter}" >> $GITHUB_ENV
-            echo "release_count= - ${counter}" >> $GITHUB_ENV
-          fi
-          echo "release_exists=${release_exists}" >> $GITHUB_ENV
-
-      - name: Check If Branch In Expectations
-        if: github.event_name != 'pull_request' && env.flag_release == 'true'
-        run: |
-          if [[ "$GITHUB_REF_NAME" == ver/* ]] || [[ "$GITHUB_REF_NAME" == exp/* ]] || [[ "$GITHUB_REF_NAME" == dev/* ]] || [[ "$GITHUB_REF_NAME" == master ]]; then
-            echo "unexpect=false" >> $GITHUB_ENV
-          else
-            echo "unexpect=true" >> $GITHUB_ENV
-          fi
-
-      - name: Create Release - Pre Process
-        if: ( github.event_name != 'pull_request' && env.unexpect != 'true' && env.flag_release == 'true' && env.release_exists != 'true' && inputs.force-release != '2' ) || inputs.force-release == '1'
-        run: |
-          if [ "${{ inputs.comments }}" == "" ]; then
-            echo "No comments provided"
-            echo "flag_comment=false" >> $GITHUB_ENV
-          else
-            echo "Comments provided: ${{ inputs.comments }}"
-            echo "flag_comment=true" >> $GITHUB_ENV
-          fi
-
-      - name: Create Release - No Comment
-        if: env.flag_comment == 'false' && github.event_name != 'pull_request'
-        uses: ncipollo/release-action@v1
+  native-runtime:
+    needs: build-and-cross
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
         with:
-          tag: ${{ env.tag }}
-          commit: ${{ github.sha }}
-          name: ${{ env.project_id_b }} ${{ env.mcversion }} - ${{ env.commit_id }}${{ env.release_count }}
-          body: |
-            📦Version: `${{ env.mcversion }}` | Commit ${{ env.commit_id }} [![download](https://img.shields.io/github/downloads/${{ github.repository }}/${{ env.tag }}/total?color=red&style=flat)
-            This release is automatically compiled by GitHub Actions
-            ### Branch Info
-            > ${{ github.ref_name }}
-            ### Commit Message
-            ${{ env.commit_msg }}
-          artifacts: ${{ env.jar_dir }}
-          generateReleaseNotes: true
-          prerelease: ${{ env.pre }}
-          makeLatest: ${{ env.make_latest }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create Release - With Comment
-        if: env.flag_comment == 'true' && github.event_name != 'pull_request'
-        uses: ncipollo/release-action@v1
+          persist-credentials: false
+      - uses: actions/setup-java@v6
         with:
-          tag: ${{ env.tag }}
-          commit: ${{ github.sha }}
-          name: ${{ env.project_id_b }} ${{ env.mcversion }} - ${{ env.commit_id }}${{ env.release_count }}
-          body: |
-            📦Version: `${{ env.mcversion }}` | Commit ${{ env.commit_id }} [![download](https://img.shields.io/github/downloads/${{ github.repository }}/${{ env.tag }}/total?color=red&style=flat)
-            This release is automatically compiled by GitHub Actions
-            ### Comments
-            > ${{ inputs.comments }}
-            ### Branch Info
-            > ${{ github.ref_name }}
-            ### Commit Message
-            ${{ env.commit_msg }}
-          artifacts: ${{ env.jar_dir }}
-          generateReleaseNotes: true
-          prerelease: ${{ env.pre }}
-          makeLatest: ${{ env.make_latest }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          distribution: zulu
+          java-version: 25
+      - uses: actions/download-artifact@v8
+        with:
+          name: mili-candidate-${{ github.sha }}
+          path: ${{ runner.temp }}/mili-candidate
+      - name: 验证同一候选 JAR 内的 JNI 和 TOML 往返
+        shell: bash
+        run: python -I scripts/smoke_test_native.py "$RUNNER_TEMP/mili-candidate/mili-26.3-paperclip.jar"
