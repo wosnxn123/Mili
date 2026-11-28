@@ -56,7 +56,7 @@ import static java.util.Map.entry;
 
 public class HopperCounter {
 
-    private static boolean enabled = false;
+    private static volatile boolean enabled = false;
     private static final Map<DyeColor, HopperCounter> COUNTERS;
 
     static {
@@ -79,7 +79,7 @@ public class HopperCounter {
         this.coloredName = Component.text(color.getName(), TextColor.color(color.getTextColor()));
     }
 
-    public void add(MinecraftServer server, ItemStack stack) {
+    public synchronized void add(MinecraftServer server, ItemStack stack) {
         if (startTick < 0) {
             startTick = server.overworld().getGameTime();
             startMillis = System.currentTimeMillis();
@@ -88,7 +88,7 @@ public class HopperCounter {
         counter.put(item, counter.getLong(item) + stack.getCount());
     }
 
-    public void reset(MinecraftServer server) {
+    public synchronized void reset(MinecraftServer server) {
         counter.clear();
         startTick = server.overworld().getGameTime();
         startMillis = System.currentTimeMillis();
@@ -96,21 +96,29 @@ public class HopperCounter {
 
     public static void resetAll(MinecraftServer server, boolean fresh) {
         for (HopperCounter counter : COUNTERS.values()) {
-            counter.reset(server);
-            if (fresh) {
-                counter.startTick = -1;
+            synchronized (counter) {
+                counter.reset(server);
+                if (fresh) counter.startTick = -1;
             }
         }
     }
 
     public List<Component> format(MinecraftServer server, boolean realTime) {
-        long ticks = Math.max(realTime ? (System.currentTimeMillis() - startMillis) / 50 : server.overworld().getGameTime() - startTick, -1);
+        final long started;
+        final long millis;
+        final Object2LongMap<Item> counts;
+        synchronized (this) {
+            started = startTick;
+            millis = startMillis;
+            counts = new Object2LongLinkedOpenHashMap<>(counter);
+        }
+        long ticks = Math.max(1L, realTime ? (System.currentTimeMillis() - millis) / 50 : server.overworld().getGameTime() - started);
 
-        if (startTick < 0 || ticks == -1) {
+        if (started < 0) {
             return Collections.singletonList(Component.text().append(coloredName, Component.text(" hasn't started counting yet")).build());
         }
 
-        long total = getTotalItems();
+        long total = counts.values().longStream().sum();
         if (total <= 0) {
             return Collections.singletonList(Component.text()
                     .append(Component.text("No items for "), coloredName)
@@ -129,7 +137,7 @@ public class HopperCounter {
                 .append(Component.text("/h):"))
                 .build());
 
-        items.addAll(counter.object2LongEntrySet().stream().sorted((e, f) -> Long.compare(f.getLongValue(), e.getLongValue())).map(entry -> {
+        items.addAll(counts.object2LongEntrySet().stream().sorted((e, f) -> Long.compare(f.getLongValue(), e.getLongValue())).map(entry -> {
             Item item = entry.getKey();
             Component name = Component.translatable(item.getDescriptionId());
             TextColor textColor = guessColor(server, item);
@@ -335,7 +343,7 @@ public class HopperCounter {
         return (r << 16) + (g << 8) + b;
     }
 
-    public long getTotalItems() {
+    public synchronized long getTotalItems() {
         return counter.isEmpty() ? 0 : counter.values().longStream().sum();
     }
 

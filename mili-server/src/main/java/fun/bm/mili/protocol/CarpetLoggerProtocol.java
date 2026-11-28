@@ -12,39 +12,25 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.ServerTickRateManager;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.NaturalSpawner;
 import org.jetbrains.annotations.NotNull;
-import org.leavesmc.leaves.protocol.core.LeavesProtocol;
-import org.leavesmc.leaves.protocol.core.ProtocolHandler;
 import org.leavesmc.leaves.util.HopperCounter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
-@LeavesProtocol.Register(namespace = "carpet")
-public class CarpetLoggerProtocol implements LeavesProtocol {
+public final class CarpetLoggerProtocol {
     private static final Logger LOGGER = LoggerFactory.getLogger("CarpetLoggerProtocol");
-    private static final Map<String, Map<String, String>> PLAYER_SUBSCRIPTIONS = new ConcurrentHashMap<>();
-    private static volatile Map<String, String> configuredSubscriptions = null;
+    private static volatile Map<String, String> configuredSubscriptions = Map.of();
 
-    public static void refreshConfiguredDefaults(boolean initial) {
-        Map<String, String> defaults = parseConfiguredDefaults(GeneralCompatConfig.defaultLoggers);
-        configuredSubscriptions = defaults;
-        if (defaults == null || defaults.isEmpty()) {
-            PLAYER_SUBSCRIPTIONS.clear();
-            if (initial) return;
-            for (ServerPlayer player : MinecraftServer.getServer().getPlayerList().getPlayers()) {
-                clearHud(player);
-            }
-            return;
-        }
-        PLAYER_SUBSCRIPTIONS.replaceAll((playerName, ignored) -> defaults);
+    private CarpetLoggerProtocol() {}
+
+    public static void refreshConfiguredDefaults() {
+        configuredSubscriptions = parseConfiguredDefaults(GeneralCompatConfig.defaultLoggers);
     }
 
     public static String serializeConfiguredDefaults(List<String> configuredLoggers) {
@@ -63,48 +49,11 @@ public class CarpetLoggerProtocol implements LeavesProtocol {
         return serialized.isEmpty() ? "none" : String.join(",", serialized);
     }
 
-    @ProtocolHandler.PlayerJoin
-    public static void onPlayerJoin(ServerPlayer player) {
-        if (configuredSubscriptions != null && !configuredSubscriptions.isEmpty()) {
-            PLAYER_SUBSCRIPTIONS.putIfAbsent(player.getScoreboardName(), configuredSubscriptions);
-        }
-    }
-
-    @ProtocolHandler.PlayerLeave
-    public static void onPlayerLeave(ServerPlayer player) {
-        clearHud(player);
-    }
-
-    @ProtocolHandler.Ticker(tickerId = "hud")
-    public static void onHudTick() {
-        if (PLAYER_SUBSCRIPTIONS.isEmpty()) {
-            return;
-        }
-        MinecraftServer server = MinecraftServer.getServer();
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            Map<String, String> subscriptions = PLAYER_SUBSCRIPTIONS.get(player.getScoreboardName());
-            if (subscriptions == null || subscriptions.isEmpty()) {
-                continue;
-            }
-            player.getBukkitEntity().taskScheduler.schedule((LivingEntity livingEntity) -> {
-                if (livingEntity instanceof ServerPlayer scheduledPlayer) {
-                    sendHud(server, scheduledPlayer, subscriptions);
-                }
-            }, null, 1L);
-        }
-    }
-
-    @Override
-    public boolean isActive() {
-        return true;
-    }
-
-    @Override
-    public int tickerInterval(String tickerID) {
-        return "hud".equals(tickerID) ? 20 : 1;
-    }
-
-    private static void sendHud(MinecraftServer server, ServerPlayer player, Map<String, String> subscriptions) {
+    /** 每秒在本人区域取一次快照，不保存玩家引用，也不接收客户端请求。 */
+    public static boolean tickHud(MinecraftServer server, ServerPlayer player, boolean wasVisible) {
+        var subscriptions = configuredSubscriptions;
+        if (subscriptions.isEmpty() && !wasVisible) return false;
+        if (!ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(player) || player.connection == null || player.hasDisconnected()) return false;
         List<net.minecraft.network.chat.Component> lines = new ArrayList<>();
         subscriptions.forEach((loggerName, option) -> {
             switch (loggerName) {
@@ -115,29 +64,44 @@ public class CarpetLoggerProtocol implements LeavesProtocol {
                         lines.add(line);
                     }
                 }
-                case "counter" -> lines.addAll(buildCounterLines(server, option));
+                case "counter" -> {
+                    if (HopperCounter.isEnabled() && player.getBukkitEntity().hasPermission("mili.commands.counter")) {
+                        DyeColor color = DyeColor.byName(option, null);
+                        if (color != null) lines.add(net.minecraft.network.chat.Component.literal(color.getName() + ": " + HopperCounter.getCounter(color).getTotalItems()));
+                    }
+                }
+                case "xcounter" -> {
+                    if (player.getBukkitEntity().hasPermission("mili.commands.counter")) {
+                        lines.addAll(fun.bm.mili.carpet.CollectionGameplayRules.xpHud(player.level(), option));
+                    }
+                }
                 default -> {
                 }
             }
         });
 
+        if (lines.isEmpty() && !wasVisible) return false;
+        var bukkit = player.getBukkitEntity();
+        var originalHeader = bukkit.playerListHeader();
+        var originalFooter = bukkit.playerListFooter();
+        var header = originalHeader == null ? net.minecraft.network.chat.Component.empty() : PaperAdventure.asVanilla(originalHeader);
         MutableComponent footer = net.minecraft.network.chat.Component.empty();
-        for (int i = 0; i < lines.size(); i++) {
-            if (i > 0) {
-                footer.append(net.minecraft.network.chat.Component.literal("\n"));
-            }
-            footer.append(lines.get(i));
+        if (originalFooter != null) footer.append(PaperAdventure.asVanilla(originalFooter));
+        boolean separator = originalFooter != null && !Component.empty().equals(originalFooter);
+        for (var line : lines) {
+            if (separator) footer.append("\n");
+            footer.append(line);
+            separator = true;
         }
-        player.connection.send(new ClientboundTabListPacket(net.minecraft.network.chat.Component.empty(), footer));
-    }
-
-    private static void clearHud(ServerPlayer player) {
-        player.connection.send(new ClientboundTabListPacket(net.minecraft.network.chat.Component.empty(), net.minecraft.network.chat.Component.empty()));
+        player.connection.send(new ClientboundTabListPacket(header, footer));
+        return !lines.isEmpty();
     }
 
     private static net.minecraft.network.chat.Component buildTpsLine(MinecraftServer server) {
         ServerTickRateManager tickManager = server.tickRateManager();
-        ca.spottedleaf.common.time.TickData.TickReportData tickData = TickRegionScheduler.getCurrentRegion().getData().getRegionSchedulingHandle().getTickReport5s(System.nanoTime());
+        var region = TickRegionScheduler.getCurrentRegion();
+        var tickData = region == null ? null : region.getData().getRegionSchedulingHandle().getTickReport5s(System.nanoTime());
+        if (tickData == null) return net.minecraft.network.chat.Component.literal("TPS: unavailable");
         final double tps = tickData.tpsData().segmentAll().average();
         final double mspt = tickData.timePerTickData().segmentAll().average() / 1.0E6;
 
@@ -178,29 +142,6 @@ public class CarpetLoggerProtocol implements LeavesProtocol {
             line.append(net.minecraft.network.chat.Component.literal(current + "/" + limit).withStyle(categoryColor(current, limit)));
         }
         return line;
-    }
-
-    private static List<net.minecraft.network.chat.Component> buildCounterLines(MinecraftServer server, String option) {
-        List<net.minecraft.network.chat.Component> lines = new ArrayList<>();
-        String colors = option == null || option.isBlank() ? "white" : option;
-        for (String rawColor : colors.split(",")) {
-            String colorName = rawColor.trim();
-            if (colorName.isEmpty()) {
-                continue;
-            }
-            DyeColor color = DyeColor.byName(colorName, null);
-            if (color == null) {
-                continue;
-            }
-            HopperCounter counter = HopperCounter.getCounter(color);
-            if (counter == null) {
-                continue;
-            }
-            for (Component component : counter.format(server, false)) {
-                lines.add(PaperAdventure.asVanilla(component));
-            }
-        }
-        return lines;
     }
 
     private static ServerLevel resolveMobcapsLevel(ServerPlayer player, String option) {
@@ -260,9 +201,7 @@ public class CarpetLoggerProtocol implements LeavesProtocol {
 
     private static Map<String, String> parseConfiguredDefaults(List<String> configuredLoggers) {
         LinkedHashMap<String, String> subscriptions = new LinkedHashMap<>();
-        if (configuredLoggers == null) {
-            return null;
-        }
+        if (configuredLoggers == null) return Map.of();
         for (String entry : configuredLoggers) {
             if (entry == null) {
                 continue;
@@ -274,6 +213,7 @@ public class CarpetLoggerProtocol implements LeavesProtocol {
                 }
                 String[] parts = token.split("\\s+", 2);
                 String loggerName = parts[0].toLowerCase(Locale.ROOT);
+                if (loggerName.equals("mob_caps")) loggerName = "mobcaps";
                 if (!isSupported(loggerName)) {
                     LOGGER.debug("Ignoring unsupported Carpet default logger '{}'", loggerName);
                     continue;
@@ -285,17 +225,17 @@ public class CarpetLoggerProtocol implements LeavesProtocol {
                 subscriptions.put(loggerName, option);
             }
         }
-        return subscriptions.isEmpty() ? null : Map.copyOf(subscriptions);
+        return Collections.unmodifiableMap(subscriptions);
     }
 
     private static boolean isSupported(String loggerName) {
-        return Arrays.asList("tps", "mobcaps", "counter").contains(loggerName);
+        return Arrays.asList("tps", "mobcaps", "counter", "xcounter").contains(loggerName);
     }
 
     private static @NotNull String defaultOption(String loggerName) {
         return switch (loggerName) {
             case "mobcaps" -> "dynamic";
-            case "counter" -> "white";
+            case "counter", "xcounter" -> "white";
             default -> "";
         };
     }

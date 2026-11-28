@@ -58,6 +58,34 @@ public final class EntityGameplayRules {
         };
     }
 
+    private static final Identifier FLY_DRAG_ID = Identifier.fromNamespaceAndPath("mili", "carpet_creative_fly_drag");
+
+    // Vanilla computes clamp(1 - (1 - 0.91F) * attribute, 0, 1). Scale the
+    // existing attribute, not its base, so unrelated modifiers remain intact.
+    static double flightDragMultiplier(double drag) {
+        return drag == 0.09D ? 1.0D : (1.0F - (float) (1.0D - drag)) / (1.0F - 0.91F);
+    }
+
+    public static void updateMovementAttributes(final ServerPlayer player) {
+        var drag = player.getAttribute(Attributes.AIR_DRAG_MODIFIER);
+        if (drag != null) {
+            double factor = player.isCreative() && player.getAbilities().flying && !player.onGround() && !player.isPassenger() && !player.isFallFlying()
+                ? flightDragMultiplier(EntityGameplayConfig.creativeFlyDrag()) : 1.0D;
+            applyFlightDrag(drag, factor);
+        }
+        updateGroundSpeed(player);
+    }
+
+    static void applyFlightDrag(net.minecraft.world.entity.ai.attributes.AttributeInstance drag, double factor) {
+        var current = drag.getModifier(FLY_DRAG_ID);
+        if (factor == 1.0D) {
+            if (current != null) drag.removeModifier(FLY_DRAG_ID);
+        } else if (current == null || current.amount() != factor - 1.0D) {
+            drag.addOrUpdateTransientModifier(new AttributeModifier(FLY_DRAG_ID, factor - 1.0D,
+                AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
+        }
+    }
+
     public static void updateGroundSpeed(final ServerPlayer player) {
         int bonus = groundSpeedLevel(EntityGameplayConfig.fasterMovement);
         final String scope = EntityGameplayConfig.fasterMovementController;
@@ -90,6 +118,7 @@ public final class EntityGameplayRules {
     }
 
     static void registerProtocolRules(final List<CarpetRule> rules) {
+        rules.add(CarpetRule.of("carpet", "creativeFlyDrag", Double.toString(EntityGameplayConfig.creativeFlyDrag())));
         rules.add(CarpetRule.of("carpet", "creativeFlySpeed", Double.toString(EntityGameplayConfig.creativeFlySpeed())));
         rules.add(CarpetRule.of("carpet", "huskSpawningInTemples", EntityGameplayConfig.huskSpawningInTemples));
         rules.add(CarpetRule.of("carpet", "missingTools", EntityGameplayConfig.missingTools));

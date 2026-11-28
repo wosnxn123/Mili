@@ -1,6 +1,5 @@
 package org.leavesmc.leaves.protocol;
 
-import com.mojang.logging.LogUtils;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
@@ -13,7 +12,6 @@ import org.leavesmc.leaves.protocol.core.LeavesCustomPayload;
 import org.leavesmc.leaves.protocol.core.LeavesProtocol;
 import org.leavesmc.leaves.protocol.core.ProtocolHandler;
 import org.leavesmc.leaves.protocol.core.ProtocolUtils;
-import org.slf4j.Logger;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -23,18 +21,19 @@ import java.util.Map;
 
 @LeavesProtocol.Register(namespace = "carpet")
 public class CarpetServerProtocol implements LeavesProtocol {
-    private static final Logger LOGGER = LogUtils.getClassLogger();
-
     public static final String PROTOCOL_ID = "carpet";
     public static final String VERSION = ProtocolUtils.buildProtocolVersion(PROTOCOL_ID);
 
     private static final String HI = "69";
     private static final String HELLO = "420";
+    private static final java.util.Set<ServerPlayer> awaitingHello = java.util.Collections.synchronizedSet(
+            java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>()));
     private static final java.util.Set<ServerPlayer> subscribers = java.util.Collections.synchronizedSet(
             java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>()));
 
     @ProtocolHandler.PlayerLeave
     public static void onPlayerLeave(ServerPlayer player) {
+        awaitingHello.remove(player);
         subscribers.remove(player);
     }
 
@@ -61,17 +60,29 @@ public class CarpetServerProtocol implements LeavesProtocol {
         CompoundTag data = new CompoundTag();
         data.putString(HI, VERSION);
         ProtocolUtils.sendPayloadPacket(player, new CarpetPayload(data));
+        awaitingHello.add(player);
     }
 
-    @ProtocolHandler.PayloadReceiver(payload = CarpetPayload.class)
-    private static void handleHello(@NotNull ServerPlayer player, @NotNull CarpetServerProtocol.CarpetPayload payload) {
-        if (payload.nbt.contains(HELLO)) {
-            subscribers.add(player);
-            LOGGER.info("Player {} joined with carpet {}", player.getScoreboardName(), payload.nbt.getString(HELLO).orElse("Unknown"));
-            CompoundTag data = new CompoundTag();
-            CarpetRules.write(data);
-            ProtocolUtils.sendPayloadPacket(player, new CarpetPayload(data));
+    /** 只消费这个连接收到邀请后的规则显示应答。其他消息仍走 Paper 的插件通道。 */
+    public static boolean handleIncomingHello(ServerPlayer player, Identifier channel, byte[] bytes) {
+        if (!CarpetPayload.HELLO_ID.equals(channel) || !CarpetRules.hasRules()
+                || !ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(player) || player.hasDisconnected()
+                || bytes.length == 0 || bytes.length > 256) return false;
+        if (!awaitingHello.contains(player) && !subscribers.contains(player)) return false;
+        var input = new java.io.DataInputStream(new java.io.ByteArrayInputStream(bytes));
+        try {
+            if (!(net.minecraft.nbt.NbtIo.readAnyTag(input, new net.minecraft.nbt.NbtAccounter(2048, 2)) instanceof CompoundTag hello)
+                    || input.available() != 0 || hello.size() != 1
+                    || hello.getString(HELLO).filter(version -> !version.isBlank() && version.length() <= 96).isEmpty()) return false;
+        } catch (java.io.IOException | RuntimeException malformed) {
+            return false;
         }
+        if (awaitingHello.remove(player) && subscribers.add(player)) {
+            var snapshot = new CompoundTag();
+            CarpetRules.write(snapshot);
+            ProtocolUtils.sendPayloadPacket(player, new CarpetPayload(snapshot));
+        }
+        return true;
     }
 
     @Override

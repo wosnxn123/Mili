@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mili contributors <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Retire portable menus on close and disconnect
+
+diff --git a/net/minecraft/world/inventory/PortableContainerMenu.java b/net/minecraft/world/inventory/PortableContainerMenu.java
+index 5cee76ee480f7b1640597eedb6e7d315b5cfee6b..0e1a16dacc8e641fe0cdba59e40f57e57144ecbb 100644
+--- a/net/minecraft/world/inventory/PortableContainerMenu.java
++++ b/net/minecraft/world/inventory/PortableContainerMenu.java
+@@ -60,7 +60,7 @@
+     }
+ 
+     private static void open(final ServerPlayer owner, final int index, final ItemStack source, final boolean bundle, final int size) {
+-        if (!TickThread.isTickThreadFor(owner) || owner.isSpectator() || !owner.isAlive() || owner.getInventory().getItem(index) != source) return;
++        if (!TickThread.isTickThreadFor(owner) || owner.hasDisconnected() || owner.isSpectator() || !owner.isAlive() || owner.getInventory().getItem(index) != source) return;
+         final Backing backing = new Backing(owner, index, source, bundle, size);
+         try {
+             owner.openMenu(new SimpleMenuProvider((id, inventory, player) -> new PortableContainerMenu(id, inventory, backing), source.getHoverName()));
+@@ -71,7 +71,7 @@
+ 
+     static boolean tryInventoryClick(final AbstractContainerMenu menu, final Player player, final Slot slot) {
+         if (!ContainerR2Config.quickShulker || !(player instanceof ServerPlayer owner) || owner.isSpectator()
+-            || !TickThread.isTickThreadFor(owner) || owner.containerMenu != menu || menu instanceof PortableContainerMenu
++            || !TickThread.isTickThreadFor(owner) || owner.hasDisconnected() || owner.containerMenu != menu || menu instanceof PortableContainerMenu
+             || slot.getClass() != Slot.class || slot.container != owner.getInventory() || slot.getContainerSlot() >= 36
+             || !slot.allowModification(player)) return false;
+         final ItemStack inSlot = slot.getItem();
+@@ -174,7 +174,9 @@
+ 
+     @Override
+     public void removed(final Player player) {
+-        if (player == this.backing.owner) super.removed(player);
++        if (player != this.backing.owner) return;
++        this.backing.closed = true;
++        super.removed(player);
+     }
+ 
+     private static final class Backing extends SimpleContainer {
+@@ -186,6 +188,7 @@
+         private ItemContainerContents expected;
+         private PortableContainerMenu menu;
+         private boolean opening = true;
++        private boolean closed;
+ 
+         private Backing(final ServerPlayer owner, final int index, final ItemStack source, final boolean bundle, final int size) {
+             super(size);
+@@ -202,7 +205,7 @@
+         }
+ 
+         private boolean isSourceValid() {
+-            return TickThread.isTickThreadFor(this.owner) && this.owner.isAlive() && !this.owner.isSpectator()
++            return TickThread.isTickThreadFor(this.owner) && !this.closed && !this.owner.hasDisconnected() && this.owner.isAlive() && !this.owner.isSpectator()
+                 && this.owner.getInventory().getItem(this.index) == this.source
+                 && (this.bundle ? ContainerR2Config.bundleSlots() == this.size && this.source.getCount() == 1
+                     : ContainerR2Config.quickShulker && usableShulker(this.source))

@@ -108,6 +108,11 @@ public class ServerBot extends ServerPlayer {
 
     public int removeTaskId = -1;
     private int autoFishCooldown = 0;
+    private final BotCombat combat = new BotCombat();
+
+    void attackCombatTarget(Entity target, Predicate<Entity> allowed) {
+        this.attackSingleTarget(target, allowed);
+    }
 
     public ServerBot(MinecraftServer server, ServerLevel world, GameProfile profile) {
         super(server, world, profile, ClientInformation.createDefault());
@@ -167,6 +172,8 @@ public class ServerBot extends ServerPlayer {
         if (this.getConfigValue(Configs.TICK_TYPE) == TickType.ENTITY_LIST) {
             this.doTick();
         }
+
+        this.combat.tick(this);
 
         Input input = this.getLastClientInput();
         this.setLastClientInput(

@@ -1,0 +1,127 @@
+From: Mili <noreply@mili.invalid>
+Subject: [PATCH] Trace neighbor and shape updates
+
+Extended watches observe actual queued/fan-out or chain-limited attempts and the common instant/queued dispatch path, including suppression, wire flags, plugin cancellation and callback results.
+
+diff --git a/net/minecraft/world/level/redstone/CollectingNeighborUpdater.java b/net/minecraft/world/level/redstone/CollectingNeighborUpdater.java
+--- a/net/minecraft/world/level/redstone/CollectingNeighborUpdater.java
++++ b/net/minecraft/world/level/redstone/CollectingNeighborUpdater.java
+@@ -1,5 +1,6 @@
+ package net.minecraft.world.level.redstone;
+ 
++import fun.bm.mili.carpet.timing.MicroTiming;
+ import com.mojang.logging.LogUtils;
+ import java.util.ArrayDeque;
+ import java.util.ArrayList;
+@@ -89,6 +90,17 @@
+             LOGGER.error("Too many chained neighbor updates. Skipping the rest. First skipped position: {}", pos.toShortString());
+         }
+ 
++        final var mili$timing = MicroTiming.capture(this.level, pos, true, false);
++        if (mili$timing != null) {
++            final String detail = switch (update) {
++                case ShapeUpdate shape -> "shape " + shape.direction + " flags=" + shape.updateFlags + " limit=" + shape.updateLimit;
++                case FullNeighborUpdate full -> "neighbor " + MicroTiming.blockKey(full.block) + " piston=" + full.movedByPiston;
++                case SimpleNeighborUpdate simple -> "neighbor " + MicroTiming.blockKey(simple.block);
++                case MultiNeighborUpdate multi -> "neighbor fan-out " + MicroTiming.blockKey(multi.sourceBlock) + " except=" + multi.skipDirection;
++                default -> "neighbor";
++            };
++            mili$timing.point("schedule update", (tooManyUpdates ? "chain limit " : "queued ") + detail);
++        }
+         if (!runningAlready) {
+             this.runUpdates();
+         }
+diff --git a/net/minecraft/world/level/redstone/NeighborUpdater.java b/net/minecraft/world/level/redstone/NeighborUpdater.java
+--- a/net/minecraft/world/level/redstone/NeighborUpdater.java
++++ b/net/minecraft/world/level/redstone/NeighborUpdater.java
+@@ -1,5 +1,6 @@
+ package net.minecraft.world.level.redstone;
+ 
++import fun.bm.mili.carpet.timing.MicroTiming;
+ import java.util.Locale;
+ import net.minecraft.CrashReport;
+ import net.minecraft.CrashReportCategory;
+@@ -54,7 +55,19 @@
+         final @Block.UpdateFlags int updateFlags,
+         final int updateLimit
+     ) {
++        final var mili$timing = MicroTiming.capture(level, pos, true, true);
++        try (var trace = mili$timing == null ? null : mili$timing.begin("shape update",
++            direction + " from=" + neighborPos.toShortString() + " flags=" + updateFlags + " limit=" + updateLimit)) {
++            mili$executeShapeUpdate(level, direction, pos, neighborPos, neighborState, updateFlags, updateLimit, trace);
++        }
++    }
++
++    private static void mili$executeShapeUpdate(LevelAccessor level, Direction direction, BlockPos pos, BlockPos neighborPos,
++        BlockState neighborState, @Block.UpdateFlags int updateFlags, int updateLimit, MicroTiming.@Nullable Action trace) {
+         if (shouldSkipBlockUpdate() && level.getBlockState(pos).getFluidState().isEmpty() && neighborState.getFluidState().isEmpty()) {
++            if (trace != null) {
++                trace.result("suppressed");
++            }
+             return;
+         }
+         BlockState currentState = level.getBlockState(pos);
+@@ -62,6 +75,9 @@
+             try {
+                 BlockState newState = currentState.updateShape(level, level, pos, direction, neighborPos, neighborState, level.getRandom());
+                 Block.updateOrDestroy(currentState, newState, level, pos, updateFlags, updateLimit);
++                if (trace != null) {
++                    trace.result(currentState == newState ? "unchanged shape" : "shape returned " + newState);
++                }
+             } catch (Throwable t) {
+                 CrashReport report = CrashReport.forThrowable(t, "Exception while updating neighbour shapes");
+                 CrashReportCategory ownCategory = report.addCategory("Block being updated");
+@@ -70,6 +86,8 @@
+                 CrashReportCategory.populateBlockDetails(neighborCategory, level, neighborPos, neighborState);
+                 throw new ReportedException(report);
+             }
++        } else if (trace != null) {
++            trace.result("skipped by wire flag");
+         }
+     }
+ 
+@@ -87,7 +105,19 @@
+ 
+     static void executeUpdate(Level level, BlockState state, BlockPos pos, Block changedBlock, @Nullable Orientation orientation, boolean movedByPiston, BlockPos sourcePos) {
+         // Paper end - Add source block to BlockPhysicsEvent
++        final var mili$timing = MicroTiming.capture(level, pos, true, true);
++        try (var trace = mili$timing == null ? null : mili$timing.begin("neighbor update",
++            MicroTiming.blockKey(changedBlock) + " from=" + sourcePos.toShortString() + " piston=" + movedByPiston)) {
++            mili$executeUpdate(level, state, pos, changedBlock, orientation, movedByPiston, sourcePos, trace);
++        }
++    }
++
++    private static void mili$executeUpdate(Level level, BlockState state, BlockPos pos, Block changedBlock,
++        @Nullable Orientation orientation, boolean movedByPiston, BlockPos sourcePos, MicroTiming.@Nullable Action trace) {
+         if (shouldSkipBlockUpdate() && state.getFluidState().isEmpty() && changedBlock.defaultBlockState().getFluidState().isEmpty()) {
++            if (trace != null) {
++                trace.result("suppressed");
++            }
+             return;
+         }
+         try {
+@@ -96,15 +126,24 @@
+             level.getCraftServer().getPluginManager().callEvent(event);
+ 
+             if (event.isCancelled()) {
++                if (trace != null) {
++                    trace.result("cancelled by BlockPhysicsEvent");
++                }
+                 return;
+             }
+             // CraftBukkit end
+             net.minecraft.world.level.chunk.LevelChunk levelChunk = level.getChunkIfLoaded(pos); // KioCG
+             if (levelChunk != null) levelChunk.getChunkHot().startTicking(); try { // KioCG
+             state.handleNeighborChanged(level, pos, changedBlock, orientation, movedByPiston);
++            if (trace != null) {
++                trace.result("handled");
++            }
+             } finally { if (levelChunk != null) levelChunk.getChunkHot().stopTickingAndCount(); } // KioCG
+             // Spigot start
+         } catch (StackOverflowError ex) {
++            if (trace != null) {
++                trace.result("stack overflow");
++            }
+             // Lophine start - catch update suppression crash
+             if (fun.bm.mili.carpet.config.modules.GeneralCompatConfig.mergedUpdateSuppressionCrashEnabled()) {
+                 throw new org.leavesmc.leaves.util.UpdateSuppressionException(pos, level, changedBlock, null, ex);

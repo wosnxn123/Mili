@@ -1,0 +1,115 @@
+From: Mili <noreply@mili.invalid>
+Subject: [PATCH] Restore region-owned bot combat and spawning
+
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -178,7 +178,7 @@
+     public me.earthme.luminol.functions.bars.TickableStatusBarList statusBarList = new me.earthme.luminol.functions.bars.TickableStatusBarList(this); // Luminol status bars
+     public @Nullable FishingHook fishing;
+     public float hurtDir;
+-    public boolean affectsSpawning = true; // Paper - Affects Spawning API
++    public volatile boolean affectsSpawning = true; // Paper - Affects Spawning API
+     public net.kyori.adventure.util.TriState flyingFallDamage = net.kyori.adventure.util.TriState.NOT_SET; // Paper - flying fall damage
+ 
+     // CraftBukkit start
+@@ -1079,6 +1079,20 @@
+     }
+ 
+     public void attack(final Entity entity) {
++        this.attack(entity, null);
++    }
++
++    // Mili - autonomous bot attacks use normal plugin hooks without sweeping or creative actions.
++    protected final void attackSingleTarget(final Entity entity, final java.util.function.Predicate<Entity> allowed) {
++        if (entity instanceof net.minecraft.world.entity.Mob && entity instanceof net.minecraft.world.entity.monster.Enemy) {
++            this.attack(entity, allowed);
++        }
++    }
++
++    private void attack(final Entity entity, final java.util.function.@Nullable Predicate<Entity> singleTarget) {
++        if (singleTarget != null && !singleTarget.test(entity)) {
++            return;
++        }
+         // Paper start - PlayerAttackEntityEvent
+         boolean willAttack = !this.cannotAttack(entity); // Vanilla logic
+         io.papermc.paper.event.player.PrePlayerAttackEntityEvent playerAttackEntityEvent = new io.papermc.paper.event.player.PrePlayerAttackEntityEvent(
+@@ -1087,14 +1101,14 @@
+             willAttack
+         );
+ 
+-        if (playerAttackEntityEvent.callEvent() && willAttack) { // Logic moved to willAttack local variable.
++        if (playerAttackEntityEvent.callEvent() && willAttack && (singleTarget == null || (singleTarget.test(entity) && !this.cannotAttack(entity)))) { // Logic moved to willAttack local variable.
+         // Paper end - PlayerAttackEntityEvent
+-            if (fun.bm.mili.carpet.config.modules.GeneralCompatConfig.creativeHitRemoveEntity
++            if (singleTarget == null && fun.bm.mili.carpet.config.modules.GeneralCompatConfig.creativeHitRemoveEntity
+                 && this instanceof ServerPlayer serverPlayer && this.isCreative()) {
+                 fun.bm.mili.carpet.CarpetEntityRemoval.onHit(serverPlayer, entity);
+                 return;
+             }
+-            if (this.level() instanceof ServerLevel serverLevel
++            if (singleTarget == null && this.level() instanceof ServerLevel serverLevel
+                 && fun.bm.mili.carpet.config.modules.GeneralCompatConfig.creativeOneHitKill
+                 && this.isCreative()
+                 && net.minecraft.world.entity.EntitySelector.NO_CREATIVE_OR_SPECTATOR.test(entity)) {
+@@ -1138,7 +1152,7 @@
+                     }
+ 
+                     float totalDamage = baseDamage + magicBoost;
+-                    boolean sweepAttack = this.isSweepAttack(fullStrengthAttack, criticalAttack, knockbackAttack);
++                    boolean sweepAttack = singleTarget == null && this.isSweepAttack(fullStrengthAttack, criticalAttack, knockbackAttack);
+                     float oldLivingEntityHealth = 0.0F;
+                     if (entity instanceof LivingEntity livingTarget) {
+                         oldLivingEntityHealth = livingTarget.getHealth();
+@@ -1164,7 +1178,11 @@
+                     }
+                 }
+ 
+-                this.postPiercingAttack();
++                if (singleTarget == null) {
++                    this.postPiercingAttack();
++                } else {
++                    this.swing(InteractionHand.MAIN_HAND, attackingItemStack.getAttackAnimation(), false);
++                }
+             }
+         }
+     }
+diff --git a/net/minecraft/world/level/EntityGetter.java b/net/minecraft/world/level/EntityGetter.java
+--- a/net/minecraft/world/level/EntityGetter.java
++++ b/net/minecraft/world/level/EntityGetter.java
+@@ -143,6 +143,7 @@
+ 
+         for (int i = 0; i < len; ++i) {
+             final net.minecraft.server.level.ServerPlayer player = raw[i];
++            if (!this.isLocalSpawningPlayer(player)) continue; // Mili - only evaluate bots in the current region
+             final double distanceSqr = player.distanceToSqr(x, y, z);
+ 
+             if (range < 0.0D || distanceSqr < range * range) {
+@@ -157,6 +158,7 @@
+ 
+     default boolean hasNearbyAlivePlayerThatAffectsSpawningForLargerRangeSpawner(double x, double y, double z, double range) {
+         for (Player player : this.players()) {
++            if (!this.isLocalSpawningPlayer(player)) continue; // Mili - the global list can contain foreign-region bots
+             double distanceSqr = player.distanceToSqr(x, y, z);
+             if (range < 0.0D || distanceSqr < range * range) {
+                 if (!player.isSpectator() && player.isAlive() && player.affectsSpawning) { // combines NO_SPECTATORS and LIVING_ENTITY_STILL_ALIVE with an "affects spawning" check
+@@ -188,6 +190,7 @@
+ 
+         for (int i = 0; i < len; ++i) {
+             final net.minecraft.server.level.ServerPlayer player = raw[i];
++            if (!this.isLocalSpawningPlayer(player)) continue; // Mili - only evaluate bots in the current region
+             final double distanceSqr = player.distanceToSqr(x, y, z);
+ 
+             if (range < 0.0D || distanceSqr < range * range) {
+@@ -198,6 +201,11 @@
+         }
+ 
+         return false;
++    }
++    private boolean isLocalSpawningPlayer(Player player) {
++        return !(player instanceof org.leavesmc.leaves.bot.ServerBot bot)
++            || (ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(bot)
++                && bot.level() == this && bot.level().getChunkIfLoaded(bot.chunkPosition().x(), bot.chunkPosition().z()) != null);
+     }
+     // Leaf end - Optimize nearby alive players for spawning
+ 

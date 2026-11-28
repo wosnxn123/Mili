@@ -1,0 +1,551 @@
+From 366043c764366c62b786df7e8de904b47b3dddab Mon Sep 17 00:00:00 2001
+From: Mili Contributors <mili-contributors@example.invalid>
+Date: Sat, 28 Nov 2026 11:18:32 +0800
+Subject: [PATCH] Carry inventory block entities through owned piston moves
+
+Port from Lophine 7a51f49, Minecraft patch 0131. See META-INF/licenses/carpet-26.3.txt.
+
+Transfer closed chests, trapped chests and barrels under one region owner. Resolve both applicable halves of paired containers; install both before physics can observe the destination. Store inventory metadata in carriedTileEntityCM regardless of whether new moves remain enabled. No command blocks or unaudited block-entity types are admitted.
+
+diff --git a/net/minecraft/world/level/block/piston/MovablePistonCargo.java b/net/minecraft/world/level/block/piston/MovablePistonCargo.java
+new file mode 100644
+index 0000000..4a57c7f
+--- /dev/null
++++ b/net/minecraft/world/level/block/piston/MovablePistonCargo.java
+@@ -0,0 +1,238 @@
++package net.minecraft.world.level.block.piston;
++
++import fun.bm.mili.carpet.GameplayCompatRules;
++import fun.bm.mili.carpet.config.modules.WorldR2Config;
++import java.util.ArrayList;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Map;
++import net.minecraft.core.BlockPos;
++import net.minecraft.core.Direction;
++import net.minecraft.server.level.ServerLevel;
++import net.minecraft.util.ProblemReporter;
++import net.minecraft.world.level.block.BarrelBlock;
++import net.minecraft.world.level.block.Block;
++import net.minecraft.world.level.block.Blocks;
++import net.minecraft.world.level.block.CarpetLargeBarrel;
++import net.minecraft.world.level.block.ChestBlock;
++import net.minecraft.world.level.block.EntityBlock;
++import net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity;
++import net.minecraft.world.level.block.state.BlockState;
++import net.minecraft.world.level.block.state.properties.BlockStateProperties;
++import net.minecraft.world.level.block.state.properties.ChestType;
++import net.minecraft.world.level.block.state.properties.PistonType;
++import net.minecraft.world.level.redstone.ExperimentalRedstoneUtils;
++import net.minecraft.world.level.storage.TagValueInput;
++import org.jspecify.annotations.Nullable;
++
++/** A single-owner transfer; no callbacks or inventory drops between clearing sources and installing cargo. */
++final class MovablePistonCargo {
++    private static final int QUIET = Block.UPDATE_SKIP_ALL_SIDEEFFECTS | Block.UPDATE_CLIENTS;
++
++    private MovablePistonCargo() {
++    }
++
++    static boolean enabled() {
++        return WorldR2Config.movableBlockEntities;
++    }
++
++    static boolean supports(final BlockState state) {
++        // Explicit allowlist: these inventories have ordinary, separate block/item drops.
++        return state.is(Blocks.CHEST) || state.is(Blocks.TRAPPED_CHEST) || state.is(Blocks.BARREL);
++    }
++
++    static @Nullable Direction candidatePartner(final BlockState state) {
++        if (state.getBlock() instanceof ChestBlock && state.getValue(ChestBlock.TYPE) != ChestType.SINGLE) {
++            return ChestBlock.getConnectedDirection(state);
++        }
++        if (state.getBlock() instanceof BarrelBlock && CarpetLargeBarrel.pairingEnabled()) {
++            return state.getValue(BarrelBlock.FACING).getOpposite();
++        }
++        return null;
++    }
++
++    static boolean matchingPair(final BlockPos pos, final BlockState state, final Direction side, final BlockState other) {
++        if (!other.is(state.getBlock()) || candidatePartner(other) != side.getOpposite()) return false;
++        return state.getBlock() instanceof ChestBlock
++            ? other.getValue(ChestBlock.FACING) == state.getValue(ChestBlock.FACING)
++                && other.getValue(ChestBlock.TYPE) != state.getValue(ChestBlock.TYPE)
++            : sameChunk(pos, pos.relative(side));
++    }
++
++    private static boolean sameChunk(final BlockPos a, final BlockPos b) {
++        return a.getX() >> 4 == b.getX() >> 4 && a.getZ() >> 4 == b.getZ() >> 4;
++    }
++
++    private static boolean ownsPhysicsFootprint(final ServerLevel level, final BlockPos pos) {
++        // Neighbour/comparator notifications can walk an extra block beyond the target.
++        return !level.isOutsideBuildHeight(pos) && fun.bm.mili.carpet.WorldGameplayRules.ownsLoadedBox(level,
++            pos.getX() - 2, pos.getZ() - 2, pos.getX() + 2, pos.getZ() + 2);
++    }
++
++    static @Nullable Plan prepare(final ServerLevel level, final BlockPos piston, final Direction facing,
++                                  final boolean extending, final boolean sticky, final List<BlockPos> pushed,
++                                  final List<BlockPos> broken) {
++        final var data = level.getCurrentWorldData();
++        if (!broken.isEmpty() || level.isDebug() || data.captureBlockStates || data.captureTreeGeneration
++            || fun.bm.mili.config.modules.experiment.RedStoneConfig.oldBlockRemoveBehaviour) return null;
++        final var plan = new Plan(level, piston, facing, extending, sticky);
++        final var destinations = plan.before;
++        final BlockPos arm = piston.relative(facing);
++        if (!ownsPhysicsFootprint(level, piston) || !ownsPhysicsFootprint(level, arm)) return null;
++        destinations.put(piston, level.getBlockState(piston));
++        destinations.put(arm, level.getBlockState(arm));
++        for (BlockPos src : pushed) {
++            final BlockPos dst = src.relative(plan.movement);
++            if (!ownsPhysicsFootprint(level, src) || !ownsPhysicsFootprint(level, dst) || !level.getWorldBorder().isWithinBounds(dst)) return null;
++            final BlockState state = level.getBlockState(src);
++            final RandomizableContainerBlockEntity container;
++            Direction pair = null;
++            if (state.hasBlockEntity()) {
++                if (!supports(state) || !(level.getBlockEntity(src) instanceof RandomizableContainerBlockEntity found)
++                    || found.isRemoved() || !found.getViewers().isEmpty()) return null;
++                container = found;
++                final Direction candidate = candidatePartner(state);
++                if (candidate != null) {
++                    final BlockPos partner = src.relative(candidate);
++                    if (!GameplayCompatRules.ownsLoaded(level, partner)) return null;
++                    final BlockState partnerState = level.getBlockState(partner);
++                    destinations.put(partner, partnerState);
++                    if (matchingPair(src, state, candidate, partnerState)) {
++                        if (!pushed.contains(partner) || !sameChunk(src, partner) || !sameChunk(dst, dst.relative(candidate))) return null;
++                        pair = candidate;
++                    } else if (state.getBlock() instanceof ChestBlock) {
++                        return null; // An orphaned double-chest half must not move as a stale pair.
++                    }
++                }
++            } else {
++                container = null;
++            }
++            destinations.put(src, state);
++            destinations.put(dst, level.getBlockState(dst));
++            if (!pushed.contains(dst) && !level.getBlockState(dst).isAir()
++                && !(!extending && dst.equals(arm) && level.getBlockState(dst).is(Blocks.PISTON_HEAD))) return null;
++            plan.moves.add(new Move(src, dst, state, container, pair));
++        }
++        return plan;
++    }
++
++    private record Move(BlockPos source, BlockPos destination, BlockState state,
++                        @Nullable RandomizableContainerBlockEntity sourceInventory, @Nullable Direction pair) {
++    }
++
++    static final class Plan {
++        final ServerLevel level;
++        final BlockPos piston;
++        final Direction facing;
++        final Direction movement;
++        final boolean extending;
++        final boolean sticky;
++        final Map<BlockPos, BlockState> before = new LinkedHashMap<>();
++        final List<Move> moves = new ArrayList<>();
++
++        Plan(final ServerLevel level, final BlockPos piston, final Direction facing, final boolean extending, final boolean sticky) {
++            this.level = level;
++            this.piston = piston;
++            this.facing = facing;
++            this.movement = extending ? facing : facing.getOpposite();
++            this.extending = extending;
++            this.sticky = sticky;
++        }
++
++        boolean commit() {
++            // Piston events run above this point. Recheck the complete footprint and all inventory identities.
++            if (!enabled() || this.level.getCurrentWorldData().captureBlockStates || this.level.getCurrentWorldData().captureTreeGeneration
++                || fun.bm.mili.config.modules.experiment.RedStoneConfig.oldBlockRemoveBehaviour) return false;
++            for (var entry : this.before.entrySet()) {
++                if (!GameplayCompatRules.ownsLoaded(this.level, entry.getKey()) || this.level.getBlockState(entry.getKey()) != entry.getValue()) return false;
++            }
++            final Map<BlockPos, PistonMovingBlockEntity> carriers = new LinkedHashMap<>();
++            final BlockState moving = Blocks.MOVING_PISTON.defaultBlockState().setValue(MovingPistonBlock.FACING, this.facing);
++            for (final Move move : this.moves) {
++                final PistonMovingBlockEntity carrier = new PistonMovingBlockEntity(move.destination(), moving, move.state(), this.facing, this.extending, false);
++                if (move.sourceInventory() != null) {
++                    final var original = move.sourceInventory();
++                    if (this.level.getBlockEntity(move.source()) != original || original.isRemoved() || !original.getViewers().isEmpty()) return false;
++                    final var cargo = ((EntityBlock) move.state().getBlock()).newBlockEntity(move.destination(), move.state());
++                    if (!(cargo instanceof RandomizableContainerBlockEntity inventory) || inventory.getContainerSize() != original.getContainerSize()) return false;
++                    inventory.loadWithComponents(TagValueInput.create(ProblemReporter.DISCARDING, this.level.registryAccess(), original.saveWithoutMetadata(this.level.registryAccess())));
++                    carrier.miliSetCargo(inventory, move.pair());
++                }
++                carriers.put(move.destination(), carrier);
++            }
++            final BlockPos arm = this.piston.relative(this.facing);
++            if (this.extending) {
++                final PistonType type = this.sticky ? PistonType.STICKY : PistonType.DEFAULT;
++                final BlockState head = Blocks.PISTON_HEAD.defaultBlockState().setValue(PistonHeadBlock.FACING, this.facing).setValue(PistonHeadBlock.TYPE, type);
++                final BlockState movingHead = moving.setValue(MovingPistonBlock.TYPE, type);
++                carriers.put(arm, new PistonMovingBlockEntity(arm, movingHead, head, this.facing, true, true));
++            }
++
++            for (final Move move : this.moves) {
++                this.level.setBlock(move.source(), Blocks.AIR.defaultBlockState(), QUIET);
++                if (move.sourceInventory() != null) {
++                    move.sourceInventory().clearContent();
++                    move.sourceInventory().setLootTable(null);
++                }
++            }
++            for (final var entry : carriers.entrySet()) {
++                this.level.setBlock(entry.getKey(), entry.getValue().getBlockState(), QUIET);
++                this.level.setBlockEntity(entry.getValue());
++            }
++
++            // Restore the usual observable effects only after every moved inventory has a single owner.
++            final var orientation = ExperimentalRedstoneUtils.initialOrientation(this.level, this.movement, null);
++            for (final Move move : this.moves) {
++                final BlockState present = this.level.getBlockState(move.source());
++                move.state().affectNeighborsAfterRemoval(this.level, move.source(), true);
++                move.state().updateIndirectNeighbourShapes(this.level, move.source(), Block.UPDATE_CLIENTS);
++                present.updateNeighbourShapes(this.level, move.source(), Block.UPDATE_CLIENTS);
++                this.level.updateNeighborsAt(move.source(), move.state().getBlock(), orientation);
++                if (move.state().hasAnalogOutputSignal()) this.level.updateNeighbourForOutputSignal(move.source(), move.state().getBlock());
++            }
++            if (this.extending) this.level.updateNeighborsAt(arm, Blocks.PISTON_HEAD, orientation);
++            return true;
++        }
++    }
++
++    static void finish(final ServerLevel level, final PistonMovingBlockEntity carrier) {
++        final BlockPos pos = carrier.getBlockPos();
++        if (!GameplayCompatRules.ownsLoaded(level, pos) || level.getBlockEntity(pos) != carrier
++            || !level.getBlockState(pos).is(Blocks.MOVING_PISTON)) return;
++        PistonMovingBlockEntity partner = null;
++        final Direction pair = carrier.miliCargoPartner();
++        if (pair != null && sameChunk(pos, pos.relative(pair)) && GameplayCompatRules.ownsLoaded(level, pos.relative(pair))
++            && level.getBlockState(pos.relative(pair)).is(Blocks.MOVING_PISTON)
++            && level.getBlockEntity(pos.relative(pair)) instanceof PistonMovingBlockEntity other && other.miliHasCargo()
++            && other.miliCargoPartner() == pair.getOpposite() && other.getPushDirection() == carrier.getPushDirection()
++            && other.getMovedState().is(carrier.getMovedState().getBlock())) {
++            partner = other;
++        }
++        // Install both halves before any shape updates. If a half was destroyed independently, unpair the survivor.
++        land(level, carrier, partner != null);
++        if (partner != null) land(level, partner, true);
++        notifyLanding(level, carrier);
++        if (partner != null) notifyLanding(level, partner);
++    }
++
++    private static void land(final ServerLevel level, final PistonMovingBlockEntity carrier, final boolean paired) {
++        final BlockPos pos = carrier.getBlockPos();
++        final var inventory = carrier.miliTakeCargo();
++        if (inventory == null) return;
++        BlockState state = carrier.getMovedState();
++        if (!paired && state.getBlock() instanceof ChestBlock) state = state.setValue(ChestBlock.TYPE, ChestType.SINGLE);
++        if (state.hasProperty(BlockStateProperties.WATERLOGGED)) state = state.setValue(BlockStateProperties.WATERLOGGED, false);
++        level.removeBlockEntity(pos);
++        level.setBlock(pos, state, QUIET);
++        level.setBlockEntity(inventory);
++    }
++
++    private static void notifyLanding(final ServerLevel level, final PistonMovingBlockEntity carrier) {
++        final BlockPos pos = carrier.getBlockPos();
++        if (!ownsPhysicsFootprint(level, pos)) return;
++        final BlockState state = level.getBlockState(pos);
++        state.updateNeighbourShapes(level, pos, Block.UPDATE_CLIENTS);
++        level.updateNeighborsAt(pos, state.getBlock(), ExperimentalRedstoneUtils.initialOrientation(level, carrier.getPushDirection(), null));
++        level.updateNeighbourForOutputSignal(pos, state.getBlock());
++    }
++}
+diff --git a/net/minecraft/world/level/block/piston/PistonBaseBlock.java b/net/minecraft/world/level/block/piston/PistonBaseBlock.java
+index e0a651a..2928c96 100644
+--- a/net/minecraft/world/level/block/piston/PistonBaseBlock.java
++++ b/net/minecraft/world/level/block/piston/PistonBaseBlock.java
+@@ -144,6 +144,9 @@ public class PistonBaseBlock extends DirectionalBlock {
+     @Override
+     protected boolean triggerEvent(final BlockState state, final Level level, final BlockPos pos, final int b0, final int b1) {
+         Direction direction = state.getValue(FACING);
++        if (MovablePistonCargo.enabled() && level instanceof ServerLevel world
++            && (!fun.bm.mili.carpet.WorldGameplayRules.ownsLoadedBox(world, pos.getX() - 2, pos.getZ() - 2, pos.getX() + 2, pos.getZ() + 2)
++                || !fun.bm.mili.carpet.GameplayCompatRules.ownsLoaded(world, pos.relative(direction, 2)))) return false;
+         // Paper start - Protect Bedrock and End Portal/Frames from being destroyed; prevent retracting when we're facing the wrong way (we were replaced before retraction could occur)
+         Direction directionQueuedAs = Direction.from3DDataValue(b1 & 7); // Paper - copied from below
+         if (!fun.bm.mili.config.modules.fixes.VanillaLikeExperienceConfig.enabled && !io.papermc.paper.configuration.GlobalConfiguration.get().unsupportedSettings.allowPermanentBlockBreakExploits && direction != directionQueuedAs) {
+@@ -227,7 +230,10 @@ public class PistonBaseBlock extends DirectionalBlock {
+                         // Paper end - Fix sticky pistons and BlockPistonRetractEvent
+                         level.removeBlock(pos.relative(direction), false);
+                     } else {
+-                        this.moveBlocks(level, pos, direction, false);
++                        if (!this.moveBlocks(level, pos, direction, false) && MovablePistonCargo.enabled()
++                            && level.getBlockState(pos.relative(direction)).is(Blocks.PISTON_HEAD)) {
++                            level.removeBlock(pos.relative(direction), false);
++                        }
+                     }
+                 }
+             } else {
+@@ -290,12 +296,13 @@ public class PistonBaseBlock extends DirectionalBlock {
+             return false;
+         }
+ 
+-        return !state.hasBlockEntity();
++        return !state.hasBlockEntity() || MovablePistonCargo.enabled() && MovablePistonCargo.supports(state);
+     }
+ 
+     private boolean moveBlocks(final Level level, final BlockPos pistonPos, final Direction direction, final boolean extending) {
+         BlockPos armPos = pistonPos.relative(direction);
+-        if (!extending && level.getBlockState(armPos).is(Blocks.PISTON_HEAD)) {
++        final boolean cargoEnabled = MovablePistonCargo.enabled();
++        if (!cargoEnabled && !extending && level.getBlockState(armPos).is(Blocks.PISTON_HEAD)) {
+             level.setBlock(armPos, Blocks.AIR.defaultBlockState(), Block.UPDATE_NONE | Block.UPDATE_KNOWN_SHAPE);
+         }
+ 
+@@ -317,6 +324,23 @@ public class PistonBaseBlock extends DirectionalBlock {
+         List<BlockPos> toDestroy = resolver.getToDestroy();
+         BlockState[] toUpdate = new BlockState[toPush.size() + toDestroy.size()];
+         Direction pushDirection = extending ? direction : direction.getOpposite();
++        final MovablePistonCargo.Plan cargoPlan;
++        final java.util.Map<BlockPos, BlockState> nativeSnapshot = new java.util.HashMap<>();
++        if (cargoEnabled && level instanceof ServerLevel world && toPushShapes.stream().anyMatch(BlockState::hasBlockEntity)) {
++            cargoPlan = MovablePistonCargo.prepare(world, pistonPos, direction, extending, this.isSticky, toPush, toDestroy);
++            if (cargoPlan == null) return false;
++        } else {
++            cargoPlan = null;
++            if (cargoEnabled) {
++                nativeSnapshot.put(pistonPos, level.getBlockState(pistonPos));
++                nativeSnapshot.put(armPos, level.getBlockState(armPos));
++                for (BlockPos src : toPush) {
++                    nativeSnapshot.put(src, level.getBlockState(src));
++                    nativeSnapshot.put(src.relative(pushDirection), level.getBlockState(src.relative(pushDirection)));
++                }
++                for (BlockPos destroy : toDestroy) nativeSnapshot.put(destroy, level.getBlockState(destroy));
++            }
++        }
+         int updateIndex = 0;
+         // CraftBukkit start
+         final org.bukkit.block.Block bukkitBlock = org.bukkit.craftbukkit.block.CraftBlock.at(level, pistonPos);
+@@ -364,6 +388,13 @@ public class PistonBaseBlock extends DirectionalBlock {
+             return false;
+         }
+         // CraftBukkit end
++        if (cargoPlan != null) return cargoPlan.commit();
++        for (var entry : nativeSnapshot.entrySet()) {
++            if (level.getBlockState(entry.getKey()) != entry.getValue()) return false;
++        }
++        if (cargoEnabled && !extending && level.getBlockState(armPos).is(Blocks.PISTON_HEAD)) {
++            level.setBlock(armPos, Blocks.AIR.defaultBlockState(), Block.UPDATE_NONE | Block.UPDATE_KNOWN_SHAPE);
++        }
+ 
+         for (int i = toDestroy.size() - 1; i >= 0; i--) {
+             BlockPos pos = toDestroy.get(i);
+diff --git a/net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java b/net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java
+index 1027120..8794f07 100644
+--- a/net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java
++++ b/net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java
+@@ -6,6 +6,7 @@ import net.minecraft.core.Direction;
+ import net.minecraft.core.HolderLookup;
+ import net.minecraft.core.registries.Registries;
+ import net.minecraft.nbt.CompoundTag;
++import net.minecraft.server.level.ServerLevel;
+ import net.minecraft.util.Mth;
+ import net.minecraft.world.entity.Entity;
+ import net.minecraft.world.entity.MoverType;
+@@ -15,6 +16,7 @@ import net.minecraft.world.level.block.Block;
+ import net.minecraft.world.level.block.Blocks;
+ import net.minecraft.world.level.block.entity.BlockEntity;
+ import net.minecraft.world.level.block.entity.BlockEntityTypes;
++import net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity;
+ import net.minecraft.world.level.block.state.BlockState;
+ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+ import net.minecraft.world.level.block.state.properties.PistonType;
+@@ -26,6 +28,7 @@ import net.minecraft.world.phys.AABB;
+ import net.minecraft.world.phys.Vec3;
+ import net.minecraft.world.phys.shapes.Shapes;
+ import net.minecraft.world.phys.shapes.VoxelShape;
++import org.jspecify.annotations.Nullable;
+ 
+ public class PistonMovingBlockEntity extends BlockEntity {
+     private static final int TICKS_TO_EXTEND = 2;
+@@ -274,7 +277,39 @@ public class PistonMovingBlockEntity extends BlockEntity {
+         return this.movedState;
+     }
+ 
++    private @Nullable RandomizableContainerBlockEntity miliCargo;
++    private @Nullable Direction miliCargoPartner;
++
++    void miliSetCargo(final RandomizableContainerBlockEntity cargo, final @Nullable Direction partner) {
++        this.miliCargo = cargo;
++        this.miliCargoPartner = partner;
++    }
++
++    boolean miliHasCargo() {
++        return this.miliCargo != null;
++    }
++
++    @Nullable Direction miliCargoPartner() {
++        return this.miliCargoPartner;
++    }
++
++    @Nullable RandomizableContainerBlockEntity miliTakeCargo() {
++        final var cargo = this.miliCargo;
++        this.miliCargo = null;
++        this.miliCargoPartner = null;
++        return cargo;
++    }
++
+     public void finalTick() {
++        if (this.miliHasCargo() && this.level instanceof ServerLevel world) {
++            if (!fun.bm.mili.carpet.GameplayCompatRules.ownsLoaded(world, this.worldPosition)) return;
++            if (world.getBlockState(this.worldPosition).is(Blocks.MOVING_PISTON)) {
++                MovablePistonCargo.finish(world, this);
++            } else {
++                this.miliReleaseBrokenCargo();
++            }
++            return;
++        }
+         if (this.level != null && (this.progressO < 1.0F || this.level.isClientSide())) {
+             this.progress = 1.0F;
+             this.progressO = this.progress;
+@@ -299,7 +334,19 @@ public class PistonMovingBlockEntity extends BlockEntity {
+ 
+     @Override
+     public void preRemoveSideEffects(final BlockPos pos, final BlockState state) {
+-        this.finalTick();
++        if (this.miliHasCargo()) {
++            this.miliReleaseBrokenCargo();
++        } else {
++            this.finalTick();
++        }
++    }
++
++    private void miliReleaseBrokenCargo() {
++        final var cargo = this.miliTakeCargo(); // Clear custody before item spawn callbacks.
++        if (cargo != null && this.level instanceof ServerLevel world) {
++            cargo.setLevel(world);
++            cargo.preRemoveSideEffects(this.worldPosition, this.movedState);
++        }
+     }
+ 
+     public Direction getPushDirection() {
+@@ -313,6 +360,10 @@ public class PistonMovingBlockEntity extends BlockEntity {
+             if (level.isClientSide() && entity.deathTicks < 5) {
+                 entity.deathTicks++;
+             } else {
++                if (entity.miliHasCargo() && level instanceof ServerLevel world) {
++                    MovablePistonCargo.finish(world, entity);
++                    return;
++                }
+                 level.removeBlockEntity(pos);
+                 entity.setRemoved();
+                 if (level.getBlockState(pos).is(Blocks.MOVING_PISTON)) {
+@@ -350,6 +401,17 @@ public class PistonMovingBlockEntity extends BlockEntity {
+         this.progressO = this.progress;
+         this.extending = input.getBooleanOr("extending", false);
+         this.isSourcePiston = input.getBooleanOr("source", false);
++        this.miliTakeCargo();
++        if (!this.isSourcePiston && this.movedState.getBlock() instanceof net.minecraft.world.level.block.EntityBlock block) {
++            input.child("carriedTileEntityCM").ifPresent(data -> {
++                if (block.newBlockEntity(this.worldPosition, this.movedState) instanceof RandomizableContainerBlockEntity cargo
++                    && MovablePistonCargo.supports(this.movedState)) {
++                    cargo.loadWithComponents(data);
++                    final var pair = input.read("miliCargoPartner", Direction.LEGACY_ID_CODEC).orElse(null);
++                    this.miliSetCargo(cargo, pair);
++                }
++            });
++        }
+     }
+ 
+     @Override
+@@ -360,6 +422,10 @@ public class PistonMovingBlockEntity extends BlockEntity {
+         output.putFloat("progress", this.progressO);
+         output.putBoolean("extending", this.extending);
+         output.putBoolean("source", this.isSourcePiston);
++        if (this.miliCargo != null) {
++            this.miliCargo.saveWithoutMetadata(output.child("carriedTileEntityCM"));
++            if (this.miliCargoPartner != null) output.store("miliCargoPartner", Direction.LEGACY_ID_CODEC, this.miliCargoPartner);
++        }
+     }
+ 
+     public VoxelShape getCollisionShape(final BlockGetter level, final BlockPos pos) {
+diff --git a/net/minecraft/world/level/block/piston/PistonStructureResolver.java b/net/minecraft/world/level/block/piston/PistonStructureResolver.java
+index 0bedb71..ea8f471 100644
+--- a/net/minecraft/world/level/block/piston/PistonStructureResolver.java
++++ b/net/minecraft/world/level/block/piston/PistonStructureResolver.java
+@@ -39,7 +39,7 @@ public class PistonStructureResolver {
+         this.toPush.clear();
+         this.toDestroy.clear();
+         if (!this.carpetOwns(this.startPos)) return false;
+-        BlockState nextState = this.level.getBlockState(this.startPos);
++        BlockState nextState = this.stateAt(this.startPos);
+         if (!PistonBaseBlock.isPushable(nextState, this.level, this.startPos, this.pushDirection, false, this.pistonDirection)) {
+             if (this.extending && nextState.getPistonPushReaction() == PushReaction.POPPED) {
+                 this.toDestroy.add(this.startPos);
+@@ -64,15 +64,25 @@ public class PistonStructureResolver {
+     }
+ 
+     private boolean carpetOwns(final BlockPos pos) {
+-        return "false".equals(fun.bm.mili.carpet.config.modules.WorldGameplayConfig.chainStone()) || !(this.level instanceof net.minecraft.server.level.ServerLevel world)
++        return (!MovablePistonCargo.enabled() && "false".equals(fun.bm.mili.carpet.config.modules.WorldGameplayConfig.chainStone())) || !(this.level instanceof net.minecraft.server.level.ServerLevel world)
+             || fun.bm.mili.carpet.GameplayCompatRules.ownsLoaded(world, pos);
+     }
+ 
++    private BlockState stateAt(final BlockPos pos) {
++        final BlockState state = this.level.getBlockState(pos);
++        if (MovablePistonCargo.enabled() && !this.extending && state.is(Blocks.PISTON_HEAD)
++            && pos.equals(this.pistonPos.relative(this.pistonDirection))) return Blocks.AIR.defaultBlockState();
++        return state;
++    }
++
+     private static boolean isChainStone(final BlockState state) {
+         return state.getBlock() instanceof net.minecraft.world.level.block.ChainBlock && !"false".equals(fun.bm.mili.carpet.config.modules.WorldGameplayConfig.chainStone());
+     }
+ 
+     private boolean sticksAlong(final BlockState state, final BlockState other, final BlockPos otherPos, final Direction fromState) {
++        final Direction partner = MovablePistonCargo.enabled() ? MovablePistonCargo.candidatePartner(state) : null;
++        if (partner != null && partner == fromState
++            && MovablePistonCargo.matchingPair(otherPos.relative(fromState.getOpposite()), state, partner, other)) return true;
+         if (!isChainStone(state)) return canStickToEachOther(state, other);
+         final var axis = state.getValue(net.minecraft.world.level.block.ChainBlock.AXIS);
+         if (axis != fromState.getAxis()) return false;
+@@ -87,7 +97,8 @@ public class PistonStructureResolver {
+     }
+ 
+     private static boolean isSticky(final BlockState state) {
+-        return isChainStone(state) || state.is(Blocks.SLIME_BLOCK) || state.is(Blocks.HONEY_BLOCK);
++        return (MovablePistonCargo.enabled() && MovablePistonCargo.candidatePartner(state) != null)
++            || isChainStone(state) || state.is(Blocks.SLIME_BLOCK) || state.is(Blocks.HONEY_BLOCK);
+     }
+ 
+     private static boolean canStickToEachOther(final BlockState state1, final BlockState state2) {
+@@ -98,7 +109,7 @@ public class PistonStructureResolver {
+ 
+     private boolean addBlockLine(final BlockPos start, final Direction direction) {
+         if (!this.carpetOwns(start)) return false;
+-        BlockState nextState = this.level.getBlockState(start);
++        BlockState nextState = this.stateAt(start);
+         if (nextState.isAir()) {
+             return true;
+         }
+@@ -124,7 +135,7 @@ public class PistonStructureResolver {
+             BlockPos pos = start.relative(this.pushDirection.getOpposite(), blockCount);
+             if (!this.carpetOwns(pos)) return false;
+             BlockState previousState = nextState;
+-            nextState = this.level.getBlockState(pos);
++            nextState = this.stateAt(pos);
+             if (nextState.isAir()
+                 || !this.sticksAlong(previousState, nextState, pos, this.pushDirection.getOpposite())
+                 || !PistonBaseBlock.isPushable(nextState, this.level, pos, this.pushDirection, false, this.pushDirection.getOpposite())
+@@ -163,7 +174,7 @@ public class PistonStructureResolver {
+                 return true;
+             }
+ 
+-            nextState = this.level.getBlockState(pos);
++            nextState = this.stateAt(pos);
+             if (nextState.isAir()) {
+                 return true;
+             }
+@@ -207,8 +218,10 @@ public class PistonStructureResolver {
+             if (direction.getAxis() != this.pushDirection.getAxis()) {
+                 BlockPos neighbourPos = fromPos.relative(direction);
+                 if (isChainStone(fromState) && fromState.getValue(net.minecraft.world.level.block.ChainBlock.AXIS) != direction.getAxis()) continue;
++                if (MovablePistonCargo.enabled() && MovablePistonCargo.candidatePartner(fromState) != null
++                    && MovablePistonCargo.candidatePartner(fromState) != direction) continue;
+                 if (!this.carpetOwns(neighbourPos)) return false;
+-                BlockState neighbourState = this.level.getBlockState(neighbourPos);
++                BlockState neighbourState = this.stateAt(neighbourPos);
+                 if (this.sticksAlong(fromState, neighbourState, neighbourPos, direction) && !this.addBlockLine(neighbourPos, direction)) {
+                     return false;
+                 }

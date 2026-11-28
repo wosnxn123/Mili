@@ -1,0 +1,224 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mili contributors <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 11:07:33 +0800
+Subject: [PATCH] Persist and automate 54-slot shulker boxes
+
+
+diff --git a/net/minecraft/world/inventory/ShulkerBoxMenu.java b/net/minecraft/world/inventory/ShulkerBoxMenu.java
+index cb4c8e1..72ad872 100644
+--- a/net/minecraft/world/inventory/ShulkerBoxMenu.java
++++ b/net/minecraft/world/inventory/ShulkerBoxMenu.java
+@@ -7,7 +7,7 @@ import net.minecraft.world.entity.player.Player;
+ import net.minecraft.world.item.ItemStack;
+ 
+ public class ShulkerBoxMenu extends AbstractContainerMenu {
+-    private static final int CONTAINER_SIZE = 27;
++    private final int slotCount;
+     private final Container container;
+     // CraftBukkit start
+     private org.bukkit.craftbukkit.inventory.@org.jspecify.annotations.Nullable CraftInventoryView view;
+@@ -34,21 +34,31 @@ public class ShulkerBoxMenu extends AbstractContainerMenu {
+     }
+ 
+     public ShulkerBoxMenu(final int containerId, final Inventory inventory, final Container container) {
+-        super(MenuType.SHULKER_BOX, containerId);
+-        checkContainerSize(container, 27);
++        this(container.getContainerSize() == 54 ? MenuType.GENERIC_9x6 : MenuType.SHULKER_BOX,
++            containerId, inventory, container, container.getContainerSize() == 54 ? 6 : 3,
++            stack -> stack.getItem().canFitInsideContainerItems());
++    }
++
++    protected ShulkerBoxMenu(final MenuType<?> type, final int containerId, final Inventory inventory, final Container container,
++                             final int rows, final java.util.function.Predicate<ItemStack> canPlace) {
++        super(type, containerId);
++        this.slotCount = rows * 9;
++        checkContainerSize(container, this.slotCount);
+         this.container = container;
+         this.inventory = inventory; // CraftBukkit
+         // container.startOpen(inventory.player); // Paper - don't startOpen until menu actually opens
+-        int rows = 3;
+-        int columns = 9;
+-
+-        for (int y = 0; y < 3; y++) {
++        for (int y = 0; y < rows; y++) {
+             for (int x = 0; x < 9; x++) {
+-                this.addSlot(new ShulkerBoxSlot(container, x + y * 9, 8 + x * 18, 18 + y * 18));
++                this.addSlot(new ShulkerBoxSlot(container, x + y * 9, 8 + x * 18, 18 + y * 18) {
++                    @Override
++                    public boolean mayPlace(final ItemStack stack) {
++                        return canPlace.test(stack);
++                    }
++                });
+             }
+         }
+ 
+-        this.addStandardInventorySlots(inventory, 8, 84);
++        this.addStandardInventorySlots(inventory, 8, type == MenuType.SHULKER_BOX ? 84 : 31 + rows * 18);
+     }
+ 
+     @Override
+@@ -64,11 +74,11 @@ public class ShulkerBoxMenu extends AbstractContainerMenu {
+         if (slot != null && slot.hasItem()) {
+             ItemStack stack = slot.getItem();
+             clicked = stack.copy();
+-            if (slotIndex < this.container.getContainerSize()) {
+-                if (!this.moveItemStackTo(stack, this.container.getContainerSize(), this.slots.size(), true)) {
++            if (slotIndex < this.slotCount) {
++                if (!this.moveItemStackTo(stack, this.slotCount, this.slots.size(), true)) {
+                     return ItemStack.EMPTY;
+                 }
+-            } else if (!this.moveItemStackTo(stack, 0, this.container.getContainerSize(), false)) {
++            } else if (!this.moveItemStackTo(stack, 0, this.slotCount, false)) {
+                 return ItemStack.EMPTY;
+             }
+ 
+diff --git a/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java b/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java
+index a190cad..f0d058f 100644
+--- a/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java
+@@ -1,10 +1,15 @@
+ package net.minecraft.world.level.block.entity;
+ 
++import fun.bm.mili.carpet.config.modules.ContainerR2Config;
++import java.util.ArrayList;
+ import java.util.List;
+ import java.util.stream.IntStream;
+ import net.minecraft.core.BlockPos;
+ import net.minecraft.core.Direction;
+ import net.minecraft.core.NonNullList;
++import net.minecraft.core.component.DataComponentGetter;
++import net.minecraft.core.component.DataComponentMap;
++import net.minecraft.core.component.DataComponents;
+ import net.minecraft.network.chat.Component;
+ import net.minecraft.sounds.SoundEvents;
+ import net.minecraft.sounds.SoundSource;
+@@ -20,6 +25,7 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
+ import net.minecraft.world.inventory.ShulkerBoxMenu;
+ import net.minecraft.world.item.DyeColor;
+ import net.minecraft.world.item.ItemStack;
++import net.minecraft.world.item.component.ItemContainerContents;
+ import net.minecraft.world.level.Level;
+ import net.minecraft.world.level.block.Block;
+ import net.minecraft.world.level.block.ShulkerBoxBlock;
+@@ -40,9 +46,14 @@ public class ShulkerBoxBlockEntity extends RandomizableContainerBlockEntity impl
+     public static final int OPENING_TICK_LENGTH = 10;
+     public static final float MAX_LID_HEIGHT = 0.5F;
+     public static final float MAX_LID_ROTATION = 270.0F;
+-    private static final int[] SLOTS = IntStream.range(0, 27).toArray();
++    public static final int LARGE_CONTAINER_SIZE = 54;
++    private static final String LARGE_TAG = "MiliLargeShulker";
++    private static final int[] SLOTS = IntStream.range(0, CONTAINER_SIZE).toArray();
++    private static final int[] LARGE_SLOTS = IntStream.range(0, LARGE_CONTAINER_SIZE).toArray();
+     private static final Component DEFAULT_NAME = Component.translatable("container.shulkerBox");
+-    private NonNullList<ItemStack> itemStacks = NonNullList.withSize(27, ItemStack.EMPTY);
++    private NonNullList<ItemStack> itemStacks = NonNullList.withSize(ContainerR2Config.largeShulkerBox ? LARGE_CONTAINER_SIZE : CONTAINER_SIZE, ItemStack.EMPTY);
++    // Commands and plugins can provide component indices beyond the supported GUI. Retain them rather than truncate.
++    private List<ItemStack> overflow = List.of();
+     private int openCount;
+     private ShulkerBoxBlockEntity.AnimationStatus animationStatus = ShulkerBoxBlockEntity.AnimationStatus.CLOSED;
+     private float progress;
+@@ -251,16 +262,79 @@ public class ShulkerBoxBlockEntity extends RandomizableContainerBlockEntity impl
+     @Override
+     protected void saveAdditional(final ValueOutput output) {
+         super.saveAdditional(output);
+-        if (!this.trySaveLootTable(output)) {
+-            ContainerHelper.saveAllItems(output, this.itemStacks, false);
++        if (this.getContainerSize() == LARGE_CONTAINER_SIZE) {
++            output.putBoolean(LARGE_TAG, true);
++        }
++        if (!this.trySaveLootTable(output) || !this.overflow.isEmpty() || this.itemStacks.stream().anyMatch(stack -> !stack.isEmpty())) {
++            if (this.overflow.isEmpty()) {
++                ContainerHelper.saveAllItems(output, this.itemStacks, false);
++            } else {
++                final NonNullList<ItemStack> stored = NonNullList.create();
++                stored.addAll(this.itemStacks);
++                stored.addAll(this.overflow);
++                ContainerHelper.saveAllItems(output, stored, false);
++            }
+         }
+     }
+ 
+     public void loadFromTag(final ValueInput input) {
+-        this.itemStacks = NonNullList.withSize(this.getContainerSize(), ItemStack.EMPTY);
+-        if (!this.tryLoadLootTable(input)) {
+-            ContainerHelper.loadAllItems(input, this.itemStacks);
++        final boolean large = input.getBooleanOr(LARGE_TAG, false) || ContainerR2Config.largeShulkerBox;
++        this.tryLoadLootTable(input);
++        final List<ItemStack> stored = new ArrayList<>();
++        for (final var item : input.listOrEmpty(ContainerHelper.TAG_ITEMS, net.minecraft.world.ItemStackWithSlot.CODEC)) {
++            while (stored.size() <= item.slot()) {
++                stored.add(ItemStack.EMPTY);
++            }
++            stored.set(item.slot(), item.stack());
++        }
++        this.replaceContents(stored, large);
++    }
++
++    private void replaceContents(final List<ItemStack> stored, final boolean large) {
++        int end = stored.size();
++        while (end > 0 && stored.get(end - 1).isEmpty()) {
++            --end;
+         }
++        final int size = large || end > CONTAINER_SIZE ? LARGE_CONTAINER_SIZE : CONTAINER_SIZE;
++        final NonNullList<ItemStack> visible = NonNullList.withSize(size, ItemStack.EMPTY);
++        for (int i = 0; i < Math.min(end, size); ++i) {
++            visible.set(i, stored.get(i));
++        }
++        this.overflow = end > size ? List.copyOf(stored.subList(size, end)) : List.of();
++        this.setItems(visible);
++    }
++
++    @Override
++    protected void applyImplicitComponents(final DataComponentGetter components) {
++        final ItemContainerContents contents = components.get(DataComponents.CONTAINER);
++        final List<ItemStack> stored = contents == null ? this.storedItems() : contents.itemCopies().toList();
++        super.applyImplicitComponents(components);
++        this.replaceContents(stored, this.getContainerSize() == LARGE_CONTAINER_SIZE || ContainerR2Config.largeShulkerBox);
++    }
++
++    @Override
++    protected void collectImplicitComponents(final DataComponentMap.Builder components) {
++        super.collectImplicitComponents(components);
++        if (!this.overflow.isEmpty()) {
++            components.set(DataComponents.CONTAINER, ItemContainerContents.fromItems(this.storedItems()));
++        }
++    }
++
++    private List<ItemStack> storedItems() {
++        final List<ItemStack> stored = new ArrayList<>(this.itemStacks);
++        stored.addAll(this.overflow);
++        return stored;
++    }
++
++    @Override
++    public boolean isEmpty() {
++        return this.overflow.isEmpty() && super.isEmpty();
++    }
++
++    @Override
++    public void clearContent() {
++        super.clearContent();
++        this.overflow = List.of();
+     }
+ 
+     @Override
+@@ -276,7 +350,7 @@ public class ShulkerBoxBlockEntity extends RandomizableContainerBlockEntity impl
+ 
+     @Override
+     public int[] getSlotsForFace(final Direction direction) {
+-        return SLOTS;
++        return this.getContainerSize() == LARGE_CONTAINER_SIZE ? LARGE_SLOTS : SLOTS;
+     }
+ 
+     @Override
+@@ -299,6 +373,10 @@ public class ShulkerBoxBlockEntity extends RandomizableContainerBlockEntity impl
+ 
+     @Override
+     protected AbstractContainerMenu createMenu(final int containerId, final Inventory inventory) {
++        if (ContainerR2Config.largeShulkerBox && this.getContainerSize() == CONTAINER_SIZE && this.transaction.isEmpty()) {
++            this.replaceContents(this.itemStacks, true);
++            this.setChanged();
++        }
+         return new ShulkerBoxMenu(containerId, inventory, this);
+     }
+ 

@@ -1,0 +1,17 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mili contributors <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Ignore portal lookups for retired entity instances
+
+diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
+index 9f4a9d32f852a60188d543f3cd00269903f61473..40885c9933f6c17a3275e3597512e6389a6d646f 100644
+--- a/net/minecraft/world/entity/Entity.java
++++ b/net/minecraft/world/entity/Entity.java
+@@ -5153,6 +5153,7 @@
+             final var scheduler = this.getBukkitEntity().taskScheduler;
+             this.miliExistingNetherPortalLookup = true;
+             lookup.addWaiter((exit, failure) -> scheduler.schedule((Entity current) -> {
++                if (current != this) return; // The entity scheduler may have followed a dimension change.
+                 this.miliExistingNetherPortalLookup = false;
+                 if (failure == null && exit != null && this.level() == origin && !this.isRemoved()
+                     && this.getBoundingBox().intersects(new AABB(entry))

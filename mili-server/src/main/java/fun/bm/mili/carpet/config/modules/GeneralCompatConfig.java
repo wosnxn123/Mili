@@ -206,8 +206,8 @@ public class GeneralCompatConfig implements IConfigModule {
     public static boolean simpleInGameCalculator = false;
 
     @ConfigInfo(name = "microTiming", comments = """
-            Folia/Moonrise 内置的区域性能分析器和计时工具的兼容标志。""")
-    public static boolean microTiming = false;
+            允许有权限的玩家短时观察附近已加载方块的更新顺序；重载配置会清除观察会话。""")
+    public static volatile boolean microTiming = false;
 
     @ConfigInfo(name = "fastRedstoneDust", comments = """
             通过 Alternate Current 快速更新后端路由红石粉更新。""")
@@ -347,9 +347,11 @@ public class GeneralCompatConfig implements IConfigModule {
 
     @Override
     public void onLoaded(TomlConfigData configInstance, @Nullable Set<Exception> exs) {
+        fun.bm.mili.carpet.timing.MicroTiming.resetWatches();
     }
 
     @Override
     public void onUnloaded(TomlConfigData configInstance) {
+        fun.bm.mili.carpet.timing.MicroTiming.resetWatches();
     }
 }

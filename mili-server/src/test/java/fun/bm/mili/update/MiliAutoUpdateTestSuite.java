@@ -74,6 +74,18 @@ class MiliAutoUpdateTestSuite {
     }
 
     @Test
+    void releasedUpdaterAcceptsR2ContentTagButNotAnUnrelatedRevision() throws IOException {
+        final FakeGitHub api = stable();
+        final String tag = "26.3-" + RELEASE.substring(0, 12);
+        api.ref("tags/26.3", "commit", CURRENT);
+        api.ref("tags/" + tag, "commit", RELEASE);
+        api.releases(api.release(tag), api.release("26.3"));
+        assertEquals(RELEASE, api.source().find(SHORT).commit());
+        api.ref("tags/" + tag, "commit", OTHER);
+        assertNull(api.source().find(SHORT));
+    }
+
+    @Test
     void rejectsWrongRepoReleaseAndMalformedOrImpostorAssets() throws IOException {
         final FakeGitHub api = stable();
         for (String[] bad : new String[][]{

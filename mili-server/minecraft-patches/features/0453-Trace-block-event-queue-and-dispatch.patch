@@ -1,0 +1,71 @@
+From: Mili <noreply@mili.invalid>
+Subject: [PATCH] Trace block event queue and dispatch
+
+Capture native enqueue/deduplication, deferral at chunk tick eligibility, and trigger decisions. Do not instrument bulk requeues or region merge/split bookkeeping.
+
+diff --git a/io/papermc/paper/threadedregions/RegionizedWorldData.java b/io/papermc/paper/threadedregions/RegionizedWorldData.java
+--- a/io/papermc/paper/threadedregions/RegionizedWorldData.java
++++ b/io/papermc/paper/threadedregions/RegionizedWorldData.java
+@@ -1,5 +1,6 @@
+ package io.papermc.paper.threadedregions;
+ 
++import fun.bm.mili.carpet.timing.MicroTiming;
+ import ca.spottedleaf.moonrise.common.list.IteratorSafeOrderedReferenceSet;
+ import ca.spottedleaf.moonrise.common.list.ReferenceList;
+ import ca.spottedleaf.moonrise.common.misc.NearbyPlayers;
+@@ -813,7 +814,11 @@
+     // make the code easier by simply discarding it in such an event
+     public void pushBlockEvent(final BlockEventData blockEventData) {
+         TickThread.ensureTickThread(this.world, blockEventData.pos(), "Cannot queue block even data async");
+-        this.blockEvents.add(blockEventData);
++        final boolean queued = this.blockEvents.add(blockEventData);
++        final var mili$timing = MicroTiming.capture(this.world, blockEventData.pos(), false, false);
++        if (mili$timing != null) {
++            mili$timing.point("queue block event", (queued ? "queued " : "duplicate ") + MicroTiming.blockEventDetails(blockEventData));
++        }
+     }
+ 
+     public void pushBlockEvents(final Collection<? extends BlockEventData> blockEvents) {
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -903,8 +903,9 @@
+         } finally { foliaProfiler.stopTimer(ca.spottedleaf.leafprofiler.LProfilerRegistry.CHUNK_PROVIDER_TICK); } // Folia - profiler
+         profiler.popPush("blockEvents");
+         if (runs) {
+-            foliaProfiler.startTimer(ca.spottedleaf.leafprofiler.LProfilerRegistry.BLOCK_EVENT_TICK); try { // Folia - profiler
+-            this.runBlockEvents();
++            foliaProfiler.startTimer(ca.spottedleaf.leafprofiler.LProfilerRegistry.BLOCK_EVENT_TICK); // Folia - profiler
++            try (var trace = MicroTiming.phase(this, MicroTiming.Phase.BLOCK_EVENTS)) {
++                this.runBlockEvents();
+             } finally { foliaProfiler.stopTimer(ca.spottedleaf.leafprofiler.LProfilerRegistry.BLOCK_EVENT_TICK); } // Folia - profiler
+         }
+ 
+@@ -2328,6 +2329,10 @@
+                 }
+             } else {
+                 blockEventsToReschedule.add(eventData); // Folia - regionised ticking
++                final var mili$timing = MicroTiming.capture(this, eventData.pos(), false, false);
++                if (mili$timing != null) {
++                    mili$timing.point("defer block event", MicroTiming.blockEventDetails(eventData));
++                }
+             }
+         }
+ 
+@@ -2336,7 +2341,15 @@
+ 
+     private boolean doBlockEvent(final BlockEventData eventData) {
+         BlockState state = this.getBlockState(eventData.pos());
+-        return state.is(eventData.block()) && state.triggerEvent(this, eventData.pos(), eventData.paramA(), eventData.paramB());
++        final boolean matches = state.is(eventData.block());
++        final var mili$timing = MicroTiming.capture(this, eventData.pos(), false, true);
++        try (var trace = mili$timing == null ? null : mili$timing.begin("dispatch block event", MicroTiming.blockEventDetails(eventData))) {
++            final boolean handled = matches && state.triggerEvent(this, eventData.pos(), eventData.paramA(), eventData.paramB());
++            if (trace != null) {
++                trace.result(!matches ? "skip: type changed" : handled ? "handled" : "not handled");
++            }
++            return handled;
++        }
+     }
+ 
+     @Override

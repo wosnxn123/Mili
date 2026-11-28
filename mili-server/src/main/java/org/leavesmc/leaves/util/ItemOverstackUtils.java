@@ -17,6 +17,7 @@
 
 package org.leavesmc.leaves.util;
 
+import fun.bm.mili.carpet.config.modules.ContainerR2Config;
 import fun.bm.mili.config.modules.function.ContainerExpansionConfig;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
@@ -40,6 +41,10 @@ public class ItemOverstackUtils {
     );
 
     public static int getItemStackMaxCount(ItemStack stack) {
+        if (ContainerR2Config.shulkerBoxStackable && isShulker(stack) && ShulkerBox.shulkerBoxNoItem(stack)
+                && !stack.has(DataComponents.LOCK) && !stack.has(DataComponents.CONTAINER_LOOT) && !stack.has(DataComponents.BLOCK_ENTITY_DATA)) {
+            return 64;
+        }
         int size;
         for (ItemUtil util : overstackUtils) {
             if (util.isEnabled() && (size = util.getMaxServerStackCount(stack)) != -1) {
@@ -50,13 +55,12 @@ public class ItemOverstackUtils {
     }
 
     public static int getNetworkMaxCount(ItemStack stack) {
-        int size;
-        for (ItemUtil util : overstackUtils) {
-            if (util.isEnabled() && (size = util.getMaxClientStackCount(stack)) != -1) {
-                return size;
-            }
-        }
-        return stack.getMaxStackSize();
+        // Keep previously accumulated stacks representable when a rule is turned off.
+        return isShulker(stack) ? Math.max(Math.min(99, stack.getCount()), getItemStackMaxCount(stack)) : stack.getMaxStackSize();
+    }
+
+    private static boolean isShulker(ItemStack stack) {
+        return !stack.isEmpty() && stack.getItem() instanceof BlockItem block && block.getBlock() instanceof ShulkerBoxBlock;
     }
 
     public static boolean tryStackItems(ItemEntity self, ItemEntity other) {
@@ -69,6 +73,7 @@ public class ItemOverstackUtils {
     }
 
     public static boolean hasOverstackingItem() {
+        if (ContainerR2Config.shulkerBoxStackable) return true;
         for (ItemUtil util : overstackUtils) {
             if (util.isEnabled()) {
                 return true;
@@ -83,9 +88,11 @@ public class ItemOverstackUtils {
     }
 
     public static ItemStack encodeMaxStackSize(ItemStack itemStack) {
-        int realMaxStackSize = getItemStackMaxCountReal(itemStack);
+        if (!isShulker(itemStack)) return itemStack;
+        int realMaxStackSize = itemStack.getMaxStackSize();
         int modifiedMaxStackSize = getNetworkMaxCount(itemStack);
-        if (itemStack.getMaxStackSize() != modifiedMaxStackSize) {
+        if (realMaxStackSize != modifiedMaxStackSize) {
+            itemStack = itemStack.copy();
             itemStack.set(DataComponents.MAX_STACK_SIZE, modifiedMaxStackSize);
             CompoundTag nbt = itemStack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
             nbt.putInt("Leaves.RealStackSize", realMaxStackSize);
@@ -95,8 +102,10 @@ public class ItemOverstackUtils {
     }
 
     public static ItemStack decodeMaxStackSize(ItemStack itemStack) {
+        if (!isShulker(itemStack)) return itemStack;
         int realMaxStackSize = getItemStackMaxCountReal(itemStack);
-        if (itemStack.getMaxStackSize() != realMaxStackSize) {
+        if (realMaxStackSize >= 1 && realMaxStackSize <= 99 && itemStack.getMaxStackSize() != realMaxStackSize) {
+            itemStack = itemStack.copy();
             itemStack.set(DataComponents.MAX_STACK_SIZE, realMaxStackSize);
             CompoundTag nbt = itemStack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
             nbt.remove("Leaves.RealStackSize");
@@ -163,8 +172,8 @@ public class ItemOverstackUtils {
             ItemStack otherStack = other.getItem();
             if (selfStack.getItem() == otherStack.getItem()
                     && shulkerBoxCheck(selfStack, otherStack)
-                    && selfStack.getCount() != ContainerExpansionConfig.shulkerCount) {
-                int amount = Math.min(otherStack.getCount(), ContainerExpansionConfig.shulkerCount - selfStack.getCount());
+                    && selfStack.getCount() < Math.clamp(ContainerExpansionConfig.shulkerCount, 1, 64)) {
+                int amount = Math.min(otherStack.getCount(), Math.clamp(ContainerExpansionConfig.shulkerCount, 1, 64) - selfStack.getCount());
 
                 selfStack.grow(amount);
                 self.setItem(selfStack);
@@ -187,7 +196,7 @@ public class ItemOverstackUtils {
         public int getMaxServerStackCount(ItemStack stack) {
             if (stack.getItem() instanceof BlockItem bi &&
                     bi.getBlock() instanceof ShulkerBoxBlock && (ContainerExpansionConfig.nbtShulkerStackable || shulkerBoxNoItem(stack))) {
-                return ContainerExpansionConfig.shulkerCount;
+                return Math.max(stack.getMaxStackSize(), Math.clamp(ContainerExpansionConfig.shulkerCount, 1, 64));
             }
             return -1;
         }

@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mili contributors <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Route the read-only Carpet hello on the player region
+
+Accept only the rule-display handshake for this connection. Other game
+and configuration channels retain Paper's existing plugin messenger route.
+
+diff --git a/net/minecraft/server/network/ServerCommonPacketListenerImpl.java b/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
+--- a/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
+@@ -184,6 +184,10 @@
+                 && org.leavesmc.leaves.protocol.PcaSyncProtocol.handleIncoming(game.player, identifier, data)) {
+                 return;
+             }
++            if (this instanceof ServerGamePacketListenerImpl game && game.player.connection == game
++                && org.leavesmc.leaves.protocol.CarpetServerProtocol.handleIncomingHello(game.player, identifier, data)) {
++                return;
++            }
+             this.cserver.getMessenger().dispatchIncomingMessage(paperConnection(), identifier.toString(), data);
+         } catch (final Exception e) {
+             LOGGER.error("Couldn't handle custom payload on channel {}", identifier, e);

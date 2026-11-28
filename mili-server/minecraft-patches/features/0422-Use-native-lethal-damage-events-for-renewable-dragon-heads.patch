@@ -1,0 +1,160 @@
+From a909432f74ae3216435f1554c06b1abdacb4568c Mon Sep 17 00:00:00 2001
+From: Mili Contributors <mili-contributors@example.invalid>
+Date: Sat, 28 Nov 2026 11:18:31 +0800
+Subject: [PATCH] Use native lethal-damage events for renewable dragon heads
+
+Port from Lophine 7a51f49, Minecraft patch 0134. See META-INF/licenses/carpet-26.3.txt.
+
+Only direct charged creeper explosion damage that reaches the uncancelled native dragon death path can spend the skull allowance. Submit the head in the ordinary EntityDeathEvent drops rather than spawning a separate item after the animation.
+
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 95401f3..edb78ef 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -1898,7 +1898,7 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+                 if (org.spigotmc.SpigotConfig.logNamedDeaths && (!fun.bm.mili.carpet.config.modules.GameplayCompatConfig.cleanLogs || !(this.level() instanceof ServerLevel serverLevel) || serverLevel.getGameRules().get(GameRules.SHOW_DEATH_MESSAGES))) LOGGER.info("Named entity {} died: {}", this, this.getCombatTracker().getDeathMessage().getString()); // Spigot
+             }
+ 
+-            this.handleKillingBlow();
++            this.handleKillingBlow(source);
+             }; // Paper
+             if (this.level() instanceof ServerLevel serverLevel) {
+                 // Paper start
+@@ -1933,6 +1933,10 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+         }
+     }
+ 
++    protected void handleKillingBlow(final DamageSource source) {
++        this.handleKillingBlow();
++    }
++
+     protected void handleKillingBlow() {
+         this.dead = true;
+     }
+diff --git a/net/minecraft/world/entity/boss/enderdragon/EnderDragon.java b/net/minecraft/world/entity/boss/enderdragon/EnderDragon.java
+index c1575ca..0c1fa8f 100644
+--- a/net/minecraft/world/entity/boss/enderdragon/EnderDragon.java
++++ b/net/minecraft/world/entity/boss/enderdragon/EnderDragon.java
+@@ -561,7 +561,8 @@ public class EnderDragon extends Mob implements Enemy {
+             return false;
+         }
+ 
+-        if (source.getEntity() instanceof Player || source.is(DamageTypeTags.ALWAYS_HURTS_ENDER_DRAGONS)) {
++        if (source.getEntity() instanceof Player || source.is(DamageTypeTags.ALWAYS_HURTS_ENDER_DRAGONS)
++            || this.miliChargedCreeperExplosion(source)) {
+             float healthBefore = this.getHealth();
+             this.reallyHurt(level, source, damage);
+             if (this.phaseManager.getCurrentPhase().isSitting()) {
+@@ -581,8 +582,54 @@ public class EnderDragon extends Mob implements Enemy {
+         return this.hurt(level, this.body, source, damage);
+     }
+ 
++    private boolean miliChargedCreeperExplosion(final DamageSource source) {
++        return fun.bm.mili.carpet.config.modules.WorldR2Config.renewableDragonHead
++            && source.getDirectEntity() instanceof net.minecraft.world.entity.monster.Creeper creeper
++            && source.getEntity() == creeper && source.is(DamageTypeTags.IS_EXPLOSION)
++            && ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(creeper)
++            && creeper.miliMatchesDragonSkullExplosion(source) && creeper.isPowered();
++    }
++
+     protected void reallyHurt(final ServerLevel level, final DamageSource source, final float damage) {
+-        super.hurtServer(level, source, damage);
++        if (!(source.getDirectEntity() instanceof net.minecraft.world.entity.monster.Creeper creeper)
++            || !this.miliChargedCreeperExplosion(source) || this.miliDragonKillingDamage != null) {
++            super.hurtServer(level, source, damage);
++            return;
++        }
++        this.miliDragonKillingDamage = source;
++        try {
++            super.hurtServer(level, source, damage);
++        } finally {
++            if (this.miliDragonSkullReserved) {
++                creeper.miliFinishDragonSkull(false); // damage/death cancelled, or the hit was not lethal
++                this.miliDragonSkullReserved = false;
++            }
++            this.miliDragonKillingDamage = null;
++        }
++    }
++
++    private @Nullable DamageSource miliDragonKillingDamage;
++    private boolean miliDragonSkullReserved;
++
++    @Override
++    protected void dropCustomDeathLoot(final ServerLevel level, final DamageSource source, final boolean killedByPlayer) {
++        super.dropCustomDeathLoot(level, source, killedByPlayer);
++        if (source == this.miliDragonKillingDamage && this.getHealth() <= 0.0F && !this.miliDragonSkullReserved
++            && source.getDirectEntity() instanceof net.minecraft.world.entity.monster.Creeper creeper && creeper.miliReserveDragonSkull()) {
++            this.miliDragonSkullReserved = true;
++            // The normal EntityDeathEvent owns this list: plugins can cancel or replace the drop.
++            this.spawnAtLocation(level, net.minecraft.world.item.Items.DRAGON_HEAD);
++        }
++    }
++
++    @Override
++    protected void handleKillingBlow(final DamageSource source) {
++        super.handleKillingBlow(source);
++        if (source == this.miliDragonKillingDamage && this.miliDragonSkullReserved
++            && source.getDirectEntity() instanceof net.minecraft.world.entity.monster.Creeper creeper) {
++            creeper.miliFinishDragonSkull(true);
++            this.miliDragonSkullReserved = false;
++        }
+     }
+ 
+     @Override
+diff --git a/net/minecraft/world/entity/monster/Creeper.java b/net/minecraft/world/entity/monster/Creeper.java
+index b91bad8..6b07322 100644
+--- a/net/minecraft/world/entity/monster/Creeper.java
++++ b/net/minecraft/world/entity/monster/Creeper.java
+@@ -55,6 +55,8 @@ public class Creeper extends Monster {
+     public int maxSwell = 30;
+     public int explosionRadius = 3;
+     private boolean droppedSkulls;
++    private boolean miliDragonSkullReserved;
++    private @Nullable DamageSource miliDragonSkullExplosion;
+     public @Nullable Entity entityIgniter; // CraftBukkit
+ 
+     public Creeper(final EntityType<? extends Creeper> type, final Level level) {
+@@ -175,7 +177,22 @@ public class Creeper extends Monster {
+     }
+ 
+     public boolean carpetCanDropSkull() {
+-        return this.isPowered() && (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.superChargedCreeper || !this.droppedSkulls);
++        return this.isPowered() && !this.miliDragonSkullReserved && (fun.bm.mili.carpet.config.modules.EntityGameplayConfig.superChargedCreeper || !this.droppedSkulls);
++    }
++
++    public boolean miliMatchesDragonSkullExplosion(final DamageSource source) {
++        return this.miliDragonSkullExplosion == source;
++    }
++
++    public boolean miliReserveDragonSkull() {
++        if (!this.isPowered() || this.droppedSkulls || this.miliDragonSkullReserved) return false;
++        this.miliDragonSkullReserved = true;
++        return true;
++    }
++
++    public void miliFinishDragonSkull(final boolean accepted) {
++        if (accepted) this.droppedSkulls = true;
++        this.miliDragonSkullReserved = false;
+     }
+ 
+     public void carpetRecordSkullDrop() {
+@@ -264,7 +281,18 @@ public class Creeper extends Monster {
+             // CraftBukkit end
+             this.dead = true;
+             Level.ExplosionInteraction explosionInteraction = fun.bm.mili.carpet.config.modules.GeneralCompatConfig.noCreeperBlockBreaking ? Level.ExplosionInteraction.NONE : Level.ExplosionInteraction.MOB; // Lophine - MiniTweaks noCreeperBlockBreaking
+-            level.explode(this, this.getX(), this.getY(), this.getZ(), event.getRadius(), event.getFire(), explosionInteraction); // CraftBukkit // Paper - fix DamageSource API (revert to vanilla, no, just no, don't change this)
++            if (fun.bm.mili.carpet.config.modules.WorldR2Config.renewableDragonHead && this.isPowered()) {
++                final DamageSource damage = net.minecraft.world.level.Explosion.getDefaultDamageSource(level, this);
++                final DamageSource previous = this.miliDragonSkullExplosion;
++                this.miliDragonSkullExplosion = damage;
++                try {
++                    level.explode(this, damage, null, this.getX(), this.getY(), this.getZ(), event.getRadius(), event.getFire(), explosionInteraction);
++                } finally {
++                    this.miliDragonSkullExplosion = previous;
++                }
++            } else {
++                level.explode(this, this.getX(), this.getY(), this.getZ(), event.getRadius(), event.getFire(), explosionInteraction); // CraftBukkit // Paper
++            }
+             this.spawnLingeringCloud();
+             this.triggerOnDeathMobEffects(level, Entity.RemovalReason.KILLED);
+             this.discard(org.bukkit.event.entity.EntityRemoveEvent.Cause.EXPLODE); // CraftBukkit - add Bukkit remove cause

@@ -1,0 +1,41 @@
+From: Mili <noreply@mili.invalid>
+Subject: [PATCH] Register local microtiming watches
+
+Register the operator-only local watch command and retire a watch when its owning player session disconnects.
+
+diff --git a/net/minecraft/commands/Commands.java b/net/minecraft/commands/Commands.java
+--- a/net/minecraft/commands/Commands.java
++++ b/net/minecraft/commands/Commands.java
+@@ -1,5 +1,6 @@
+ package net.minecraft.commands;
+ 
++import fun.bm.mili.carpet.timing.MicroTiming;
+ import com.mojang.brigadier.CommandDispatcher;
+ import com.mojang.brigadier.ParseResults;
+ import com.mojang.brigadier.StringReader;
+@@ -224,6 +225,7 @@
+         EnchantCommand.register(this.dispatcher, context);
+         ExperienceCommand.register(this.dispatcher);
+         fun.bm.mili.carpet.CollectionGameplayRules.register(this.dispatcher);
++        MicroTiming.register(this.dispatcher);
+         FillCommand.register(this.dispatcher, context);
+         FillBiomeCommand.register(this.dispatcher, context);
+         ForceLoadCommand.register(this.dispatcher);
+diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
+--- a/net/minecraft/server/players/PlayerList.java
++++ b/net/minecraft/server/players/PlayerList.java
+@@ -1,5 +1,6 @@
+ package net.minecraft.server.players;
+ 
++import fun.bm.mili.carpet.timing.MicroTiming;
+ import com.google.common.collect.Lists;
+ import com.google.common.collect.Maps;
+ import com.google.common.collect.Sets;
+@@ -739,6 +740,7 @@
+         return this.remove(player, net.kyori.adventure.text.Component.translatable("multiplayer.player.left", net.kyori.adventure.text.format.NamedTextColor.YELLOW, io.papermc.paper.configuration.GlobalConfiguration.get().messages.useDisplayNameInQuitMessage ? player.getBukkitEntity().displayName() : io.papermc.paper.adventure.PaperAdventure.asAdventure(player.getDisplayName())));
+     }
+     public net.kyori.adventure.text.@Nullable Component remove(final ServerPlayer player, final net.kyori.adventure.text.Component leaveMessage) {
++        MicroTiming.disconnected(player);
+         try {
+             return this.removeFromWorld(player, leaveMessage);
+         } catch (RuntimeException | Error failure) {

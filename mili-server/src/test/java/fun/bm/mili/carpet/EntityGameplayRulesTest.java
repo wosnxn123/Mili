@@ -41,7 +41,8 @@ class EntityGameplayRulesTest {
     void protocolEntriesAreUniqueAndUseVanillaDefaults() {
         var rules = new ArrayList<CarpetRule>();
         EntityGameplayRules.registerProtocolRules(rules);
-        assertEquals(42, rules.size());
+        assertEquals(43, rules.size());
+        assertTrue(rules.contains(CarpetRule.of("carpet", "creativeFlyDrag", "0.09")));
         assertEquals(rules.size(), rules.stream().map(CarpetRule::name).distinct().count());
         assertEquals(1.0, EntityGameplayConfig.creativeFlySpeed());
         assertTrue(rules.contains(CarpetRule.of("carpetorgaddition", "experienceOrbMerge", false)));
