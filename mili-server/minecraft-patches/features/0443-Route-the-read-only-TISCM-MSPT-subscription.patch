@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mili contributors <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Route the read-only TISCM MSPT subscription on the player region
+
+Consume this channel only on the PLAY listener. Deliver the latest
+published global tick sample from the owning region, not the producer.
+Retire the session on disconnect or transition back to configuration.
+
+diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+--- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -272,6 +272,7 @@
+     private static final Component CHAT_VALIDATION_FAILED = Component.translatable("multiplayer.disconnect.chat_validation_failed");
+     private static final Component INVALID_COMMAND_SIGNATURE = Component.translatable("chat.disabled.invalid_command_signature").withStyle(ChatFormatting.RED);
+     public ServerPlayer player;
++    private final fun.bm.mili.protocol.tiscm.TISCMProtocol.Session tiscmSession = new fun.bm.mili.protocol.tiscm.TISCMProtocol.Session(); // Mili - TISCM MSPT
+     public final PlayerChunkSender chunkSender;
+     private int tickCount;
+     private int ackBlockChangesUpTo = -1;
+@@ -382,6 +383,7 @@
+             return;
+         }
+         // Folia end - region threading
++        this.tiscmSession.sendLatestSample(this); // Mili - TISCM MSPT
+         if (this.ackBlockChangesUpTo > -1) {
+             this.send(new ClientboundBlockChangedAckPacket(this.ackBlockChangesUpTo));
+             this.ackBlockChangesUpTo = -1;
+@@ -2430,6 +2432,7 @@
+ 
+     private void removePlayerFromWorld(net.kyori.adventure.text.@Nullable Component quitMessage) {
+         // Paper end - Fix kick event leave message not being sent
++        this.tiscmSession.close(); // Mili - TISCM MSPT: disconnect or return to configuration
+         this.chatMessageChain.close();
+         // CraftBukkit start - Replace vanilla quit message handling with our own.
+         /*
+@@ -3951,6 +3954,16 @@
+ 
+     @Override
+     public void handleCustomPayload(final ServerboundCustomPayloadPacket packet) {
++        // Mili start - TISCM MSPT: this PLAY connection only
++        if (packet.payload() instanceof net.minecraft.network.protocol.common.custom.DiscardedPayload payload
++            && fun.bm.mili.protocol.tiscm.TISCMProtocol.CHANNEL.equals(payload.id())) {
++            if (fun.bm.mili.protocol.tiscm.TISCMProtocol.canReceive(payload.data().length)) {
++                PacketUtils.ensureRunningOnSameThread(packet, this, this.server.packetProcessor());
++                this.tiscmSession.receive(this, payload.data());
++            }
++            return;
++        }
++        // Mili end - TISCM MSPT
+         super.handleCustomPayload(packet); // Paper
+     }
+ 

@@ -54,7 +54,7 @@ public final class GameplayCompatRules {
     }
 
     static void registerProtocolRules(final List<CarpetRule> rules) {
-        rules.add(CarpetRule.of("carpetorgaddition", "blockDropsDirectlyEnterInventory", GameplayCompatConfig.blockDropsDirectlyEnterInventory));
+        rules.add(CarpetRule.of("carpetorgaddition", "blockDropsDirectlyEnterInventory", CollectionGameplayRules.miningDropMode()));
         rules.add(CarpetRule.of("carpettisaddition", "hopperXpCounters", GameplayCompatConfig.hopperXpCounters));
         rules.add(CarpetRule.of("carpet", "maxEntityCollisions", Math.max(0, GameplayCompatConfig.maxEntityCollisions)));
         rules.add(CarpetRule.of("carpetamsaddition", "blowUpEverything", GameplayCompatConfig.blowUpEverything));

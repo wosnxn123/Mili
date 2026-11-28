@@ -23,9 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class CarpetCompatSync {
-    // Mili start - fix: declare init as volatile to prevent check-then-act race in apply()
-    private static volatile boolean init = false;
-    // Mili end
+    private CarpetCompatSync() {}
 
     public static void apply() {
         if (CoreConfig.enabled) {
@@ -33,15 +31,13 @@ public final class CarpetCompatSync {
             applyFakePlayerRules();
             applyCounterRules();
         }
-        CarpetLoggerProtocol.refreshConfiguredDefaults(!init);
+        CarpetLoggerProtocol.refreshConfiguredDefaults();
         registerProtocolRules();
 
         // After initial load or reload, re-inject compat recipes so that
         // toggling betterCraftableBoneBlock / betterCraftableDispenser takes effect
         // without requiring a full server restart.
         reinjectCompatRecipes();
-
-        init = true;
     }
 
     private static void reinjectCompatRecipes() {
@@ -193,6 +189,8 @@ public final class CarpetCompatSync {
         GameplayCompatRules.registerProtocolRules(rules);
         WorldGameplayRules.registerProtocolRules(rules);
         EntityGameplayRules.registerProtocolRules(rules);
+        ContainerR2Rules.appendRules(rules);
+        WorldR2Rules.appendRules(rules);
         CarpetServerProtocol.CarpetRules.replace(rules);
     }
 }

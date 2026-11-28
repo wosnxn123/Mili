@@ -1,0 +1,474 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mili contributors <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 11:07:36 +0800
+Subject: [PATCH] Open owner-bound portable shulker and bundle menus
+
+Retire closed or disconnected sessions before accepting more updates.
+
+diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index 3aec8dd8f590a3bc373f3d58f2bdc6504a828f1e..9897a70e49a2431673c5f5b57fd79ec318940684 100644
+--- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -3555,6 +3555,11 @@ public class ServerGamePacketListenerImpl
+ 
+                         if (event.getResult() != org.bukkit.event.Event.Result.DENY) { // if denied, synchronizing is fully handled by broadcastChanges at the end
+                             this.player.containerMenu.clicked(slotIndex, packet.buttonNum(), packet.containerInput(), this.player);
++                            if (this.player.containerMenu != oldContainer) {
++                                oldContainer.resumeRemoteUpdates();
++                                this.player.containerMenu.broadcastFullState();
++                                return;
++                            }
+                         }
+ 
+                         if (event instanceof CraftItemEvent || event instanceof SmithItemEvent) {
+@@ -3681,17 +3686,17 @@ public class ServerGamePacketListenerImpl
+         PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
+         if (this.player.hasInfiniteMaterials()) {
+             boolean drop = packet.slotNum() < 0;
+-            ItemStack itemStack = packet.itemStack();
++            ItemStack itemStack = org.leavesmc.leaves.util.ItemOverstackUtils.decodeMaxStackSize(packet.itemStack());
+             if (!itemStack.isItemEnabled(this.player.level().enabledFeatures())) {
+                 return;
+             }
+ 
+             boolean validSlot = packet.slotNum() >= 1 && packet.slotNum() <= 45;
+-            boolean validData = itemStack.isEmpty() || itemStack.getCount() <= itemStack.getMaxStackSize();
+-            if (drop || (validSlot && !ItemStack.matches(this.player.inventoryMenu.getSlot(packet.slotNum()).getItem(), packet.itemStack()))) { // Insist on valid slot
++            boolean validData = itemStack.isEmpty() || itemStack.getCount() <= org.leavesmc.leaves.util.ItemOverstackUtils.getItemStackMaxCount(itemStack);
++            if (drop || (validSlot && !ItemStack.matches(this.player.inventoryMenu.getSlot(packet.slotNum()).getItem(), itemStack))) { // Insist on valid slot
+                 // CraftBukkit start - Call click event
+                 org.bukkit.inventory.InventoryView inventory = this.player.inventoryMenu.getBukkitView();
+-                org.bukkit.inventory.ItemStack item = CraftItemStack.asBukkitCopy(packet.itemStack());
++                org.bukkit.inventory.ItemStack item = CraftItemStack.asBukkitCopy(itemStack);
+ 
+                 SlotType type = SlotType.QUICKBAR;
+                 if (drop) {
+diff --git a/net/minecraft/world/inventory/AbstractContainerMenu.java b/net/minecraft/world/inventory/AbstractContainerMenu.java
+index 252ee4ccb164c0325fb2c0dd2aa77ace33a226ad..760265d273c0a1f480aa05a60f219e6adc859a59 100644
+--- a/net/minecraft/world/inventory/AbstractContainerMenu.java
++++ b/net/minecraft/world/inventory/AbstractContainerMenu.java
+@@ -402,6 +402,7 @@ public abstract class AbstractContainerMenu {
+     private void doClick(final int slotIndex, final int buttonNum, final ContainerInput containerInput, final Player player) {
+         Inventory inventory = player.getInventory();
+         if (!doClickCheck(slotIndex, buttonNum, containerInput, player)) return; // Leaves - doClick check
++        if (this instanceof PortableContainerMenu portable && !portable.allowInput(player, slotIndex, buttonNum, containerInput)) return;
+         if (containerInput == ContainerInput.QUICK_CRAFT) {
+             int expectedStatus = this.quickcraftStatus;
+             this.quickcraftStatus = getQuickcraftHeader(buttonNum);
+@@ -453,7 +454,7 @@ public abstract class AbstractContainerMenu {
+                             && (this.quickcraftType == QUICKCRAFT_TYPE_CLONE || carriedItemStack.getCount() >= this.quickcraftSlots.size())
+                             && this.canDragTo(slot)) {
+                             int carry = slot.hasItem() ? slot.getItem().getCount() : 0;
+-                            int maxSize = Math.min(source.getMaxStackSize(), slot.getMaxStackSize(source));
++                            int maxSize = slot.getMaxStackSize(source);
+                             int newCount = Math.min(getQuickCraftPlaceCount(this.quickcraftSlots.size(), this.quickcraftType, source) + carry, maxSize);
+                             remaining -= newCount - carry;
+                             // slot.setByPlayer(source.copyWithCount(newCount));
+@@ -537,6 +538,7 @@ public abstract class AbstractContainerMenu {
+                 Slot slot = this.slots.get(slotIndex);
+                 ItemStack clicked = slot.getItem();
+                 ItemStack carried = this.getCarried();
++                if (clickAction == ClickAction.SECONDARY && PortableContainerMenu.tryInventoryClick(this, player, slot)) return;
+                 player.updateTutorialInventoryAction(carried, slot.getItem(), clickAction);
+                 if (!this.tryItemClickBehaviourOverride(player, clickAction, slot, clicked, carried)) {
+                     if (clicked.isEmpty()) {
+@@ -797,7 +799,7 @@ public abstract class AbstractContainerMenu {
+             destSlot = endSlot - 1;
+         }
+ 
+-        if (itemStack.isStackable()) {
++        if (org.leavesmc.leaves.util.ItemOverstackUtils.isStackable(itemStack)) {
+             while (!itemStack.isEmpty() && (backwards ? destSlot >= startSlot : destSlot < endSlot)) {
+                 Slot slot = this.slots.get(destSlot);
+                 ItemStack target = slot.getItem();
+@@ -806,7 +808,8 @@ public abstract class AbstractContainerMenu {
+                     target = target.copy();
+                 }
+                 // Paper end - Add PlayerTradeEvent and PlayerPurchaseEvent
+-                if (!target.isEmpty() && ItemStack.isSameItemSameComponents(itemStack, target)) {
++                if (!target.isEmpty() && ItemStack.isSameItemSameComponents(itemStack, target)
++                    && (!(this instanceof PortableContainerMenu portable) || !portable.isSourceSlot(slot))) {
+                     int totalStack = target.getCount() + itemStack.getCount();
+                     int maxStackSize = slot.getMaxStackSize(target);
+                     if (totalStack <= maxStackSize) {
+@@ -849,7 +852,8 @@ public abstract class AbstractContainerMenu {
+                     target = target.copy();
+                 }
+                 // Paper end - Add PlayerTradeEvent and PlayerPurchaseEvent
+-                if (target.isEmpty() && slot.mayPlace(itemStack)) {
++                if (target.isEmpty() && slot.mayPlace(itemStack)
++                    && (!(this instanceof PortableContainerMenu portable) || !portable.isSourceSlot(slot))) {
+                     int maxStackSize = slot.getMaxStackSize(itemStack);
+                     // Paper start - Add PlayerTradeEvent and PlayerPurchaseEvent
+                     if (isCheck) {
+@@ -898,7 +902,7 @@ public abstract class AbstractContainerMenu {
+     public static boolean canItemQuickReplace(final @Nullable Slot slot, final ItemStack itemStack, final boolean ignoreSize) {
+         boolean slotIsEmpty = slot == null || !slot.hasItem();
+         return !slotIsEmpty && ItemStack.isSameItemSameComponents(itemStack, slot.getItem())
+-            ? slot.getItem().getCount() + (ignoreSize ? 0 : itemStack.getCount()) <= itemStack.getMaxStackSize()
++            ? slot.getItem().getCount() + (ignoreSize ? 0 : itemStack.getCount()) <= slot.getMaxStackSize(itemStack)
+             : slotIsEmpty;
+     }
+ 
+diff --git a/net/minecraft/world/inventory/PortableContainerMenu.java b/net/minecraft/world/inventory/PortableContainerMenu.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..0e1a16dacc8e641fe0cdba59e40f57e57144ecbb
+--- /dev/null
++++ b/net/minecraft/world/inventory/PortableContainerMenu.java
+@@ -0,0 +1,266 @@
++package net.minecraft.world.inventory;
++
++import ca.spottedleaf.moonrise.common.util.TickThread;
++import fun.bm.mili.carpet.config.modules.ContainerR2Config;
++import java.util.ArrayList;
++import java.util.List;
++import net.minecraft.core.component.DataComponents;
++import net.minecraft.server.level.ServerPlayer;
++import net.minecraft.world.InteractionHand;
++import net.minecraft.world.SimpleContainer;
++import net.minecraft.world.SimpleMenuProvider;
++import net.minecraft.world.entity.player.Inventory;
++import net.minecraft.world.entity.player.Player;
++import net.minecraft.world.item.BlockItem;
++import net.minecraft.world.item.BundleItem;
++import net.minecraft.world.item.ItemStack;
++import net.minecraft.world.item.component.ItemContainerContents;
++import net.minecraft.world.level.block.ShulkerBoxBlock;
++
++/** A session tied to one exact stack in the opening player's inventory. */
++public final class PortableContainerMenu extends ShulkerBoxMenu {
++    private final Backing backing;
++
++    private PortableContainerMenu(final int id, final Inventory inventory, final Backing backing) {
++        super(backing.size == 54 ? MenuType.GENERIC_9x6 : backing.bundle ? MenuType.GENERIC_9x3 : MenuType.SHULKER_BOX,
++            id, inventory, backing, backing.size / 9, stack -> canStore(stack, backing.bundle));
++        this.backing = backing;
++        backing.menu = this;
++    }
++
++    public static boolean isShulker(final ItemStack stack) {
++        return !stack.isEmpty() && stack.getItem() instanceof BlockItem block && block.getBlock() instanceof ShulkerBoxBlock;
++    }
++
++    private static boolean usableShulker(final ItemStack stack) {
++        return isShulker(stack) && stack.getCount() == 1 && !stack.has(DataComponents.LOCK)
++            && !stack.has(DataComponents.CONTAINER_LOOT) && !stack.has(DataComponents.BLOCK_ENTITY_DATA);
++    }
++
++    private static boolean canStore(final ItemStack stack, final boolean bundle) {
++        return stack.isEmpty() || stack.getItem().canFitInsideContainerItems() && (!bundle || !(stack.getItem() instanceof BundleItem));
++    }
++
++    static int shulkerSlots(final ItemStack stack) {
++        return ContainerR2Config.largeShulkerBox || stack.getOrDefault(DataComponents.CONTAINER, ItemContainerContents.EMPTY)
++            .itemCopies().skip(27).anyMatch(item -> !item.isEmpty()) ? 54 : 27;
++    }
++
++    public static boolean tryUse(final Player player, final InteractionHand hand, final boolean bundle) {
++        final int size = bundle ? ContainerR2Config.bundleSlots() : ContainerR2Config.quickShulker ? 27 : 0;
++        if (size == 0) return false;
++        final ItemStack source = player.getItemInHand(hand);
++        if (bundle ? !(source.getItem() instanceof BundleItem) || source.getCount() != 1 : !usableShulker(source)) return false;
++        if (player instanceof ServerPlayer owner) {
++            final int index = hand == InteractionHand.MAIN_HAND ? owner.getInventory().getSelectedSlot() : Inventory.SLOT_OFFHAND;
++            open(owner, index, source, bundle, bundle ? size : shulkerSlots(source));
++        }
++        // Even if InventoryOpenEvent is cancelled, don't use a second interaction on the same packet.
++        return true;
++    }
++
++    private static void open(final ServerPlayer owner, final int index, final ItemStack source, final boolean bundle, final int size) {
++        if (!TickThread.isTickThreadFor(owner) || owner.hasDisconnected() || owner.isSpectator() || !owner.isAlive() || owner.getInventory().getItem(index) != source) return;
++        final Backing backing = new Backing(owner, index, source, bundle, size);
++        try {
++            owner.openMenu(new SimpleMenuProvider((id, inventory, player) -> new PortableContainerMenu(id, inventory, backing), source.getHoverName()));
++        } finally {
++            backing.opening = false;
++        }
++    }
++
++    static boolean tryInventoryClick(final AbstractContainerMenu menu, final Player player, final Slot slot) {
++        if (!ContainerR2Config.quickShulker || !(player instanceof ServerPlayer owner) || owner.isSpectator()
++            || !TickThread.isTickThreadFor(owner) || owner.hasDisconnected() || owner.containerMenu != menu || menu instanceof PortableContainerMenu
++            || slot.getClass() != Slot.class || slot.container != owner.getInventory() || slot.getContainerSlot() >= 36
++            || !slot.allowModification(player)) return false;
++        final ItemStack inSlot = slot.getItem();
++        final ItemStack carried = menu.getCarried();
++        if (inSlot == carried) return false;
++        if (usableShulker(inSlot)) {
++            if (carried.isEmpty()) {
++                open(owner, slot.getContainerSlot(), inSlot, false, shulkerSlots(inSlot));
++            } else if (!isShulker(carried)) {
++                transferInto(inSlot, carried);
++                slot.setChanged();
++            } else {
++                return false;
++            }
++            return true;
++        }
++        if (!usableShulker(carried) || isShulker(inSlot)) return false;
++        if (inSlot.isEmpty()) {
++            final List<ItemStack> items = contents(carried);
++            for (int i = 0, end = Math.min(shulkerSlots(carried), items.size()); i < end; ++i) {
++                final ItemStack item = items.get(i);
++                if (item.isEmpty()) continue;
++                if (slot.mayPlace(item)) {
++                    final int amount = Math.min(item.getCount(), slot.getMaxStackSize(item));
++                    if (amount > 0) {
++                        slot.setByPlayer(item.split(amount));
++                        write(carried, items);
++                    }
++                }
++                break;
++            }
++        } else {
++            transferInto(carried, inSlot);
++            slot.setChanged();
++        }
++        return true;
++    }
++
++    private static List<ItemStack> contents(final ItemStack stack) {
++        return new ArrayList<>(stack.getOrDefault(DataComponents.CONTAINER, ItemContainerContents.EMPTY).itemCopies().toList());
++    }
++
++    private static void write(final ItemStack source, final List<ItemStack> contents) {
++        source.set(DataComponents.CONTAINER, ItemContainerContents.fromItems(contents));
++    }
++
++    static int transferInto(final ItemStack box, final ItemStack source) {
++        if (source.isEmpty() || !canStore(source, false)) return 0;
++        final List<ItemStack> items = contents(box);
++        final int size = shulkerSlots(box);
++        while (items.size() < size) items.add(ItemStack.EMPTY);
++        final int original = source.getCount();
++        final int limit = source.getMaxStackSize();
++        for (int i = 0; i < size && !source.isEmpty(); ++i) {
++            final ItemStack existing = items.get(i);
++            if (!existing.isEmpty() && ItemStack.isSameItemSameComponents(existing, source)) {
++                final int moved = Math.min(source.getCount(), Math.max(0, limit - existing.getCount()));
++                existing.grow(moved);
++                source.shrink(moved);
++            }
++        }
++        for (int i = 0; i < size && !source.isEmpty(); ++i) {
++            if (items.get(i).isEmpty()) items.set(i, source.split(limit));
++        }
++        if (source.getCount() != original) write(box, items);
++        return original - source.getCount();
++    }
++
++    static ItemContainerContents replaceVisible(final ItemContainerContents original, final List<ItemStack> visible) {
++        final List<ItemStack> result = new ArrayList<>(visible);
++        if (original != null) original.itemCopies().skip(visible.size()).forEach(result::add);
++        return ItemContainerContents.fromItems(result);
++    }
++
++    boolean isSourceSlot(final Slot slot) {
++        return slot.container == this.backing.owner.getInventory() && slot.getContainerSlot() == this.backing.index;
++    }
++
++    boolean allowInput(final Player player, final int rawSlot, final int button, final ContainerInput input) {
++        return this.stillValid(player)
++            && input != ContainerInput.QUICK_CRAFT // Don't reserve cursor items across a re-entrant Bukkit drag callback.
++            && (input != ContainerInput.SWAP || this.backing.index != button)
++            && (rawSlot < 0 || rawSlot >= this.slots.size() || !this.isSourceSlot(this.getSlot(rawSlot)));
++    }
++
++    @Override
++    public boolean stillValid(final Player player) {
++        return player == this.backing.owner && this.backing.isActive();
++    }
++
++    @Override
++    public boolean canTakeItemForPickAll(final ItemStack carried, final Slot target) {
++        return !this.isSourceSlot(target) && super.canTakeItemForPickAll(carried, target);
++    }
++
++    @Override
++    public ItemStack quickMoveStack(final Player player, final int rawSlot) {
++        return this.stillValid(player) && !this.isSourceSlot(this.getSlot(rawSlot)) ? super.quickMoveStack(player, rawSlot) : ItemStack.EMPTY;
++    }
++
++    @Override
++    public void removed(final Player player) {
++        if (player != this.backing.owner) return;
++        this.backing.closed = true;
++        super.removed(player);
++    }
++
++    private static final class Backing extends SimpleContainer {
++        private final ServerPlayer owner;
++        private final int index;
++        private final ItemStack source;
++        private final boolean bundle;
++        private final int size;
++        private ItemContainerContents expected;
++        private PortableContainerMenu menu;
++        private boolean opening = true;
++        private boolean closed;
++
++        private Backing(final ServerPlayer owner, final int index, final ItemStack source, final boolean bundle, final int size) {
++            super(size);
++            this.owner = owner;
++            this.index = index;
++            this.source = source;
++            this.bundle = bundle;
++            this.size = size;
++            this.expected = source.get(DataComponents.CONTAINER);
++            if (this.expected != null) {
++                final var items = this.expected.itemCopies().limit(size).iterator();
++                for (int i = 0; items.hasNext(); ++i) super.getContents().set(i, items.next());
++            }
++        }
++
++        private boolean isSourceValid() {
++            return TickThread.isTickThreadFor(this.owner) && !this.closed && !this.owner.hasDisconnected() && this.owner.isAlive() && !this.owner.isSpectator()
++                && this.owner.getInventory().getItem(this.index) == this.source
++                && (this.bundle ? ContainerR2Config.bundleSlots() == this.size && this.source.getCount() == 1
++                    : ContainerR2Config.quickShulker && usableShulker(this.source))
++                && this.source.get(DataComponents.CONTAINER) == this.expected;
++        }
++
++        private boolean isActive() {
++            return this.menu != null && this.owner.containerMenu == this.menu && this.isSourceValid();
++        }
++
++        @Override
++        public List<ItemStack> getContents() {
++            return (this.opening || this.owner.containerMenu == this.menu) && this.isSourceValid()
++                ? super.getContents().stream().map(ItemStack::copy).toList() : java.util.Collections.nCopies(this.size, ItemStack.EMPTY);
++        }
++
++        @Override
++        public ItemStack getItem(final int slot) {
++            if (this.isActive()) return super.getItem(slot);
++            // InventoryOpenEvent can inspect a copy, but cannot write into a not-yet-open menu.
++            return this.opening && this.isSourceValid() ? super.getItem(slot).copy() : ItemStack.EMPTY;
++        }
++
++        @Override
++        public ItemStack removeItem(final int slot, final int amount) {
++            return this.isActive() ? super.removeItem(slot, amount) : ItemStack.EMPTY;
++        }
++
++        @Override
++        public ItemStack removeItemNoUpdate(final int slot) {
++            if (!this.isActive()) return ItemStack.EMPTY;
++            final ItemStack removed = super.removeItemNoUpdate(slot);
++            this.setChanged();
++            return removed;
++        }
++
++        @Override
++        public void setItem(final int slot, final ItemStack stack) {
++            if (this.isActive() && canStore(stack, this.bundle)) super.setItem(slot, stack);
++        }
++
++        @Override
++        public void clearContent() {
++            if (this.isActive()) super.clearContent();
++        }
++
++        @Override
++        public void setChanged() {
++            if (!this.isActive()) return;
++            final ItemContainerContents updated = replaceVisible(this.expected, super.getContents());
++            if (updated.equals(this.expected == null ? ItemContainerContents.EMPTY : this.expected)) return;
++            this.source.set(DataComponents.CONTAINER, updated);
++            this.expected = this.source.get(DataComponents.CONTAINER);
++            this.owner.getInventory().setChanged();
++            super.setChanged();
++        }
++    }
++}
+diff --git a/net/minecraft/world/item/BlockItem.java b/net/minecraft/world/item/BlockItem.java
+index 03d8d6902321a7b815990ca915f693a0475164ad..d58cb67bd20a2b7e326053b430fa30aafea53960 100644
+--- a/net/minecraft/world/item/BlockItem.java
++++ b/net/minecraft/world/item/BlockItem.java
+@@ -37,6 +37,15 @@ public class BlockItem extends Item {
+         this.block = block;
+     }
+ 
++    @Override
++    public InteractionResult use(final net.minecraft.world.level.Level level, final net.minecraft.world.entity.player.Player player,
++                                 final net.minecraft.world.InteractionHand hand) {
++        if (this.getBlock() instanceof ShulkerBoxBlock && net.minecraft.world.inventory.PortableContainerMenu.tryUse(player, hand, false)) {
++            return InteractionResult.SUCCESS_SERVER;
++        }
++        return super.use(level, player, hand);
++    }
++
+     @Override
+     public InteractionResult useOn(final UseOnContext context) {
+         InteractionResult placeResult = this.place(new BlockPlaceContext(context));
+@@ -234,7 +243,8 @@ public class BlockItem extends Item {
+     public void onDestroyed(final ItemEntity entity) {
+         ItemContainerContents container = entity.getItem().set(DataComponents.CONTAINER, ItemContainerContents.EMPTY);
+         if (container != null) {
+-            ItemUtils.onContainerDestroyed(entity, container.nonEmptyItemCopyStream());
++            final int copies = this.getBlock() instanceof ShulkerBoxBlock ? entity.getItem().getCount() : 1;
++            for (int i = 0; i < copies; ++i) ItemUtils.onContainerDestroyed(entity, container.nonEmptyItemCopyStream());
+         }
+     }
+ 
+diff --git a/net/minecraft/world/item/BundleItem.java b/net/minecraft/world/item/BundleItem.java
+index a9f29eb86784c1b846ef7540f1229dcdd76c662c..78ce644cc3ac824f07c927c5a5f953765b76ac87 100644
+--- a/net/minecraft/world/item/BundleItem.java
++++ b/net/minecraft/world/item/BundleItem.java
+@@ -58,6 +58,7 @@ public class BundleItem extends Item {
+ 
+     @Override
+     public boolean overrideStackedOnOther(final ItemStack self, final Slot slot, final ClickAction clickAction, final Player player) {
++        if (fun.bm.mili.carpet.config.modules.ContainerR2Config.bundleSlots() != 0) return false;
+         BundleContents initialContents = self.get(DataComponents.BUNDLE_CONTENTS);
+         if (initialContents == null) {
+             return false;
+@@ -98,6 +99,7 @@ public class BundleItem extends Item {
+     public boolean overrideOtherStackedOnMe(
+         final ItemStack self, final ItemStack other, final Slot slot, final ClickAction clickAction, final Player player, final SlotAccess carriedItem
+     ) {
++        if (fun.bm.mili.carpet.config.modules.ContainerR2Config.bundleSlots() != 0) return false;
+         if (clickAction == ClickAction.PRIMARY && other.isEmpty()) {
+             toggleSelectedItem(self, BundleContents.NO_SELECTED_ITEM_INDEX);
+             return false;
+@@ -139,6 +141,7 @@ public class BundleItem extends Item {
+ 
+     @Override
+     public InteractionResult use(final Level level, final Player player, final InteractionHand hand) {
++        if (net.minecraft.world.inventory.PortableContainerMenu.tryUse(player, hand, true)) return InteractionResult.SUCCESS_SERVER;
+         player.startUsingItem(hand);
+         return InteractionResult.SUCCESS;
+     }
+@@ -248,11 +251,11 @@ public class BundleItem extends Item {
+ 
+     @Override
+     public void onDestroyed(final ItemEntity entity) {
+-        BundleContents contents = entity.getItem().get(DataComponents.BUNDLE_CONTENTS);
+-        if (contents != null) {
+-            entity.getItem().set(DataComponents.BUNDLE_CONTENTS, BundleContents.EMPTY);
+-            ItemUtils.onContainerDestroyed(entity, contents.itemCopies());
+-        }
++        final ItemStack bundle = entity.getItem();
++        final var expanded = bundle.remove(DataComponents.CONTAINER);
++        final BundleContents contents = bundle.set(DataComponents.BUNDLE_CONTENTS, BundleContents.EMPTY);
++        if (expanded != null) ItemUtils.onContainerDestroyed(entity, expanded.nonEmptyItemCopyStream());
++        if (contents != null) ItemUtils.onContainerDestroyed(entity, contents.itemCopies());
+     }
+ 
+     private static void playRemoveOneSound(final Entity entity) {
+diff --git a/net/minecraft/world/item/component/BundleContents.java b/net/minecraft/world/item/component/BundleContents.java
+index d8e31a85b64ca3c26d1750ac9c6ba51b82b38962..ae5e05ab3b649d7ae0b0ee6e7c7012b148592007 100644
+--- a/net/minecraft/world/item/component/BundleContents.java
++++ b/net/minecraft/world/item/component/BundleContents.java
+@@ -87,7 +87,9 @@ public final class BundleContents implements ContainerComponent<BundleContents>,
+     }
+ 
+     public static boolean canItemBeInBundle(final ItemStack itemToAdd) {
+-        return !itemToAdd.isEmpty() && itemToAdd.getItem().canFitInsideContainerItems();
++        return !itemToAdd.isEmpty() && itemToAdd.getItem().canFitInsideContainerItems()
++            && (!(itemToAdd.getItem() instanceof net.minecraft.world.item.BundleItem)
++                || itemToAdd.getOrDefault(net.minecraft.core.component.DataComponents.CONTAINER, ItemContainerContents.EMPTY).size() == 0);
+     }
+ 
+     // Paper start - correct bundle inventory action

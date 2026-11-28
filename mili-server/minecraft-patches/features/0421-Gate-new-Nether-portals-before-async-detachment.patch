@@ -1,0 +1,194 @@
+From d4b249a39a0fb9ab7181189483db0259e768d5da Mon Sep 17 00:00:00 2001
+From: Mili Contributors <mili-contributors@example.invalid>
+Date: Sat, 28 Nov 2026 11:18:29 +0800
+Subject: [PATCH] Gate new Nether portals before async detachment
+
+Port from Lophine 7a51f49, Minecraft patch 0132. See META-INF/licenses/carpet-26.3.txt.
+
+Restricted entities resolve an existing exit before detaching, checking again on the source owner before starting the transfer. No match never dispatches the native no-frame destination fallback. The synchronous path still honors PortalEventResult.canCreatePortal.
+
+Discard async results when the entity scheduler has moved to a different entity instance.
+
+diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
+index 1e1d6f9b619c20db7f0b22b8d0bf59559c7e2984..40885c9933f6c17a3275e3597512e6389a6d646f 100644
+--- a/net/minecraft/world/entity/Entity.java
++++ b/net/minecraft/world/entity/Entity.java
+@@ -4839,6 +4839,11 @@ public abstract class Entity
+     // we need to first search, then report back, ...
+     protected void findOrCreatePortalAsync(ServerLevel origin, BlockPos originPortal, ServerLevel destination, PortalType type,
+                                            ca.spottedleaf.concurrentutil.completable.CallbackCompletable<TeleportTransition> portalInfoCompletable) {
++        this.findPortalAsync(origin, originPortal, destination, type, false, portalInfoCompletable);
++    }
++
++    private void findPortalAsync(ServerLevel origin, BlockPos originPortal, ServerLevel destination, PortalType type,
++                                 boolean existingOnly, ca.spottedleaf.concurrentutil.completable.CallbackCompletable<TeleportTransition> portalInfoCompletable) {
+         switch (type) {
+             // end portal logic is quite simple, the spawn in the end is fixed and when returning to the overworld
+             // we just select the spawn position
+@@ -4937,9 +4942,13 @@ public abstract class Entity
+                         : BlockUtil.getLargestRectangleAround(
+                             originPortal, originalPortalDirection, fun.bm.mili.carpet.WorldGameplayRules.portalSearchSize(), Direction.Axis.Y, fun.bm.mili.carpet.WorldGameplayRules.portalSearchSize(),
+                             (blockpos) -> {
+-                                return origin.getBlockStateFromEmptyChunkIfLoaded(blockpos) == originalPortalBlock;
++                                return (!existingOnly || ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(origin, blockpos))
++                                    && origin.getBlockStateFromEmptyChunkIfLoaded(blockpos) == originalPortalBlock;
+                             }
+                         );
++                final EntityDimensions sourceDimensions = existingOnly ? this.getDimensions(this.getPose()) : null;
++                final Vec3 sourceOffset = !existingOnly ? null : originalPortalRectangle == null ? new Vec3(0.5, 0.0, 0.0)
++                    : this.getRelativePortalPosition(originalPortalDirection, originalPortalRectangle);
+ 
+                 boolean destinationIsNether = destination.getTypeKey() == net.minecraft.world.level.dimension.LevelStem.NETHER;
+ 
+@@ -4968,6 +4977,31 @@ public abstract class Entity
+                 // post portal find/create logic
+                 portalFound.addWaiter(
+                     (BlockUtil.FoundRectangle portal, Throwable thr) -> {
++                        // A restricted entity does not enter the native no-portal fallback.
++                        if (existingOnly) {
++                            if (portal == null) {
++                                portalInfoCompletable.complete(null);
++                            } else {
++                                final BlockPos corner = portal.minCorner;
++                                final int margin = Math.max(3, (int) Math.ceil(sourceDimensions.width()) + 2);
++                                final int radius = portal.axis1Size + margin;
++                                destination.moonrise$loadChunksAsync(corner, radius, ca.spottedleaf.concurrentutil.util.Priority.HIGH, loaded ->
++                                    io.papermc.paper.threadedregions.RegionizedServer.getInstance().taskQueue.queueOrExecuteTickTask(
++                                        destination, corner.getX() >> 4, corner.getZ() >> 4, () -> {
++                                            if (!fun.bm.mili.carpet.WorldGameplayRules.ownsLoadedBox(destination,
++                                                corner.getX() - margin, corner.getZ() - margin, corner.getX() + radius, corner.getZ() + radius)
++                                                || !destination.getBlockState(corner).is(Blocks.NETHER_PORTAL)
++                                                || !destination.getBlockState(portal.foundOrigin).is(Blocks.NETHER_PORTAL)) {
++                                                portalInfoCompletable.complete(null);
++                                                return;
++                                            }
++                                            portalInfoCompletable.complete(net.minecraft.world.level.block.NetherPortalBlock.createDimensionTransition(
++                                                destination, portal, originalPortalDirection, sourceOffset, sourceDimensions, null,
++                                                TeleportTransition.PLAY_PORTAL_SOUND.then(ent -> ent.placePortalTicket(portal.foundOrigin))));
++                                        }));
++                            }
++                            return;
++                        }
+                         // no portal could be created
+                         if (portal == null) {
+                             portalInfoCompletable.complete(
+@@ -5003,6 +5037,10 @@ public abstract class Entity
+                             return;
+                         }
+ 
++                        if (existingOnly) {
++                            portalFound.complete(null);
++                            return;
++                        }
+                         // add tickets so that we can re-search for a portal once the chunks are loaded
+                         Long ticketId = Long.valueOf(CREATE_PORTAL_DOUBLE_CHECK.getAndIncrement());
+                         for (net.minecraft.world.level.chunk.ChunkAccess chunk : chunks) {
+@@ -5090,10 +5128,12 @@ public abstract class Entity
+ 
+     }
+ 
++    private boolean miliExistingNetherPortalLookup;
++
+     protected boolean portalToAsync(ServerLevel destination, BlockPos portalPos, boolean takePassengers,
+                                     PortalType type, java.util.function.Consumer<Entity> teleportComplete) {
+         ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this, "Cannot portal entity async");
+-        if (!((ServerLevel)this.level).isAllowedToEnterPortal(destination)
++        if (this.miliExistingNetherPortalLookup || !((ServerLevel)this.level).isAllowedToEnterPortal(destination)
+             || !this.canPortalAsync(destination, takePassengers)) {
+             return false;
+         }
+@@ -5106,6 +5146,36 @@ public abstract class Entity
+             return false;
+         }
+         // Luminol end
++        if (type == PortalType.NETHER && !fun.bm.mili.carpet.WorldR2Rules.mayCreateNetherPortal(this)) {
++            final ServerLevel origin = (ServerLevel) this.level();
++            final BlockPos entry = portalPos.immutable();
++            final var lookup = new ca.spottedleaf.concurrentutil.completable.CallbackCompletable<TeleportTransition>();
++            final var scheduler = this.getBukkitEntity().taskScheduler;
++            this.miliExistingNetherPortalLookup = true;
++            lookup.addWaiter((exit, failure) -> scheduler.schedule((Entity current) -> {
++                if (current != this) return; // The entity scheduler may have followed a dimension change.
++                this.miliExistingNetherPortalLookup = false;
++                if (failure == null && exit != null && this.level() == origin && !this.isRemoved()
++                    && this.getBoundingBox().intersects(new AABB(entry))
++                    && fun.bm.mili.carpet.GameplayCompatRules.ownsLoaded(origin, entry)
++                    && origin.getBlockState(entry).is(Blocks.NETHER_PORTAL)
++                    && origin.isAllowedToEnterPortal(destination) && this.canPortalAsync(destination, takePassengers)) {
++                    this.beginPortalTeleport(destination, entry, takePassengers, type, teleportComplete, exit);
++                }
++            }, null, 1L));
++            try {
++                this.findPortalAsync(origin, entry, destination, type, true, lookup);
++            } catch (RuntimeException | Error failure) {
++                this.miliExistingNetherPortalLookup = false;
++                throw failure;
++            }
++            return false; // still in the origin region; an absent exit changes no entity/passenger state
++        }
++        return this.beginPortalTeleport(destination, portalPos, takePassengers, type, teleportComplete, null);
++    }
++
++    private boolean beginPortalTeleport(ServerLevel destination, BlockPos portalPos, boolean takePassengers,
++                                        PortalType type, java.util.function.Consumer<Entity> teleportComplete, @Nullable TeleportTransition knownExit) {
+         // Kaiiju start - sync end platform spawning & entity teleportation
+         final java.util.function.Consumer<Entity> tpComplete = type == PortalType.END && destination.getTypeKey() == net.minecraft.world.level.dimension.LevelStem.END ?
+               e -> net.minecraft.world.level.levelgen.feature.EndPlatformFeature.createEndPlatform(destination, ServerLevel.END_SPAWN_POINT.below(), true, null) : teleportComplete;
+@@ -5187,7 +5257,11 @@ public abstract class Entity
+         });
+ 
+ 
+-        passengerTree.root.findOrCreatePortalAsync(originWorld, portalPos, destination, type, portalInfoCompletable);
++        if (knownExit == null) {
++            passengerTree.root.findOrCreatePortalAsync(originWorld, portalPos, destination, type, portalInfoCompletable);
++        } else {
++            portalInfoCompletable.complete(knownExit);
++        }
+ 
+         return true;
+     }
+diff --git a/net/minecraft/world/level/block/NetherPortalBlock.java b/net/minecraft/world/level/block/NetherPortalBlock.java
+index 7e9728dfcafdccd92c0945596ab77dc33a74fff5..5500043d7e3485197e3a8ca5e9d354797df9761c 100644
+--- a/net/minecraft/world/level/block/NetherPortalBlock.java
++++ b/net/minecraft/world/level/block/NetherPortalBlock.java
+@@ -229,7 +229,7 @@ public class NetherPortalBlock extends Block implements Portal {
+                 blockPos -> newLevel.getBlockStateFromEmptyChunk(blockPos) == portalState // Folia - region threading
+             );
+             post = TeleportTransition.PLAY_PORTAL_SOUND.then(e -> e.placePortalTicket(pos));
+-        } else if (result.canCreatePortal()) { // CraftBukkit
++        } else if (result.canCreatePortal() && fun.bm.mili.carpet.WorldR2Rules.mayCreateNetherPortal(entity)) { // CraftBukkit // Mili - existing portals are unaffected
+             if (entity.isSpectator()) {
+                 return null;
+             }
+@@ -283,13 +283,21 @@ public class NetherPortalBlock extends Block implements Portal {
+         final Vec3 offset,
+         final Entity entity,
+         final TeleportTransition.PostTeleportTransition postTeleportTransition
++    ) {
++        return createDimensionTransition(newLevel, foundRectangle, portalAxis, offset, entity.getDimensions(entity.getPose()), entity, postTeleportTransition);
++    }
++
++    // Existing-only async lookups use a source-owner dimensions snapshot, not a live entity on the destination thread.
++    public static TeleportTransition createDimensionTransition(
++        final ServerLevel newLevel, final BlockUtil.FoundRectangle foundRectangle, final Direction.Axis portalAxis,
++        final Vec3 offset, final EntityDimensions dimensions, final @Nullable Entity collisionEntity,
++        final TeleportTransition.PostTeleportTransition postTeleportTransition
+     ) {
+         BlockPos bottomLeft = foundRectangle.minCorner;
+         BlockState blockState = newLevel.getBlockState(bottomLeft);
+         Direction.Axis axis = blockState.getOptionalValue(BlockStateProperties.HORIZONTAL_AXIS).orElse(Direction.Axis.X);
+         double width = foundRectangle.axis1Size;
+         double height = foundRectangle.axis2Size;
+-        EntityDimensions dimensions = entity.getDimensions(entity.getPose());
+         int outputRotation = portalAxis == axis ? 0 : 90;
+         double offsetRight = dimensions.width() / 2.0 + (width - dimensions.width()) * offset.x();
+         double offsetUp = (height - dimensions.height()) * offset.y();
+@@ -300,7 +308,7 @@ public class NetherPortalBlock extends Block implements Portal {
+             bottomLeft.getY() + offsetUp,
+             bottomLeft.getZ() + (xAligned ? offsetForward : offsetRight)
+         );
+-        Vec3 collisionFreePos = PortalShape.findCollisionFreePosition(targetPos, newLevel, entity, dimensions);
++        Vec3 collisionFreePos = PortalShape.findCollisionFreePosition(targetPos, newLevel, collisionEntity, dimensions);
+         return new TeleportTransition(
+             newLevel, collisionFreePos, Vec3.ZERO, outputRotation, 0.0F, Relative.union(Relative.DELTA, Relative.ROTATION), postTeleportTransition
+         ).withCause(org.bukkit.event.player.PlayerTeleportEvent.TeleportCause.NETHER_PORTAL); // CraftBukkit

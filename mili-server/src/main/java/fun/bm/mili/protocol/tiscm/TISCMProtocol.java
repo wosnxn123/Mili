@@ -1,208 +1,283 @@
 package fun.bm.mili.protocol.tiscm;
 
-import com.mojang.logging.LogUtils;
-import fun.bm.mili.carpet.config.modules.GeneralCompatConfig;
+import ca.spottedleaf.moonrise.common.util.TickThread;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufInputStream;
+import io.netty.buffer.Unpooled;
 import io.papermc.paper.ServerBuildInfo;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
-import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.nbt.Tag;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
-import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
+import net.minecraft.network.protocol.common.custom.DiscardedPayload;
 import net.minecraft.resources.Identifier;
-import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ServerPlayer;
-import org.jetbrains.annotations.Contract;
-import org.leavesmc.leaves.protocol.core.LeavesCustomPayload;
-import org.leavesmc.leaves.protocol.core.LeavesProtocol;
-import org.leavesmc.leaves.protocol.core.ProtocolHandler;
-import org.leavesmc.leaves.protocol.core.ProtocolUtils;
-import org.slf4j.Logger;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
+import org.jspecify.annotations.Nullable;
 
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
+import java.io.IOException;
 
-@LeavesProtocol.Register(namespace = TISCMProtocol.PROTOCOL_ID)
-public class TISCMProtocol implements LeavesProtocol {
-    private static final Logger LOGGER = LogUtils.getLogger();
+/** The read-only global MSPT subset of TISCM v1, independent of the Leaves dispatcher. */
+public final class TISCMProtocol {
+    public static final Identifier CHANNEL = Identifier.fromNamespaceAndPath("tiscm", "network/v1");
+    private static final String HI = "hi";
+    private static final String SUPPORTED_S2C = "supported_s2c_packets";
+    private static final String SUPPORTED_C2S = "supported_c2s_packets";
+    private static final String MSPT = "mspt_metrics_sample";
+    private static final String PLATFORM_NAME = "platform_name";
+    private static final String PLATFORM_VERSION = "platform_version";
 
-    public static final String PROTOCOL_ID = "tiscm";
-    private static final String PLATFORM_NAME = "mili";
-    private static final String PLATFORM_VERSION = ServerBuildInfo.buildInfo().asString(ServerBuildInfo.StringRepresentation.VERSION_SIMPLE);
-    private static final Map<String, EnumSet<S2CPacket>> CLIENT_SUPPORTED_PACKETS = new ConcurrentHashMap<>();
+    private static final int MAX_PAYLOAD_BYTES = 4096;
+    private static final int MAX_CAPABILITIES = 32;
+    private static final int MAX_CAPABILITY_BYTES = 96;
+    private static final int MAX_PLATFORM_BYTES = 256;
 
-    @Contract("_ -> new")
-    public static Identifier id(String path) {
-        return Identifier.fromNamespaceAndPath(PROTOCOL_ID, path);
+    private static volatile Configuration configuration = new Configuration(false, false);
+
+    private TISCMProtocol() {
     }
 
+    /** Publish the two config flags together; every load/unload invalidates older handshakes and samples. */
+    public static void configure(boolean networkEnabled, boolean metricsEnabled) {
+        configuration = new Configuration(networkEnabled, networkEnabled && metricsEnabled);
+    }
+
+    public static boolean canReceive(int size) {
+        return configuration.network && size > 0 && size <= MAX_PAYLOAD_BYTES;
+    }
+
+    /** Called by the existing Folia global tick hook. No player or connection access on this thread. */
     public static void broadcastMsptSample(long tickCounter, long nanosecond) {
-        if (!GeneralCompatConfig.tiscmNetworkProtocol || !GeneralCompatConfig.syncServerMsptMetricsData) {
-            return;
+        Configuration current = configuration;
+        if (current.metrics) {
+            current.latest = new Sample(nanosecond);
+        }
+    }
+
+    private static final class Configuration {
+        final boolean network;
+        final boolean metrics;
+        volatile @Nullable Sample latest;
+
+        Configuration(boolean network, boolean metrics) {
+            this.network = network;
+            this.metrics = metrics;
+        }
+    }
+
+    private static final class Sample {
+        private final long nanos;
+        private volatile @Nullable ClientboundCustomPayloadPacket encoded;
+
+        Sample(long nanos) {
+            this.nanos = nanos;
         }
 
-        // Mili start - fix: this runs every global tick; MSPT_METRICS_SAMPLE is not a handshake
-        // packet, so when no client registered support we can skip building the NBT/payload entirely
-        if (CLIENT_SUPPORTED_PACKETS.isEmpty()) {
-            return;
+        ClientboundCustomPayloadPacket packet() {
+            ClientboundCustomPayloadPacket packet = this.encoded;
+            if (packet == null) {
+                CompoundTag data = new CompoundTag();
+                data.putInt("version", 2);
+                data.putLong("millisecond", this.nanos / 1_000_000L);
+                data.putLong("nanosecond", this.nanos);
+                data.putString("type", "tick_server_method");
+                // A concurrent region may encode the same sample; both packets contain identical bytes.
+                this.encoded = packet = payload(MSPT, data);
+            }
+            return packet;
         }
-        // Mili end - fix: skip payload allocation when nobody listens
+    }
 
-        CompoundTag nbt = new CompoundTag();
-        nbt.putInt("version", 2);
-        nbt.putLong("millisecond", nanosecond / 1_000_000L);
-        nbt.putLong("nanosecond", nanosecond);
-        nbt.putString("type", "tick_server_method");
+    private enum Phase {
+        NEW, AWAITING_SUPPORT, FINISHED, SUBSCRIBED
+    }
 
-        TISCMPayload payload = new TISCMPayload(S2CPacket.MSPT_METRICS_SAMPLE.id, nbt);
-        for (ServerPlayer player : MinecraftServer.getServer().getPlayerList().getPlayers()) {
-            if (supports(player, S2CPacket.MSPT_METRICS_SAMPLE)) {
-                ProtocolUtils.sendPayloadPacket(player, payload);
+    /** One instance per PLAY listener, read and mutated only on that player's region. */
+    public static final class Session {
+        private Phase phase = Phase.NEW;
+        private @Nullable Configuration negotiated;
+        private @Nullable Sample lastSample;
+        private boolean closed;
+
+        public void receive(ServerGamePacketListenerImpl connection, byte[] bytes) {
+            Configuration current = configuration;
+            if (this.closed || !current.network || bytes.length == 0 || bytes.length > MAX_PAYLOAD_BYTES
+                    || !isCurrentGameConnection(connection)) {
+                return;
+            }
+            if (this.negotiated != current) {
+                this.reset();
+            }
+            if (this.phase != Phase.NEW && this.phase != Phase.AWAITING_SUPPORT) {
+                return;
+            }
+
+            boolean greeting = this.phase == Phase.NEW;
+            boolean subscribed;
+            ByteBuf buf = Unpooled.wrappedBuffer(bytes);
+            try {
+                if (!readId(buf, greeting ? HI : SUPPORTED_S2C)) {
+                    return;
+                }
+                ByteBufInputStream nbt = new ByteBufInputStream(buf);
+                if (nbt.readUnsignedByte() != Tag.TAG_COMPOUND) {
+                    return;
+                }
+                if (greeting) {
+                    readGreeting(nbt);
+                    subscribed = false;
+                } else {
+                    subscribed = readCapabilities(nbt);
+                }
+                if (nbt.available() != 0) {
+                    return;
+                }
+            } catch (IOException | IndexOutOfBoundsException malformed) {
+                return;
+            } finally {
+                buf.release();
+            }
+
+            if (current != configuration) {
+                return;
+            }
+            if (greeting) {
+                this.negotiated = current;
+                this.phase = Phase.AWAITING_SUPPORT;
+                sendGreeting(connection);
+            } else {
+                this.phase = subscribed && current.metrics ? Phase.SUBSCRIBED : Phase.FINISHED;
+                this.lastSample = current.latest; // Do not send a sample taken before negotiation.
             }
         }
-    }
 
-    @ProtocolHandler.PayloadReceiver(payload = TISCMPayload.class)
-    public static void handlePayload(ServerPlayer player, TISCMPayload payload) {
-        if (!GeneralCompatConfig.tiscmNetworkProtocol) {
-            return;
-        }
-
-        Optional<C2SPacket> packetType = C2SPacket.fromId(payload.packetId());
-        if (packetType.isEmpty()) {
-            return;
-        }
-
-        switch (packetType.get()) {
-            case HI -> handleHi(player, payload.nbt());
-            case SUPPORTED_S2C_PACKETS -> handleSupportedS2CPackets(player, payload.nbt());
-            default -> {
+        public void sendLatestSample(ServerGamePacketListenerImpl connection) {
+            if (this.negotiated == null || !isCurrentGameConnection(connection)) {
+                return;
+            }
+            Configuration current = configuration;
+            if (this.negotiated != current) {
+                this.reset();
+                return;
+            }
+            Sample latest = current.latest;
+            if (this.phase == Phase.SUBSCRIBED && latest != null && latest != this.lastSample) {
+                ClientboundCustomPayloadPacket packet = latest.packet();
+                if (current == configuration) {
+                    this.lastSample = latest;
+                    connection.send(packet);
+                }
             }
         }
-    }
 
-    @ProtocolHandler.PlayerLeave
-    public static void onPlayerLeave(ServerPlayer player) {
-        CLIENT_SUPPORTED_PACKETS.remove(player.getStringUUID());
-    }
-
-    private static void handleHi(ServerPlayer player, CompoundTag payload) {
-        String platformName = payload.getString("platform_name").orElse("Unknown");
-        String platformVersion = payload.getString("platform_version").orElse("Unknown");
-        LOGGER.info("Player {} connected with TISCM protocol support ({} @ {})", player.getScoreboardName(), platformName, platformVersion);
-
-        send(player, S2CPacket.HELLO, nbt -> {
-            nbt.putString("platform_name", PLATFORM_NAME);
-            nbt.putString("platform_version", PLATFORM_VERSION);
-        });
-        send(player, S2CPacket.SUPPORTED_C2S_PACKETS, nbt -> nbt.put("supported_c2s_packets", stringList(List.of(
-                C2SPacket.HI.id,
-                C2SPacket.SUPPORTED_S2C_PACKETS.id
-        ))));
-    }
-
-    private static void handleSupportedS2CPackets(ServerPlayer player, CompoundTag payload) {
-        EnumSet<S2CPacket> packets = EnumSet.noneOf(S2CPacket.class);
-        ListTag listTag = payload.getListOrEmpty("supported_s2c_packets");
-        for (int i = 0; i < listTag.size(); i++) {
-            S2CPacket.fromId(listTag.getString(i).orElse("")).ifPresent(packets::add);
-        }
-        CLIENT_SUPPORTED_PACKETS.put(player.getStringUUID(), packets);
-    }
-
-    private static void send(ServerPlayer player, S2CPacket packet, PayloadBuilder builder) {
-        if (!supports(player, packet)) {
-            return;
+        public void close() {
+            this.closed = true;
+            this.reset();
         }
 
-        CompoundTag nbt = new CompoundTag();
-        builder.accept(nbt);
-        ProtocolUtils.sendPayloadPacket(player, new TISCMPayload(packet.id, nbt));
-    }
-
-    private static boolean supports(ServerPlayer player, S2CPacket packet) {
-        if (packet.handshake) {
-            return true;
-        }
-
-        EnumSet<S2CPacket> packets = CLIENT_SUPPORTED_PACKETS.get(player.getStringUUID());
-        return packets != null && packets.contains(packet);
-    }
-
-    private static ListTag stringList(List<String> values) {
-        ListTag list = new ListTag();
-        for (String value : values) {
-            list.add(StringTag.valueOf(value));
-        }
-        return list;
-    }
-
-    @Override
-    public boolean isActive() {
-        return GeneralCompatConfig.tiscmNetworkProtocol;
-    }
-
-    private interface PayloadBuilder {
-        void accept(CompoundTag nbt);
-    }
-
-    public enum C2SPacket {
-        HI("hi", true),
-        SUPPORTED_S2C_PACKETS("supported_s2c_packets", true),
-        SPEED_TEST_UPLOAD_PAYLOAD("speed_test_upload_payload", false),
-        SPEED_TEST_PING("speed_test_ping", false);
-
-        private static final Map<String, C2SPacket> BY_ID = Arrays.stream(values()).collect(Collectors.toMap(packet -> packet.id, packet -> packet));
-
-        private final String id;
-        private final boolean handshake;
-
-        C2SPacket(String id, boolean handshake) {
-            this.id = id;
-            this.handshake = handshake;
-        }
-
-        public static Optional<C2SPacket> fromId(String id) {
-            return Optional.ofNullable(BY_ID.get(id));
+        private void reset() {
+            this.phase = Phase.NEW;
+            this.negotiated = null;
+            this.lastSample = null;
         }
     }
 
-    public enum S2CPacket {
-        HELLO("hello", true),
-        SUPPORTED_C2S_PACKETS("supported_c2s_packets", true),
-        MSPT_METRICS_SAMPLE("mspt_metrics_sample", false),
-        SPEED_TEST_DOWNLOAD_PAYLOAD("speed_test_download_payload", false),
-        SPEED_TEST_UPLOAD_REQUEST("speed_test_upload_request", false),
-        SPEED_TEST_PING("speed_test_ping", false),
-        SPEED_TEST_ABORT("speed_test_abort", false);
+    private static boolean isCurrentGameConnection(ServerGamePacketListenerImpl connection) {
+        var player = connection.player;
+        return TickThread.isTickThreadFor(player) && player.connection == connection
+                && !player.hasDisconnected() && connection.isAcceptingMessages();
+    }
 
-        private static final Map<String, S2CPacket> BY_ID = Arrays.stream(values()).collect(Collectors.toMap(packet -> packet.id, packet -> packet));
-
-        private final String id;
-        private final boolean handshake;
-
-        S2CPacket(String id, boolean handshake) {
-            this.id = id;
-            this.handshake = handshake;
+    private static boolean readId(ByteBuf buf, String expected) {
+        // Both known IDs are ASCII and have a one-byte VarInt UTF-8 length in v1.
+        if (buf.readUnsignedByte() != expected.length() || buf.readableBytes() <= expected.length()) {
+            return false;
         }
+        for (int i = 0; i < expected.length(); i++) {
+            if (buf.readUnsignedByte() != expected.charAt(i)) {
+                return false;
+            }
+        }
+        return true;
+    }
 
-        public static Optional<S2CPacket> fromId(String id) {
-            return Optional.ofNullable(BY_ID.get(id));
+    // Parse only the small v1 grammar, not arbitrary NBT. The root accepts scalar strings for HI
+    // or one flat list of strings for capabilities; nested tags, wrappers and duplicate keys are invalid.
+    private static void readGreeting(ByteBufInputStream nbt) throws IOException {
+        boolean name = false;
+        boolean version = false;
+        for (int type; (type = nbt.readUnsignedByte()) != Tag.TAG_END;) {
+            if (type != Tag.TAG_STRING) {
+                throw new IOException();
+            }
+            String field = readNbtUtf(nbt, 32);
+            if (PLATFORM_NAME.equals(field) && !name) {
+                name = true;
+            } else if (PLATFORM_VERSION.equals(field) && !version) {
+                version = true;
+            } else {
+                throw new IOException();
+            }
+            readNbtUtf(nbt, MAX_PLATFORM_BYTES); // Optional client metadata is neither retained nor logged.
         }
     }
 
-    public record TISCMPayload(String packetId, CompoundTag nbt) implements LeavesCustomPayload {
-        @ID
-        private static final Identifier NETWORK_ID = TISCMProtocol.id("network/v1");
+    private static boolean readCapabilities(ByteBufInputStream nbt) throws IOException {
+        if (nbt.readUnsignedByte() != Tag.TAG_LIST || !SUPPORTED_S2C.equals(readNbtUtf(nbt, 32))) {
+            throw new IOException();
+        }
+        int type = nbt.readUnsignedByte();
+        int count = nbt.readInt();
+        if (count < 0 || count > MAX_CAPABILITIES || (type != Tag.TAG_STRING && (type != Tag.TAG_END || count != 0))) {
+            throw new IOException();
+        }
+        boolean mspt = false;
+        for (int i = 0; i < count; i++) {
+            mspt |= MSPT.equals(readNbtUtf(nbt, MAX_CAPABILITY_BYTES));
+        }
+        if (nbt.readUnsignedByte() != Tag.TAG_END) {
+            throw new IOException();
+        }
+        return mspt;
+    }
 
-        @Codec
-        private static final StreamCodec<RegistryFriendlyByteBuf, TISCMPayload> CODEC = StreamCodec.composite(
-                ByteBufCodecs.STRING_UTF8,
-                TISCMPayload::packetId,
-                ByteBufCodecs.COMPOUND_TAG,
-                TISCMPayload::nbt,
-                TISCMPayload::new
-        );
+    private static String readNbtUtf(ByteBufInputStream nbt, int maxBytes) throws IOException {
+        nbt.mark(2);
+        int bytes = nbt.readUnsignedShort();
+        if (bytes > maxBytes || bytes > nbt.available()) {
+            throw new IOException();
+        }
+        nbt.reset();
+        return nbt.readUTF();
+    }
+
+    private static void sendGreeting(ServerGamePacketListenerImpl connection) {
+        CompoundTag hello = new CompoundTag();
+        hello.putString(PLATFORM_NAME, "mili");
+        hello.putString(PLATFORM_VERSION, ServerBuildInfo.buildInfo().asString(ServerBuildInfo.StringRepresentation.VERSION_SIMPLE));
+        connection.send(payload("hello", hello));
+
+        CompoundTag supported = new CompoundTag();
+        ListTag packets = new ListTag();
+        packets.add(StringTag.valueOf(HI));
+        packets.add(StringTag.valueOf(SUPPORTED_S2C));
+        supported.put(SUPPORTED_C2S, packets);
+        connection.send(payload(SUPPORTED_C2S, supported));
+    }
+
+    private static ClientboundCustomPayloadPacket payload(String id, CompoundTag data) {
+        // Same body as the legacy STRING_UTF8 + COMPOUND_TAG codec, using vanilla's unknown-channel carrier.
+        FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.buffer());
+        try {
+            ByteBufCodecs.STRING_UTF8.encode(buf, id);
+            ByteBufCodecs.COMPOUND_TAG.encode(buf, data);
+            byte[] bytes = new byte[buf.readableBytes()];
+            buf.readBytes(bytes);
+            return new ClientboundCustomPayloadPacket(new DiscardedPayload(CHANNEL, bytes));
+        } finally {
+            buf.release();
+        }
     }
 }

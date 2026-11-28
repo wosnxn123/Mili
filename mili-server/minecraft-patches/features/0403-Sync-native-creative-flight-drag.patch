@@ -1,0 +1,20 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mili contributors <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Sync creative flight drag through native movement attributes
+
+Adapt Carpet creativeFlyDrag from Lophine 7a51f49a. See bundled Carpet notices.
+
+diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
+index 5cce74f3ef943a6428caa487ac2e8f8511970636..519973341fe5b644b70b047ceba0aab23dc78732 100644
+--- a/net/minecraft/server/level/ServerPlayer.java
++++ b/net/minecraft/server/level/ServerPlayer.java
+@@ -938,7 +938,7 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+ 
+     @Override
+     public void tick() {
+-        fun.bm.mili.carpet.EntityGameplayRules.updateGroundSpeed(this);
++        fun.bm.mili.carpet.EntityGameplayRules.updateMovementAttributes(this);
+         // Luminol start - Status bars
+         this.statusBarList.tick();
+         // Luminol end - Status bars

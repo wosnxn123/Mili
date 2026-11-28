@@ -105,7 +105,7 @@ Supports creating ReplayMod photographer entities for recording, with `Photograp
 
 `ver/26.3` targets Folia 26.3 Build 28 and requires Java 25. Download from [this fork's Releases](https://github.com/wosnxn123/Mili/releases), not from a patch donor. The release asset is `mili-26.3-paperclip.jar`; regular CI artifacts are not stable releases.
 
-Stop the server and back up the launcher, configuration and entire world before upgrading. Test loading, saving and restarting a copy. Replace the JAR the startup command actually runs and check any existing `auto_update/core.path`. To roll back, restore the matching pre-upgrade world and configuration as well as the old launcher. Avoid `26.3-9f255c1` and `26.3-c60a88e` (broken patch reader). See the [migration and validation record](docs/migration-26.3.md).
+Stop the server and back up the launcher, configuration and entire world before upgrading. Test loading, saving and restarting a copy. Replace the JAR the startup command actually runs and check any existing `auto_update/core.path`. To roll back, restore the matching pre-upgrade world and configuration as well as the old launcher. Avoid `26.3-9f255c1` and `26.3-c60a88e` (broken patch reader). See the [26.3 upgrade guide](docs/migration-26.3.md).
 
 ### Requirements
 

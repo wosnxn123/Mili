@@ -1,0 +1,127 @@
+From: Mili <noreply@mili.invalid>
+Subject: [PATCH] Trace block and fluid scheduled ticks
+
+Report native tick queue acceptance (including duplicates), due region time, priority, dispatch order and invocation versus changed block/fluid type. Existing chunk load/unpack and queue storage are not modified by tracing.
+
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -1,5 +1,6 @@
+ package net.minecraft.server.level;
+ 
++import fun.bm.mili.carpet.timing.MicroTiming;
+ import com.google.common.annotations.VisibleForTesting;
+ import com.google.common.collect.Lists;
+ import com.mojang.datafixers.DataFixer;
+@@ -877,12 +878,14 @@
+         if (!this.isDebug() && runs) {
+             long tick = this.getRedstoneGameTime(); // Folia - region threading
+             profiler.push("blockTicks");
+-            foliaProfiler.startTimer(ca.spottedleaf.leafprofiler.LProfilerRegistry.BLOCK_TICK); try { // Folia - profiler
+-            regionizedWorldData.getBlockLevelTicks().tick(tick, paperConfig().environment.maxBlockTicks, this::tickBlock); // Paper - configurable max block ticks // Folia - region threading
++            foliaProfiler.startTimer(ca.spottedleaf.leafprofiler.LProfilerRegistry.BLOCK_TICK); // Folia - profiler
++            try (var trace = MicroTiming.phase(this, MicroTiming.Phase.BLOCK_TICKS)) {
++                regionizedWorldData.getBlockLevelTicks().tick(tick, paperConfig().environment.maxBlockTicks, this::tickBlock); // Paper - configurable max block ticks // Folia - region threading
+             } finally { foliaProfiler.stopTimer(ca.spottedleaf.leafprofiler.LProfilerRegistry.BLOCK_TICK); } // Folia - profiler
+             profiler.popPush("fluidTicks");
+-            foliaProfiler.startTimer(ca.spottedleaf.leafprofiler.LProfilerRegistry.FLUID_TICK); try { // Folia - profiler
+-            regionizedWorldData.getFluidLevelTicks().tick(tick, paperConfig().environment.maxFluidTicks, this::tickFluid); // Paper - configurable max fluid ticks // Folia - region threading
++            foliaProfiler.startTimer(ca.spottedleaf.leafprofiler.LProfilerRegistry.FLUID_TICK); // Folia - profiler
++            try (var trace = MicroTiming.phase(this, MicroTiming.Phase.FLUID_TICKS)) {
++                regionizedWorldData.getFluidLevelTicks().tick(tick, paperConfig().environment.maxFluidTicks, this::tickFluid); // Paper - configurable max fluid ticks // Folia - region threading
+             } finally { foliaProfiler.stopTimer(ca.spottedleaf.leafprofiler.LProfilerRegistry.FLUID_TICK); } // Folia - profiler
+             profiler.pop();
+         }
+@@ -1492,7 +1495,12 @@
+     private void tickFluid(final BlockPos pos, final Fluid type) {
+         BlockState blockState = this.getBlockState(pos);
+         FluidState fluidState = blockState.getFluidState();
+-        if (fluidState.is(type)) {
++        final boolean matches = fluidState.is(type);
++        final var mili$timing = MicroTiming.capture(this, pos, false, false);
++        if (mili$timing != null) {
++            mili$timing.point("scheduled fluid tick", matches ? "invoke" : "skip: type changed");
++        }
++        if (matches) {
+             fluidState.tick(this, pos, blockState);
+         }
+         // Paper start - rewrite chunk system
+@@ -1505,7 +1513,12 @@
+ 
+     private void tickBlock(final BlockPos pos, final Block type) {
+         BlockState state = this.getBlockState(pos);
+-        if (state.is(type)) {
++        final boolean matches = state.is(type);
++        final var mili$timing = MicroTiming.capture(this, pos, false, false);
++        if (mili$timing != null) {
++            mili$timing.point("scheduled block tick", matches ? "invoke" : "skip: type changed");
++        }
++        if (matches) {
+             state.tick(this, pos, this.random);
+         }
+         // Paper start - rewrite chunk system
+diff --git a/net/minecraft/world/ticks/LevelChunkTicks.java b/net/minecraft/world/ticks/LevelChunkTicks.java
+--- a/net/minecraft/world/ticks/LevelChunkTicks.java
++++ b/net/minecraft/world/ticks/LevelChunkTicks.java
+@@ -90,9 +90,15 @@
+ 
+     @Override
+     public void schedule(final ScheduledTick<T> tick) {
+-        if (this.ticksPerPosition.add(tick)) {
+-            this.scheduleUnchecked(tick); this.dirty = true; // Paper - rewrite chunk system
++        this.mili$scheduleIfAbsent(tick);
++    }
++
++    boolean mili$scheduleIfAbsent(final ScheduledTick<T> tick) {
++        if (!this.ticksPerPosition.add(tick)) {
++            return false;
+         }
++        this.scheduleUnchecked(tick); this.dirty = true; // Paper - rewrite chunk system
++        return true;
+     }
+ 
+     private void scheduleUnchecked(final ScheduledTick<T> tick) {
+diff --git a/net/minecraft/world/ticks/LevelTicks.java b/net/minecraft/world/ticks/LevelTicks.java
+--- a/net/minecraft/world/ticks/LevelTicks.java
++++ b/net/minecraft/world/ticks/LevelTicks.java
+@@ -1,5 +1,6 @@
+ package net.minecraft.world.ticks;
+ 
++import fun.bm.mili.carpet.timing.MicroTiming;
+ import it.unimi.dsi.fastutil.longs.Long2LongMap;
+ import it.unimi.dsi.fastutil.longs.Long2LongMaps;
+ import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
+@@ -139,10 +140,16 @@
+         ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.world, tick.pos(), "Cannot schedule tick for another region!"); // Folia - region threading
+         long chunkKey = ChunkPos.pack(tick.pos());
+         LevelChunkTicks<T> tickContainer = this.allContainers.get(chunkKey);
++        final String result;
+         if (tickContainer == null) {
+             Util.logAndPauseIfInIde("Trying to schedule tick in not loaded position " + tick.pos());
++            result = "no tick container";
+         } else {
+-            tickContainer.schedule(tick);
++            result = tickContainer.mili$scheduleIfAbsent(tick) ? "queued" : "duplicate";
++        }
++        final var mili$timing = MicroTiming.capture(this.world, tick.pos(), false, false);
++        if (mili$timing != null) {
++            mili$timing.point("schedule tick", result + " " + MicroTiming.tickDetails(tick));
+         }
+     }
+ 
+@@ -261,7 +268,14 @@
+             }
+ 
+             this.alreadyRunThisTick.add(entry);
+-            output.accept(entry.pos(), entry.type());
++            final var mili$timing = MicroTiming.capture(this.world, entry.pos(), false, true);
++            try (var trace = mili$timing == null ? null : mili$timing.begin("dispatch scheduled tick",
++                MicroTiming.tickDetails(entry) + " index=" + this.alreadyRunThisTick.size())) {
++                output.accept(entry.pos(), entry.type());
++                if (trace != null) {
++                    trace.result("callback returned");
++                }
++            }
+         }
+     }
+ 

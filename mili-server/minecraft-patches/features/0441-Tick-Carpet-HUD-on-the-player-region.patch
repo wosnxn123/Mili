@@ -1,0 +1,24 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mili contributors <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] Tick Carpet HUD on the player region
+
+Publish the vanilla Tab overlay from the player tick, without a second
+protocol scanner or a global task retaining players after disconnect.
+
+diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
+--- a/net/minecraft/server/level/ServerPlayer.java
++++ b/net/minecraft/server/level/ServerPlayer.java
+@@ -938,7 +938,12 @@
+
++    private boolean miliCarpetHudVisible;
++
+     @Override
+     public void tick() {
+         fun.bm.mili.carpet.EntityGameplayRules.updateMovementAttributes(this);
++        if ((this.tickCount + this.getId()) % 20 == 0) {
++            this.miliCarpetHudVisible = fun.bm.mili.protocol.CarpetLoggerProtocol.tickHud(this.server, this, this.miliCarpetHudVisible);
++        }
+         // Luminol start - Status bars
+         this.statusBarList.tick();
+         // Luminol end - Status bars

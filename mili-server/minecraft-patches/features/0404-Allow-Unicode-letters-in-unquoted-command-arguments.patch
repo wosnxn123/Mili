@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hayanesuru <hayanesuru@outlook.jp>
+Date: Tue, 1 Apr 2025 11:56:43 +0800
+Subject: [PATCH] Allow non-ASCII letters and digits in unquoted arguments
+
+Port of Winds-Studio/Leaf dde98e918ab9338fde5c14467c7e0522e4bd9dae
+(Leaf 0314). Use the existing Mili command configuration; default off.
+Brigadier is MIT, copyright Microsoft Corporation. See bundled notices.
+
+diff --git a/com/mojang/brigadier/StringReader.java b/com/mojang/brigadier/StringReader.java
+index c1465df63a48e08ec9ccd6889be4f2f8d13d7552..9a762fb4c38f64f015dbfd96c37e660893fddab3 100644
+--- a/com/mojang/brigadier/StringReader.java
++++ b/com/mojang/brigadier/StringReader.java
+@@ -171,7 +171,8 @@
+             || c >= 'A' && c <= 'Z'
+             || c >= 'a' && c <= 'z'
+             || c == '_' || c == '-'
+-            || c == '.' || c == '+';
++            || c == '.' || c == '+'
++            || (fun.bm.mili.config.modules.experiment.CommandConfig.allowNonAsciiUnquotedString && Character.isLetterOrDigit(c));
+     }
+ 
+     public String readUnquotedString() {

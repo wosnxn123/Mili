@@ -1,0 +1,33 @@
+From: Mili <noreply@mili.invalid>
+Subject: [PATCH] Trace native block-state writes
+
+Observe the native chunk mutation after tree capture and vanilla bounds checks. Distinguish a no-op from a physical write made provisionally during Bukkit capture.
+
+diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
+--- a/net/minecraft/world/level/Level.java
++++ b/net/minecraft/world/level/Level.java
+@@ -1,5 +1,6 @@
+ package net.minecraft.world.level;
+ 
++import fun.bm.mili.carpet.timing.MicroTiming;
+ import com.google.common.collect.Lists;
+ import com.mojang.serialization.Codec;
+ import java.io.IOException;
+@@ -1112,7 +1113,16 @@
+             snapshot.setFlags(updateFlags); // Paper - always set the flag of the most recent call to mitigate issues with multiple update at the same pos with different flags
+         }
+         // CraftBukkit end - capture blockstates
+-        BlockState oldState = chunk.setBlockState(pos, blockState, updateFlags);
++        final var mili$timing = MicroTiming.capture(this, pos, false, true);
++        final BlockState oldState;
++        try (var trace = mili$timing == null ? null : mili$timing.begin("set block",
++            blockState + " flags=" + updateFlags + " limit=" + updateLimit)) {
++            oldState = chunk.setBlockState(pos, blockState, updateFlags);
++            if (trace != null) {
++                trace.result(oldState == null ? "not changed" : "replaced " + oldState
++                    + (worldData.captureBlockStates ? " (provisional Bukkit capture)" : ""));
++            }
++        }
+         this.chunkPacketBlockController.onBlockChange(this, pos, blockState, oldState, updateFlags, updateLimit); // Paper - Anti-Xray
+         if (oldState == null) {
+             // CraftBukkit start - remove blockstate if failed (or the same)

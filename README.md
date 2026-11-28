@@ -108,7 +108,7 @@ Ubuntu也可能需要22或24，win也可能需server2022或22H2
 
 `ver/26.3` 使用 Java 25，目标上游为 Folia 26.3 Build 28。请从[本仓库 Releases](https://github.com/wosnxn123/Mili/releases) 下载，不要把补丁来源项目的 JAR 当作 Mili。正式发行文件名为 `mili-26.3-paperclip.jar`，普通 CI 构建不是正式版。
 
-升级前先停服，备份启动 JAR、配置和整个世界；先在副本验证存档可读并能保存重启。替换启动命令实际指向的整包，若用过自动更新，还应检查旧 `auto_update/core.path`。回滚时同时恢复升级前的世界和配置，勿让旧版打开已升级的唯一存档。旧预发布 `26.3-9f255c1`、`26.3-c60a88e` 存在启动器故障，不要使用。见[迁移与验收记录](docs/migration-26.3.md)。
+升级前先停服，备份启动 JAR、配置和整个世界；先在副本验证存档可读并能保存重启。替换启动命令实际指向的整包，若用过自动更新，还应检查旧 `auto_update/core.path`。回滚时同时恢复升级前的世界和配置，勿让旧版打开已升级的唯一存档。旧预发布 `26.3-9f255c1`、`26.3-c60a88e` 存在启动器故障，不要使用。见[26.3 升级指引](docs/migration-26.3.md)。
 
 ### 环境要求
 
@@ -223,7 +223,7 @@ Mili/
 | `misc` | 杂项 | `AutoUpdateConfig`、`BStatsConfig` |
 | `carpet` | Carpet 规则映射 | `CoreConfig`、`GeneralCompatConfig` |
 
-完整配置项速查表见 [Wiki](docs/WIKI.md#10-配置速查表)。
+完整配置项速查表见 [Wiki](docs/WIKI.md#12-配置速查表)。
 
 ---
 

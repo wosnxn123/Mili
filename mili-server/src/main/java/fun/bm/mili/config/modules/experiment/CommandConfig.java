@@ -8,6 +8,9 @@ import me.earthme.luminol.enums.EnumConfigCategory;
 
 @ConfigClassInfo(category = EnumConfigCategory.EXPERIMENT, name = "command")
 public class CommandConfig implements IConfigModule {
+    @ConfigInfo(name = "allow_non_ascii_unquoted_string", comments = "允许服务端命令的无引号参数使用非 ASCII 字母和数字；不改变空格、引号或命令权限。")
+    public static volatile boolean allowNonAsciiUnquotedString = false;
+
     @ConfigInfo(name = "tick_command_enabled", comments =
             """
                     允许使用 tick 命令""")

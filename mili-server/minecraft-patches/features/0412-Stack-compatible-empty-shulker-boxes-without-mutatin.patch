@@ -1,0 +1,136 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mili contributors <noreply@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 11:07:40 +0800
+Subject: [PATCH] Stack compatible empty shulker boxes without mutating item
+ data
+
+
+diff --git a/net/minecraft/world/entity/item/ItemEntity.java b/net/minecraft/world/entity/item/ItemEntity.java
+index 433ad6f..b65f587 100644
+--- a/net/minecraft/world/entity/item/ItemEntity.java
++++ b/net/minecraft/world/entity/item/ItemEntity.java
+@@ -283,7 +283,7 @@ public class ItemEntity extends Entity implements TraceableEntity, ChangePublish
+ 
+     private boolean isMergable() {
+         ItemStack item = this.getItem();
+-        return this.isAlive() && this.pickupDelay != 32767 && this.age != -32768 && this.age < this.despawnRate && item.getCount() < item.getMaxStackSize(); // Paper - Alternative item-despawn-rate
++        return this.isAlive() && this.pickupDelay != 32767 && this.age != -32768 && this.age < this.despawnRate && item.getCount() < org.leavesmc.leaves.util.ItemOverstackUtils.getItemStackMaxCount(item); // Paper - Alternative item-despawn-rate
+     }
+ 
+     private void tryToMerge(final ItemEntity other) {
+@@ -299,12 +299,12 @@ public class ItemEntity extends Entity implements TraceableEntity, ChangePublish
+     }
+ 
+     public static boolean areMergable(final ItemStack thisItemStack, final ItemStack otherItemStack) {
+-        return otherItemStack.getCount() + thisItemStack.getCount() <= otherItemStack.getMaxStackSize()
++        return otherItemStack.getCount() + thisItemStack.getCount() <= org.leavesmc.leaves.util.ItemOverstackUtils.getItemStackMaxCount(otherItemStack)
+             && ItemStack.isSameItemSameComponents(thisItemStack, otherItemStack);
+     }
+ 
+     public static ItemStack merge(final ItemStack toStack, final ItemStack fromStack, final int maxCount) {
+-        int delta = Math.min(Math.min(toStack.getMaxStackSize(), maxCount) - toStack.getCount(), fromStack.getCount());
++        int delta = Math.min(Math.max(0, Math.min(org.leavesmc.leaves.util.ItemOverstackUtils.getItemStackMaxCount(toStack), maxCount) - toStack.getCount()), fromStack.getCount());
+         ItemStack newToStack = toStack.copyWithCount(toStack.getCount() + delta);
+         fromStack.shrink(delta);
+         return newToStack;
+@@ -321,6 +321,9 @@ public class ItemEntity extends Entity implements TraceableEntity, ChangePublish
+             return;
+         }
+         // CraftBukkit end
++        // A plugin may have discarded or replaced an item or changed its merge target in the callback.
++        if (!toItem.isMergable() || !fromItem.isMergable() || toItem.getItem() != toStack || fromItem.getItem() != fromStack
++            || !Objects.equals(toItem.target, fromItem.target) || !areMergable(toStack, fromStack)) return;
+         merge(toItem, toStack, fromStack);
+         toItem.pickupDelay = Math.max(toItem.pickupDelay, fromItem.pickupDelay);
+         toItem.age = Math.min(toItem.age, fromItem.age);
+diff --git a/net/minecraft/world/entity/player/Inventory.java b/net/minecraft/world/entity/player/Inventory.java
+index fc8c324..e4b0432 100644
+--- a/net/minecraft/world/entity/player/Inventory.java
++++ b/net/minecraft/world/entity/player/Inventory.java
+@@ -139,6 +139,11 @@ public class Inventory implements Container, Nameable {
+         this.equipment = equipment;
+     }
+ 
++    @Override
++    public int getMaxStackSize(final ItemStack stack) {
++        return Math.min(this.getMaxStackSize(), org.leavesmc.leaves.util.ItemOverstackUtils.getItemStackMaxCount(stack));
++    }
++
+     public int getSelectedSlot() {
+         return this.selected;
+     }
+@@ -169,7 +174,7 @@ public class Inventory implements Container, Nameable {
+ 
+     private boolean hasRemainingSpaceForItem(final ItemStack slotItemStack, final ItemStack newItemStack) {
+         return !slotItemStack.isEmpty()
+-            && slotItemStack.isStackable()
++            && org.leavesmc.leaves.util.ItemOverstackUtils.isStackable(slotItemStack)
+             && slotItemStack.getCount() < this.getMaxStackSize(slotItemStack)
+             && ItemStack.isSameItemSameComponents(slotItemStack, newItemStack); // Paper - check if itemstack is stackable first
+     }
+@@ -184,7 +189,7 @@ public class Inventory implements Container, Nameable {
+             }
+ 
+             if (this.hasRemainingSpaceForItem(itemInSlot, itemStack)) {
+-                remains -= (itemInSlot.getMaxStackSize() < this.getMaxStackSize() ? itemInSlot.getMaxStackSize() : this.getMaxStackSize()) - itemInSlot.getCount();
++                remains -= Math.max(0, this.getMaxStackSize(itemInSlot) - itemInSlot.getCount());
+             }
+             if (remains <= 0) {
+                 return itemStack.getCount();
+@@ -193,7 +198,7 @@ public class Inventory implements Container, Nameable {
+ 
+         ItemStack itemInOffhand = this.equipment.get(EquipmentSlot.OFFHAND);
+         if (this.hasRemainingSpaceForItem(itemInOffhand, itemStack)) {
+-            remains -= (itemInOffhand.getMaxStackSize() < this.getMaxStackSize() ? itemInOffhand.getMaxStackSize() : this.getMaxStackSize()) - itemInOffhand.getCount();
++            remains -= Math.max(0, this.getMaxStackSize(itemInOffhand) - itemInOffhand.getCount());
+         }
+         if (remains <= 0) {
+             return itemStack.getCount();
+@@ -314,9 +319,11 @@ public class Inventory implements Container, Nameable {
+         if (itemStackInSlot.isEmpty()) {
+             itemStackInSlot = itemStack.copyWithCount(0);
+             this.setItem(slot, itemStackInSlot);
++        } else if (!ItemStack.isSameItemSameComponents(itemStackInSlot, itemStack)) {
++            return count;
+         }
+ 
+-        int maxToAdd = this.getMaxStackSize(itemStackInSlot) - itemStackInSlot.getCount();
++        int maxToAdd = Math.max(0, this.getMaxStackSize(itemStack) - itemStackInSlot.getCount());
+         int toAdd = Math.min(count, maxToAdd);
+         if (toAdd == 0) {
+             return count;
+@@ -441,7 +448,7 @@ public class Inventory implements Container, Nameable {
+                 break;
+             }
+ 
+-            int slotHasSpaceFor = itemStack.getMaxStackSize() - this.getItem(slot).getCount();
++            int slotHasSpaceFor = this.getMaxStackSize(itemStack) - this.getItem(slot).getCount();
+             if (this.add(slot, itemStack.split(slotHasSpaceFor)) && shouldSendSetSlotPacket && this.player instanceof ServerPlayer serverPlayer) {
+                 serverPlayer.connection.send(this.createInventoryUpdatePacket(slot));
+             }
+diff --git a/net/minecraft/world/inventory/Slot.java b/net/minecraft/world/inventory/Slot.java
+index 0e86b02..4049245 100644
+--- a/net/minecraft/world/inventory/Slot.java
++++ b/net/minecraft/world/inventory/Slot.java
+@@ -75,7 +75,7 @@ public class Slot {
+     }
+ 
+     public int getMaxStackSize(final ItemStack itemStack) {
+-        return Math.min(this.getMaxStackSize(), itemStack.getMaxStackSize());
++        return Math.min(this.getMaxStackSize(), this.container.getMaxStackSize(itemStack));
+     }
+ 
+     public @Nullable Identifier getNoItemIcon() {
+diff --git a/net/minecraft/world/item/ItemStack.java b/net/minecraft/world/item/ItemStack.java
+index 40ed481..b6699d7 100644
+--- a/net/minecraft/world/item/ItemStack.java
++++ b/net/minecraft/world/item/ItemStack.java
+@@ -200,7 +200,7 @@ public final class ItemStack implements DataComponentHolder, ItemInstance, Chang
+                     boolean prev = net.minecraft.network.chat.ComponentSerialization.DONT_RENDER_TRANSLATABLES.get();
+                     try (final io.papermc.paper.util.SafeAutoClosable ignored = io.papermc.paper.util.sanitizer.ItemObfuscationSession.withContext(c -> c.itemStack(itemStack))) { // pass the itemstack as context to the obfuscation session
+                         net.minecraft.network.chat.ComponentSerialization.DONT_RENDER_TRANSLATABLES.set(true);
+-                    patchCodec.encode(output, itemStack.components.asPatch());
++                    patchCodec.encode(output, org.leavesmc.leaves.util.ItemOverstackUtils.encodeMaxStackSize(itemStack).components.asPatch());
+                     } finally {
+                         net.minecraft.network.chat.ComponentSerialization.DONT_RENDER_TRANSLATABLES.set(prev);
+                     }

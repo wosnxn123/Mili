@@ -15,6 +15,9 @@ public final class GameplayCompatConfig implements IConfigModule {
     @ConfigInfo(name = "blockDropsDirectlyEnterInventory", comments = "采掘产生的掉落物经事件放行和原生拾取延迟后尝试进入采掘者背包。仅同区域近距离生效。")
     public static volatile boolean blockDropsDirectlyEnterInventory = false;
     @HotReloadUnsupported
+    @ConfigInfo(name = "miningDropPlayerControl", comments = "在上一开关已启用时改为玩家自选（ORG custom）；用 /orange ruleself 设置个人偏好，重启生效。")
+    public static volatile boolean miningDropPlayerControl = false;
+    @HotReloadUnsupported
     @ConfigInfo(name = "hopperXpCounters", comments = "启用朝向羊毛的漏斗统计经验；/xcounter 按当前世界和颜色查询。重启生效。")
     public static volatile boolean hopperXpCounters = false;
     @ConfigInfo(name = "maxEntityCollisions", comments = "正数限制每只生物每刻推动的目标数；0 保留 Paper 配置，不改变挤压游戏规则。")

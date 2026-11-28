@@ -1,111 +1,14 @@
-# Minecraft 26.3 迁移记录
+# Minecraft 26.3 升级指引
 
-## 正式版候选与验证边界
+## 版本要求
 
-上一轮 Riceear 修复已随 [`26.3-e7c5369`](https://github.com/wosnxn123/Mili/releases/tag/26.3-e7c5369) 发布，实际下载的 JAR 通过 17 项回归所对应的 CI，以及两个补丁的空缓存重放。用户已确认现版开服成功；这不是新候选的存档、客户端协议或三平台 JNI 验收结果。
+Mili `ver/26.3` 使用 Java 25，基于 Folia 26.3 Build 28。自行构建需要 Git、Java 25 和 Rust；步骤见[贡献指南](CONTRIBUTING.md)。部署时从本仓库 Release 取得 `mili-26.3-paperclip.jar`，不要使用上游 JAR 或普通 CI 构建替代。旧预发布 `26.3-9f255c1`、`26.3-c60a88e` 的启动器不能正确读取补丁，不宜使用。
 
-本轮基线为 Folia 26.3 [Build 28](https://fill.papermc.io/v3/projects/folia/versions/26.3/builds/28) `b5c780830a3987889675871592c76668f37d88cb`，采用它指定的 Paper `827eeeb9077c4cc7231eaacb7ffcf597d4fedd9f`、Mache `26.3+build.2`，保持 Java 25 和 Paperweight beta.24。上游修复了玩家和地图自动保存、传送票和调度问题。上游的 STABLE 不代表本 fork 已经完成验收。普通 CI 不发 Release；正式包必须来自同一成功运行的 artifact，以完整提交和 JAR SHA-256 核验。
+## 升级与回退
 
-同类上游功能、默认开关和未覆盖的边界见[补丁同步记录](upstream-sync-26.3.md)；Carpet 家族另有[逐项规则表](upstream-carpet-26.3.md)。
+1. 停服备份整个世界目录、插件数据、配置和当前启动 JAR。
+2. 用独立目录中的副本试升级。替换启动命令实际引用的**整包**；用过自动更新时，也检查 `auto_update/core.path` 是否指向相同的启动文件。
+3. 检查世界成功加载并保存，再停服重启。启用了容器扩容、活塞搬运等改变数据行为的规则时，同时确认对应内容能在重启后读回。验证依赖的插件和客户端能力后，再升级正式服。
+4. 回退时同时还原升级前的 JAR、配置和世界。不要让旧版本打开唯一一份新版本存档；新版写入的容器或物品数据尤其不能假定旧版可读。
 
-## 首次迁移的上游基线（历史）
-
-- 发布分支：`ver/26.3`，基于仓库原来的 26.2 `master`；目标仓库 `wosnxn123/Mili`。本地迁移最初在 `ver/26.3.x` 进行。
-- Minecraft / API：`26.3`；Folia 上游发布通道：`ALPHA`。
-- Folia：`73865e0e1c11752a03f30320e0521d4611221e08`（`ver/26.3.x`）。
-- Paper：`804dd0c3f08b666dc51a0250257915c002c59755`，由上述 Folia 提交指定。
-- JDK：25；Gradle：9.8.1；Paperweight：2.0.0-beta.24；Mache：26.3+build.1。
-
-Folia/Paper 补丁随锁定的上游提交更新，不直接用独立补丁覆盖 Mili 补丁。以后跟进上游时，必须更新 `foliaRef`、重建构建脚本补丁、重放所有下游补丁并编译验证，再确认兼容。此处记录的是本次同步，不是定时自动更新任务。
-
-## 已修改内容
-
-- 将无法解析的 Hyacinthusweight 插件替换为 Folia 使用的官方 Paperweight。
-- 更新上游依赖，包括拆分后的 Leafpile 1.3.2 模块、JLine、Velocity native 和 Brigadier。
-- 接入上游 Checkstyle 模块，使用 `patchRepo` 导入已生成的独立仓库，避免重复复制 `.git`。
-- 重建构建脚本补丁，输出改为真正的 Mili 构建脚本，而不再仅生成未使用的 `.base` 文件；Paperweight 实际应用后的三个脚本与预期 SHA-256 全部一致。
-- 26.3 删除旧珊瑚生成类，将可施肥珊瑚的 26.2 三种生长算法迁至自有 `CoralGrowth`，保留颜色、概率、失败恢复和海绵逻辑；已编译通过，尚待运行验证。
-- 适配新的 Moonrise 区域文件恢复接口；独立核对第 0018 个补丁保留了 Anvil 的恢复实现、计数与缓存保护，并将格式扩展识别迁入 `RegionFileRecovery`。Linear 不再声明其原本未支持的旧 oversized sidecar 接口；实际存档读写和恢复仍待验证。
-- 第 0027 个噪声补丁的主要旧优化已由 26.3 上游取代，保留的 floor 变换在 4,000,057 个边界及随机输入上数值核对通过；保持上游 float 计算与 seed 消耗，没有做性能或完整地形对比测试。
-- 普通源码已适配 Jade 的 Holder 战利品模型与假玩家的 `syncVelocity` / final 移动模拟接口；服务端 Java 编译已通过。Jade 支持解析后的 predicate 引用，未绑定 tag 条目保守忽略，继续拒绝多条件合取。假玩家沿用上游服务端模拟类型，不额外启用双端预测。
-- 第 0077 个补丁的旧分配优化已由新版编译架构取代，剩余数组循环不宣称新的性能收益；第 0078 个 biome 算法与第 0091 个安全种子 V2 的调用映射已独立核对，尚无实际世界生成测试。V2 禁用时 aquifer/ore 仍使用原补丁的独立同 seed RNG，不在迁移中改变已有世界的继承行为。
-- 全局实体计数器的 spawn cost 已改为当前环境属性，保持与 26.3 上游一致；跨区 despawn 的已提交 hunk 保留所有持久实体保护，仅在无 local player 且非持久实体时回退。属性读取位于当前区域同步计数阶段，使用不加载区块的 biome 查询路径；尚待运行验证。
-- 为兼容新增的 `PrepareHopperTransferEvent`，在监听器存在且 `disableMoveEvent` 关闭时，全体漏斗停用 Lithium 快路径与睡眠，避免动态槽策略改变后漏斗无法重试。三个判断共用同一谓词；这是有意且可回退的兼容性/性能取舍，尚未游戏内测试。
-- 迁移并重建全部 12 个 API 功能补丁，保留 KioCG 区块热度接口及 26.3 新增的 `postEffects()`。
-- 保留原自定义启动器的暂存更新与可选 Mixin 引导，避免直接切换标准 Paperclip 导致功能丢失。
-- CI 改用已发布的官方构建插件与校验后下载的启动器，不再现场构建失效的备用插件。
-- 迁移期间曾将 `release` 设为 `0`。按用户的 Actions 发布要求恢复为 `1`：成功构建后发布 ALPHA 预发布，`make_latest=false`，不将其标为最新稳定版；Qodana 触发配置保留。这些构建、CI 与发布配置调整都可回退。
-
-## 启动器兼容性
-
-打包前下载锁定的启动器：
-
-```sh
-python scripts/download_launcher.py
-```
-
-发布资产名称为 Hyacinthusclip 3.0.18，但实际入口是 `moe.luminolmc.riceear.Main`。其 SHA-256 锁定于 `gradle.properties`，打包任务会再次校验；不会因同名发布资产被替换而静默使用不同内容。
-
-Bundler 与 Paperclip 打包任务写入一致的 UTF-8 `META-INF/riceear-version`，不带换行。最终 Paperclip 还补充 `META-INF/download-context-cn`，内容取自标准下载上下文。这修复发布启动器中两项资源缺失；CN 资源**不代表新增国内镜像**。
-
-从没有版本标记的旧启动器迁移时，应直接替换实际启动的完整 JAR。仅更新 `core.path` 目标，不能通过旧启动器的版本检查。后续更新目标也必须包含兼容的版本标记。旧预发布中的更新器指向 Luminol。正式版改用本 fork 同一版本线的发布资产，默认关闭；旧的 Luminol 开关不会授权覆盖 Mili 的启动 JAR。
-
-### Riceear 补丁读取修复（2026-11-14）
-
-用户在 Debian 容器运行旧预发布时出现 `NoSuchFileException: /META-INF/versions/26.3/server-26.3.jar.patch`。检查发布 JAR 后确认该资源存在且 SHA-256 正确：不是缺少打包文件。锁定的 Riceear 3.0.18 实际字节码把原版 Mojang bundler 的 zip 根目录同时当作补丁来源；原版 JAR 不包含 fork 补丁，因此启动失败。
-
-- 在 `launcher-patches` 维护兼容的 `PatchEntry`，保留原 record ABI、三项哈希检查、缓存与 classpath 替换，只将补丁来源改成 `AutoUpdate.getResourceAsStreamFromTargetJar`（与原 `patches.list` 一致）。原版输入仍从 Mojang JAR 读取；不修改下载资产或降低校验。
-- Bundler 和 Paperclip 输出嵌入该编译后的类、`META-INF/mili-launcher-patch` 标记与 MIT 许可；打包依赖独立的 `verifyLauncherPatch`，不把测试类装入发行 JAR。
-- 本地真实旧 JAR 在空缓存复现相同异常；替换类后的真实 JAR 成功应用服务端与 Log4j 两个补丁，重建输出哈希分别为 `33296f7f38e1c2602a4bce9740bb508afc0655c53aed5bbf123739db889a6547` 和 `f1810a4704ccce019d02bba029dc02a4f2ac0c997f647b465e7d409c1927f822`。
-- 17 项离线回归断言通过，覆盖 active-update JAR 读取、manifest 解析、有效缓存重用、损坏缓存重建、原始输入/补丁/输出哈希失败及缺失补丁。正式 Gradle `verifyLauncherPatch` 亦通过。
-- Actions 新增 `scripts/smoke_test_launcher.py`，在上传 artifact 和发布 Release 之前用全新缓存执行真实 launcher 的 patch-only 路径并核对每个输出哈希；失败会阻止上传和发布。
-
-上述测试不启动 Minecraft，不创建世界，也不代用户接受 EULA。26.3 完整启动、暂存更新端到端流程与 Mixin 运行效果仍未验证。旧 `26.3-9f255c1` 与 `26.3-c60a88e` 预发布未包含这个修复，不应继续作为可启动的版本使用。
-
-## 验证结果
-
-已通过：
-
-- Folia 26.3 `applyForDownstream`。
-- Mili Gradle 配置检查（`help`）。
-- 启动器下载与校验，包括 `:mili-server:verifyLauncher`。
-- 全部 12 个 API 补丁重放、冲突修复与重建。
-- Java 25 下的 `:mili-api:compileJava` 在最终含 Kotlin 配置的脚本下重验通过（4 分 25 秒）。存在 Java 弃用、unchecked、Gradle DSL 弃用与 Kotlin 插件多子项目加载警告，不能视为零警告构建。
-- 24 个 Paper-server 功能补丁在独立的 26.3 工作树中迁移完成，普通 `git am` 重放验证通过，并核对了原始补丁的文件集合与新增代码保留；已回写并在正式构建工作树重放通过。
-- 启动器下载器的 4 个离线测试：有效下载与缓存、校验失败不落盘、已有文件不覆盖、非法版本拒绝。
-- 124 个 Minecraft 补丁在独立 26.3 工作树中完成迁移，两个 fixup 折入后仍为原 124 个补丁。主线 range-diff 仅 0069/0093 改变，其余提交 diff 不变；全部 23 处文件/API/代码差异逐项审阅。
-- 主线无三方回退的普通 `git am` 重放 124/124，通过并得到相同源码 tree `9efb9816f415182943cc5044907c5927af1607db`。这是源码重放验证，不是编译或运行通过。
-- 正式 `applyAllPatches` 通过（19 分 1 秒）：124 个 Minecraft 补丁、24 个 Paper-server 补丁全部应用，工作树 clean。正式源码 tree 分别匹配独立结果 `9efb9816f415182943cc5044907c5927af1607db` 与 `68ec112da7a45ca85ffcb93b1872c0fa77267c19`；构建脚本 SHA-256 再次 3/3 匹配。首次 0008 失败已由完整迁移解决。
-
-- Paperweight canonical feature-patch rebuild 通过（3 分 3 秒），保留 124 个 Minecraft、24 个 Paper-server 和 12 个 API 补丁；正式源码树保持不变，构建脚本 SHA-256 仍 3/3 匹配。重建后的 23 项差异与独立审阅报告完全一致。
-- 官方工具将第 0124 个文件名规范为 `0124-Guard-Connection.flush-against-null-channel.patch`（保留 subject 中的点）。旧连字符文件名已移除，无重复补丁；完整 diff 和原邮件元数据一致。`git diff --check` 仅报告 0119 补丁文件末尾空行，保留工具生成格式，不将其说成零空白告警。
-
-## 服务端编译迭代
-
-- 首次 `:mili-server:compileJava` 失败（3 分 54 秒，32 个错误）；完整日志已保留。错误集中于 swing/drop/bonemeal 新参数、旧 Bukkit ItemStack 桥、配方与命中位置 codec、RegistryLayer、旧 podium helper 和 PushReaction 枚举。
-- 普通源码已按实际 26.3 定义适配：假玩家摆手区分 attack/interact 并保留手持物品动画，交互前保存动画；drop 保留原 randomly/death、非 thrownFromHand、事件与地图持有者清理，沿用上游新 drop 动画行为；invulnerability 由已覆盖两种 tick 模式的 `Entity.commonTick` 递减，删除重复递减。珊瑚接口补入 BonemealSource，不改变生长概率或随机顺序。
-- Jade 的合法 BlockHitResult 字段顺序已源码核对，使用上游 STREAM_CODEC；非法方向输入解码现在沿用上游 wrap，而非旧越界异常。REI 同时支持 named 和 direct HolderSet，物品转换保持 mirror/copy 区别；Servux 配方仍以 DIRECT_CODEC 输出 inline NBT；回放注册表同步沿用上游 WORLD 层。尚无客户端或实际 round-trip 验证。
-- 三个 Minecraft-side 编译修复已保存为生成工作树的追加提交 `e02f23b`（移动后的 podium helper、物品修补事件镜像桥、可移动紫水晶枚举），并规范重建为第 0125 个补丁；原 124 个移植补丁不丢弃。该补丁使用临时构建身份 `Mili Patch Build <noreply@example.invalid>`，没有猜测维护者身份；如需正式发布，可由维护者决定是否重署作者。
-- 第二轮 `:mili-server:compileJava` **通过**（4 分 12 秒），125 个补丁已保存；Java 弃用、待删除 API、unchecked 及 Gradle 弃用提示仍存在，不是零警告构建。最终 Minecraft tree 为 `bc3ad4fe2ff2f8445b3d38811610629510ea0847`；其父提交 tree 仍为已审阅的原 124 个补丁结果。
-- 最终 125 个 canonical 补丁从干净基线以普通 `git am`（无三方回退）重放通过，得到上述同一 tree。12 API / 24 Paper-server 补丁数量不变，构建脚本 SHA-256 仍为 3/3 匹配。
-
-- 严格的 125 补丁 canonical 核对通过；`:mili-server:compileTestJava` 通过（2 分 57 秒）。测试执行尚未完成，不能将测试源码编译说成测试通过。
-- 本地测试与打包 dry-run 需要 Rust 构建任务，启用 configuration cache 时发现 7 项不兼容，包括原 Rust 任务以及新增启动器闭包。Actions 明确使用 `--no-configuration-cache`，不声称这些任务支持 configuration cache；本机未安装 Rust，未执行完整打包。
-
-## GitHub Actions 发布
-
-- 用户授权将升级提交推送到 `wosnxn123/Mili` 的 `ver/26.3`，保留 Qodana 和 Release 触发，`master` 不变。
-- Actions 使用 Windows x86_64 GNU、Linux x86_64 GNU、Linux ARM64 GNU 原生目标；ARM64 文件名为 `libmili_optimizer_aarch64.so`，与实际加载器一致。移除会覆盖架构文件的 fallback，要求三个编译目标与 staged 文件逐一校验，任一缺失会阻止发布。原先 musl 两种架构共用文件名的配置不再使用。
-- `folia-server` 是生成输出而非构建输入。其 Git gitlink 随 `foliaRef` 更新为可从 PaperMC/Folia 获取的上游提交；绝不提交本地生成的 `a3acaa6` 指针。Actions checkout 不初始化该旧式 submodule，生成前清理该输出，由 Paperweight 按 `foliaRef` 获取上游。新 runner 上的完整补丁应用与 JAR 打包已通过。
-- `.gitattributes` 对构建脚本与补丁采用 LF，保留工具生成补丁空白格式；两份 `.base` 是更新后的历史镜像，实际构建补丁输出为 `.kts`。这些额外调整可回退。
-- 目标仓库当前没有 Qodana token；工作流不屏蔽此扫描，但能否成功连接 Qodana Cloud 取决于仓库配置，不能凭空提供密钥。
-
-### 首次远端结果（构建提交 `9f255c1`）
-
-- [Mili CI](https://github.com/wosnxn123/Mili/actions/runs/43543530064) 成功（11 分 49 秒）：三个 Rust 目标构建与 staged 文件校验、完整补丁应用、Java 编译与 Paperclip 打包、CI 源码检查全部完成。此 CI 未执行完整单元测试或启动服务端；不把源码/产物 smoke check 说成运行验证。
-- [Qodana](https://github.com/wosnxn123/Mili/actions/runs/43543530044) 工作流成功，但分析报告有 303 项问题（High 270 / Moderate 33）及 40 项 Sanity 提示。未使用基线，不能认定全是本次升级新增；没有上传报告 artifact，日志保存了汇总。
-- 已发布 [ALPHA 预发布 `26.3-9f255c1`](https://github.com/wosnxn123/Mili/releases/tag/26.3-9f255c1)，资产 `mili-26.3-paperclip.jar`（87,360,493 bytes），SHA-256 `1afb18dd7f9ad933469e24d73248f4c6c4d8ba30b3b97e7db9b859879d5be577`。资产来自提交 `9f255c1aa9f62406835d62799445f5050f52af97` 的构建，GitHub 显示 `prerelease=true`。
-- 最终核对发现该 Release 的 tag 原先指向旧 `master`（`853b00bb9a84cafd1023d48129d358fb7edf61a8`），因为两条 release-action 路径均未显式传 `commit`。经用户确认，公开标签与 Release metadata 均已修正为实际构建提交 `9f255c1aa9f62406835d62799445f5050f52af97`，并在发布说明中记录标签移动；资产 ID、大小和 SHA-256 不变，`master` 未修改。
-- 两条发布路径均补入 `commit: ${{ github.sha }}`，防止未来标签回退默认分支。后续 [Mili CI](https://github.com/wosnxn123/Mili/actions/runs/43545878652) 已成功，`26.3-c60a88e` tag 与 Release metadata 均指向实际提交 `c60a88eb8a086187a175d4236df9d845ff29e614`。Qodana 仍为 303 项分析问题与 40 项 Sanity 提示。该预发布验证了标签修复，但尚未包含后来发现的 Riceear 补丁读取修复。
-
-修复版 [`26.3-e7c5369` 的 CI](https://github.com/wosnxn123/Mili/actions/runs/43549660508) 随后成功：两份实际补丁的空缓存重建及哈希匹配。下载的发布 JAR 的 SHA-256 是 `fbd5c534448e95c4ac3405d5cc2656601ba46325318ba3910745afa48b80e051`。用户随后确认现版可开服。新基线的候选需单独验收，不能沿用此结论。
+服务端玩法和需要配套客户端的功能分别列在[兼容速查](carpet-compat-status.md)。自动更新默认关闭，只考虑当前 Minecraft 版本线中可验证的 Mili 正式发行包。

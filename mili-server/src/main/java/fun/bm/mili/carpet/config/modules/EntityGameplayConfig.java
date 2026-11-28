@@ -16,6 +16,14 @@ public final class EntityGameplayConfig implements IConfigModule {
     @ConfigInfo(name = "creativeFlySpeed", comments = "创造模式飞行速度倍率，使用原生客户端能力包与相同服务端倍率。重启生效。")
     public static volatile double creativeFlySpeed = 1.0;
 
+    @ConfigInfo(name = "creativeFlyDrag", comments = "创造模式飞行离地时的水平阻力（0–1，原版 0.09）；不改变飞行速度或其他模式的飞行。")
+    public static volatile double creativeFlyDrag = 0.09D;
+
+    public static double creativeFlyDrag() {
+        double value = creativeFlyDrag;
+        return Double.isFinite(value) && value >= 0.0D && value <= 1.0D ? value : 0.09D;
+    }
+
     @ConfigInfo(name = "huskSpawningInTemples", comments = "沙漠神殿范围内的敌对生成表改为尸壳。")
     public static volatile boolean huskSpawningInTemples = false;
 

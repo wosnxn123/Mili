@@ -1,0 +1,85 @@
+From: Mili <noreply@mili.invalid>
+Subject: [PATCH] Add region-local block tick phases
+
+Trace native random block/fluid callbacks and block-entity tick dispatch, without reporting wall time, block-entity contents, or global tick order.
+
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -993,8 +993,9 @@
+             } finally { foliaProfiler.stopTimer(ca.spottedleaf.leafprofiler.LProfilerRegistry.ENTITY_TICK); } // Folia - profiler
+             if (this.paperConfig().unsupportedSettings.ticking.blockEntities) { // Paper - option to disable ticking
+             profiler.popPush("blockEntities");
+-            foliaProfiler.startTimer(ca.spottedleaf.leafprofiler.LProfilerRegistry.TILE_ENTITY); try { // Folia - profiler
+-            this.tickBlockEntities();
++            foliaProfiler.startTimer(ca.spottedleaf.leafprofiler.LProfilerRegistry.TILE_ENTITY); // Folia - profiler
++            try (var trace = MicroTiming.phase(this, MicroTiming.Phase.BLOCK_ENTITIES)) {
++                this.tickBlockEntities();
+             } finally { foliaProfiler.stopTimer(ca.spottedleaf.leafprofiler.LProfilerRegistry.TILE_ENTITY); } // Folia - profiler
+             profiler.pop();
+             } // Paper - option to disable ticking
+@@ -1135,11 +1136,23 @@
+                 // do not use a mutable pos, as some random tick implementations store the input without calling immutable()!
+                 final BlockPos pos = new BlockPos((location & 15) | offsetX, ((location >>> (4 + 4)) & 15) | offsetY, ((location >>> 4) & 15) | offsetZ);
+ 
+-                state.randomTick((ServerLevel)(Object)this, pos, simpleRandom);
++                final var mili$timing = MicroTiming.capture(this, pos, false, true);
++                try (var trace = mili$timing == null ? null : mili$timing.begin("random block tick", state.toString())) {
++                    state.randomTick((ServerLevel)(Object)this, pos, simpleRandom);
++                    if (trace != null) {
++                        trace.result("callback returned");
++                    }
++                }
+                 if (doubleTickFluids) {
+                     final FluidState fluidState = state.getFluidState();
+                     if (fluidState.isRandomlyTicking()) {
+-                        fluidState.randomTick((ServerLevel)(Object)this, pos, simpleRandom);
++                        final var fluidTiming = MicroTiming.capture(this, pos, false, true);
++                        try (var trace = fluidTiming == null ? null : fluidTiming.begin("random fluid tick", fluidState.toString())) {
++                            fluidState.randomTick((ServerLevel)(Object)this, pos, simpleRandom);
++                            if (trace != null) {
++                                trace.result("callback returned");
++                            }
++                        }
+                     }
+                 }
+             }
+@@ -1167,7 +1180,9 @@
+ 
+         profiler.popPush("tickBlocks");
+         if (tickSpeed > 0) {
+-            this.optimiseRandomTick(chunk, tickSpeed); // Paper - optimise random ticking
++            try (var trace = MicroTiming.phase(this, MicroTiming.Phase.RANDOM_TICKS)) {
++                this.optimiseRandomTick(chunk, tickSpeed); // Paper - optimise random ticking
++            }
+         }
+ 
+         profiler.pop();
+diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
+--- a/net/minecraft/world/level/Level.java
++++ b/net/minecraft/world/level/Level.java
+@@ -1577,6 +1577,7 @@
+         boolean sawNull = false;
+         for (int tickerIndex = 0; tickerIndex < blockEntityTickers.size(); tickerIndex++) { // Folia - regionised ticking
+             final TickingBlockEntity ticker = blockEntityTickers.get(tickerIndex); // Folia - regionised ticking
++            final BlockPos mili$tickerPos;
+         // Paper end - Fix MC-117075 use removeAll
+             // SparklyPaper start - avoid cleanup work when no tickers were removed
+             if (ticker == null) {
+@@ -1595,8 +1596,14 @@
+                     toRemove.add(ticker);
+                 }
+                 // SparklyPaper end - avoid cleanup work when no tickers were removed
+-            } else if (tickBlockEntities && this.shouldTickBlockPosFilterNull(ticker.getPos())) { // Leaves - Lithium Sleeping Block Entity
+-                ticker.tick();
++            } else if (tickBlockEntities && this.shouldTickBlockPosFilterNull(mili$tickerPos = ticker.getPos())) { // Leaves - Lithium Sleeping Block Entity
++                final var mili$timing = MicroTiming.capture(this, mili$tickerPos, false, true);
++                try (var trace = mili$timing == null ? null : mili$timing.begin("block entity ticker", ticker.getType())) {
++                    ticker.tick();
++                    if (trace != null) {
++                        trace.result("callback returned");
++                    }
++                }
+                 // Paper start - rewrite chunk system
+                 if ((++tickedEntities & 7) == 0) {
+                     ((ca.spottedleaf.moonrise.patches.chunk_system.level.ChunkSystemLevel)(Level)(Object)this).moonrise$midTickTasks();
